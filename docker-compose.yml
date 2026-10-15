@@ -1,0 +1,40 @@
+# Local development only. Credentials here are for a throwaway database on your machine.
+#
+#   docker compose up -d db                 # just PostgreSQL (run the gateway from your venv)
+#   docker compose --profile app up --build # PostgreSQL + gateway container
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway-dev-only
+      POSTGRES_DB: agent_gateway
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/create-test-db.sql:/docker-entrypoint-initdb.d/create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d agent_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    profiles: ["app"]
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DMD_GW_ENVIRONMENT: development
+      DMD_GW_DATABASE_URL: postgresql+psycopg://gateway:gateway-dev-only@db:5432/agent_gateway
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn --factory dmd_gateway.main:create_app --host 0.0.0.0 --port 8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  pgdata:

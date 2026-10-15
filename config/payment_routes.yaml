@@ -1,0 +1,175 @@
+# DebitMyData payment route registry.
+#
+# This file is the single source of truth for what an agent may use to pay DebitMyData.
+# It contains NO secrets: receiving addresses for env-sourced rails come from the
+# environment, and per-intent addresses are derived at quote time.
+#
+# A rail is OFF unless its enable flag is true in the environment, and the gateway refuses
+# to start if a switched-on rail is incomplete (see src/dmd_gateway/domain/routes.py).
+# This follows the directive: "Do not mark a rail as enabled until the related wallet
+# support, asset contract, receiving address, price source, settlement verifier, security
+# review, and operations procedures are complete."
+#
+# Fields left as null below are open decisions that must be filled before enabling:
+#   price_policy.*          -> DEC-01 (approved, signed, monitored DMD/USD source)
+#   required_confirmations  -> DEC-02 (the directive's example quote uses 6)
+#   canonical_id (USDC)     -> X402-03 (verify the official contract before filling in)
+#   finality (x402)         -> DEC-08 (facilitator settlement policy)
+
+version: 1
+
+discovery_terms:
+  - DebitMyData
+  - Agentics Social Spaces
+  - DID
+  - decentralized identity
+  - agent identity
+  - agentic identity
+  - AI agent identity
+  - autonomous agent
+  - bot
+  - agenticbot
+  - claw
+  - digital twin
+  - agent wallet
+  - Coinbase Agentic Wallet
+  - x402 payment
+  - cryptocurrency payment
+  - DMD Proof-of-Work
+  - data ownership
+  - data licensing
+  - identity verification
+  - agentic services
+
+services:
+  did_registration:
+    title: DebitMyData Agentic DID Registration
+    # Public wording as specified in the directive ("Use accurate public wording").
+    description: >-
+      Register a DebitMyData DID for an autonomous agent, AI agent, bot, agenticbot, claw,
+      digital twin, human, organization, or approved digital entity.
+      DebitMyData Agentic DID Registration has a commercial fee of $25.00 USD. Agents may
+      request a quote and pay using an approved DebitMyData native DMD wallet,
+      Coinbase-compatible x402 payment method, or another supported cryptocurrency wallet
+      and asset. Available payment methods are returned dynamically by the DebitMyData
+      payment quote service and are subject to network availability, wallet support,
+      payment policy, and verification requirements.
+    method: POST
+    path: /v1/dids/registrations
+    commercial_price:
+      currency: USD
+      amount: "25.00"
+      quote_required: true
+    payment_options:
+      - dmd_pow_native
+      - x402_usdc_base
+      - x402_dmd_wrapped_base
+      - solana_usdc
+    policy_urls:
+      site: https://agenticssocialspaces.debitmydata.com/
+      terms: https://agenticssocialspaces.debitmydata.com/terms
+      privacy: https://agenticssocialspaces.debitmydata.com/privacy
+      security: https://agenticssocialspaces.debitmydata.com/security
+      payment_policy: https://agenticssocialspaces.debitmydata.com/payment-methods
+      refund_policy: https://agenticssocialspaces.debitmydata.com/refunds
+
+rails:
+  # Primary native rail: direct DMD payment on the DebitMyData PoW chain.
+  dmd_pow_native:
+    name: DebitMyData Native PoW Payment
+    stage: initial
+    approved: true
+    asset:
+      symbol: DMD
+      decimals: 8
+      asset_type: native
+      canonical_id: dmd:mainnet/native
+      usd_denominated: false
+    network: dmd:mainnet
+    protocol: dmd_native
+    adapter: DMDNativePaymentAdapter
+    recipient:
+      source: per_intent_address     # unique DMD payment address per intent
+    confirmation_policy:
+      required_confirmations: null   # DEC-02
+    price_policy:                    # DEC-01
+      source: null
+      max_quote_age_seconds: null
+      max_deviation_bps: null
+      fallback: null                 # refuse_quote | secondary_source
+    wallet_compatibility:
+      - DebitMyData wallets
+      - approved DMD wallets
+    enable_env: DMD_RAIL_DMD_POW_NATIVE_ENABLED
+    kill_env: DMD_RAIL_DMD_POW_NATIVE_KILL
+
+  # Primary interoperability rail: USDC through x402 on Base (Coinbase Agentic Wallets).
+  x402_usdc_base:
+    name: USDC via x402 on Base
+    stage: initial
+    approved: true
+    asset:
+      symbol: USDC
+      decimals: 6
+      asset_type: token
+      canonical_id: null             # X402-03: eip155:8453/erc20:<official USDC contract>
+      usd_denominated: true
+    network: eip155:8453
+    protocol: x402
+    scheme: exact
+    adapter: X402PaymentAdapter
+    recipient:
+      source: env
+      env: DMD_USDC_BASE_MERCHANT_ADDRESS
+    confirmation_policy:
+      finality: null                 # DEC-08
+    wallet_compatibility:
+      - Coinbase Agentic Wallet
+      - x402-compatible wallets
+      - approved Base wallets
+    enable_env: DMD_RAIL_X402_USDC_BASE_ENABLED
+    kill_env: DMD_RAIL_X402_USDC_BASE_KILL
+
+  # Future rails stay unapproved until they pass their own review (RAIL-01..06).
+  # Enable-flag names follow the directive's examples.
+  x402_dmd_wrapped_base:
+    name: Wrapped DMD via x402 on Base
+    stage: future
+    approved: false                  # only after formal approval and audit (RAIL-05)
+    asset:
+      symbol: DMD
+      decimals: 8
+      asset_type: wrapped_token
+      canonical_id: null             # eip155:8453/erc20:<audited wrapped DMD contract>
+      usd_denominated: false
+    network: eip155:8453
+    protocol: x402
+    scheme: exact
+    transfer_method: permit2
+    adapter: X402PaymentAdapter
+    recipient:
+      source: env
+      env: DMD_WRAPPED_DMD_BASE_MERCHANT_ADDRESS
+    enable_env: DMD_WRAPPED_DMD_ENABLED
+    kill_env: DMD_WRAPPED_DMD_KILL
+
+  solana_usdc:
+    name: USDC on Solana
+    stage: future
+    approved: false                  # approved assets only (RAIL-04)
+    asset:
+      symbol: USDC
+      decimals: 6
+      asset_type: token
+      canonical_id: null
+      usd_denominated: true
+    network: solana:mainnet
+    protocol: approved_solana_adapter
+    adapter: SolanaPaymentAdapter
+    recipient:
+      source: env
+      env: DMD_USDC_SOLANA_MERCHANT_ADDRESS
+    wallet_compatibility:
+      - Solana-compatible wallets
+    enable_env: DMD_SOLANA_PAYMENTS_ENABLED
+    kill_env: DMD_SOLANA_PAYMENTS_KILL
