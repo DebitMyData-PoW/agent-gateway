@@ -32,6 +32,10 @@ def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     assert offer["method"] == "POST"
     assert offer["resource"].endswith("/v1/dids/registrations")
     assert "commercial fee of $25.00 USD" in offer["description"]
+    quote, registration = offer["endpoints"]["quote"], offer["endpoints"]["registration"]
+    assert quote["url"].endswith("/v1/dids/registration-quotes")
+    assert quote["available"] is False  # no payment rail is enabled
+    assert registration["available"] is False  # not built yet
     assert "terms" in body["policy_urls"]
 
 
@@ -70,4 +74,10 @@ def test_malformed_correlation_id_is_replaced(client: TestClient) -> None:
 
 def test_openapi_is_published(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
-    assert {"/healthz", "/readyz", "/v1/discovery", "/v1/payment-options"} <= set(paths)
+    assert {
+        "/healthz",
+        "/readyz",
+        "/v1/discovery",
+        "/v1/payment-options",
+        "/v1/dids/registration-quotes",
+    } <= set(paths)

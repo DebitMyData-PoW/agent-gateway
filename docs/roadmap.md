@@ -44,7 +44,7 @@ place; the application logic comes with the related phase.
 - [x] GW-03 Structured configuration for domains, route registry, feature flags
 - [x] GW-04 Database schema for intents, payments, identities, proofs, credentials, entitlements, policy versions, audit
 - [x] GW-05 Append-only audit semantics (database triggers)
-- [ ] GW-06 Idempotency-key support for mutating endpoints *(schema)*
+- [x] GW-06 Idempotency-key support for mutating endpoints (`Idempotency-Key` header)
 - [x] GW-07 Request correlation IDs and safe structured logs
 - [x] GW-08 Health/readiness endpoints that expose no secrets
 - [ ] GW-09 Authentication boundaries for public, internal and operator endpoints
@@ -58,14 +58,14 @@ place; the application logic comes with the related phase.
 - [x] QUOTE-02 `dmd_pow_native` configured (disabled pending DEC-01, DEC-02)
 - [x] QUOTE-03 `x402_usdc_base` configured (disabled pending X402-03, DEC-08)
 - [x] QUOTE-04 Future EVM/Solana/wrapped-DMD rails unapproved and disabled
-- [ ] QUOTE-05 `POST /v1/dids/registration-quotes`
+- [x] QUOTE-05 `POST /v1/dids/registration-quotes`
 - [x] QUOTE-06 Globally unique intent IDs
-- [ ] QUOTE-07 Fixed 25.00 USD commercial price in every quote
-- [ ] QUOTE-08 Asset/network/protocol/recipient/finality/expiry/policy version in every quote
-- [ ] QUOTE-09 DMD/USD price source behind an abstraction
-- [ ] QUOTE-10 Quote TTL; reject expired quotes
-- [ ] QUOTE-11 Store price inputs for audit/reconciliation *(schema)*
-- [ ] QUOTE-12 Underpayment, overpayment, stale-price, price-outage and refund behaviour
+- [x] QUOTE-07 Fixed 25.00 USD commercial price in every quote
+- [x] QUOTE-08 Asset/network/protocol/recipient/finality/expiry/policy version in every quote
+- [x] QUOTE-09 DMD/USD price source behind an abstraction (the actual source waits on DEC-01)
+- [ ] QUOTE-10 Quote TTL (done, `DMD_GW_QUOTE_TTL_SECONDS`); reject payments to expired quotes (with payment verification)
+- [x] QUOTE-11 Store price inputs for audit/reconciliation
+- [ ] QUOTE-12 Stale-price and price-outage behaviour (done: quote refused); underpayment, overpayment and refunds (DEC-04)
 - [x] QUOTE-13 Exact decimal arithmetic with unit tests
 
 ## Phase 4 – Native DMD payment adapter

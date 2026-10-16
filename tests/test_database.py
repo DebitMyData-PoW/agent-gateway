@@ -11,20 +11,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from alembic import command
-from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
-from .conftest import REPO_ROOT, TEST_DATABASE_URL
+from .conftest import TEST_DATABASE_URL
+from .conftest import alembic_config as _alembic_config
 
 pytestmark = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL not set")
-
-
-def _alembic_config() -> Config:
-    config = Config(str(REPO_ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
-    config.cmd_opts = type("Opts", (), {"x": [f"url={TEST_DATABASE_URL}"]})()
-    return config
 
 
 @pytest.fixture(scope="module")

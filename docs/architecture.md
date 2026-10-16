@@ -67,6 +67,9 @@ hold keys that can move funds.
    metadata. It creates a registration intent and a payment intent for the chosen rail and
    returns the fixed 25.00 USD price, exact amount in the chosen asset, destination,
    finality policy, conversion source and time (non-USD assets), expiry and policy version.
+   Non-USD amounts are rounded up to the next base unit and computed only from a price that
+   passes the rail's price policy; otherwise the quote is refused. An `Idempotency-Key`
+   header makes retries return the original quote instead of creating a new one.
 3. The agent pays. For native chains it may submit the transaction reference as a hint;
    the adapter always verifies on chain itself.
 4. The worker moves the payment through `detected → confirming → verified → settled`.
@@ -95,6 +98,11 @@ hold keys that can move funds.
 
 Underpaid, overpaid and late payments only lead to refund or failure until the refund
 policy (DEC-04) is decided. Nothing is ever credited silently.
+
+The directive's example quotes show rail-specific statuses (`awaiting_authorization`,
+`awaiting_dmd_payment`), while its normalized list has only `awaiting_payment`. Quotes
+therefore report `payment_status: awaiting_payment` plus a `next_action`
+(`authorize_x402_payment` or `send_payment`) until this is confirmed.
 
 ## Identity issuance rule
 

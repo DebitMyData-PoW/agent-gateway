@@ -11,10 +11,12 @@ reference supplied by the payer without checking it themselves.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 
 from dmd_gateway.domain.payment_status import PaymentStatus
+from dmd_gateway.domain.routes import RailConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,13 +56,34 @@ class SettlementObservation:
 
 
 class PaymentAdapter(ABC):
-    """Base class for rail-specific adapters."""
+    """Base class for rail-specific adapters.
+
+    One instance is created per enabled rail at startup, with that rail's configuration and
+    the runtime environment (for receiving addresses and service credentials).
+    """
 
     name: str
 
+    def __init__(self, rail_id: str, rail: RailConfig, environ: Mapping[str, str]) -> None:
+        self.rail_id = rail_id
+        self.rail = rail
+        self.environ = environ
+
+    def configured_recipient(self) -> str:
+        """The merchant address for rails whose recipient comes from the environment."""
+        if self.rail.recipient.source != "env" or not self.rail.recipient.env:
+            raise RuntimeError(f"rail {self.rail_id} has no environment-configured recipient")
+        value = (self.environ.get(self.rail.recipient.env) or "").strip()
+        if not value:
+            raise RuntimeError(f"{self.rail.recipient.env} is empty")
+        return value
+
     @abstractmethod
     def prepare_destination(self, payment_intent_id: str) -> PaymentDestination:
-        """Return where the payer must send funds for this intent."""
+        """Return where the payer must send funds for this intent.
+
+        Called inside the quote transaction, before the quote is returned (DMD-03).
+        """
 
     @abstractmethod
     def observe(self, expected: ExpectedPayment) -> SettlementObservation:

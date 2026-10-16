@@ -10,6 +10,7 @@ from dmd_gateway.domain.routes import RailState, RegistryError, load_registry
 from .conftest import REGISTRY_PATH
 
 ALL_ADAPTERS = {"DMDNativePaymentAdapter", "X402PaymentAdapter", "SolanaPaymentAdapter"}
+ALL_SOURCES = {"approved_dmd_usd_source"}
 
 
 def _write(tmp_path: Path, data: dict) -> Path:
@@ -27,7 +28,7 @@ def _complete_dmd(data: dict) -> dict:
     rail["confirmation_policy"]["required_confirmations"] = 6
     rail["price_policy"] = {
         "source": "approved_dmd_usd_source",
-        "max_quote_age_seconds": 900,
+        "max_price_age_seconds": 900,
         "max_deviation_bps": 200,
         "fallback": "refuse_quote",
     }
@@ -57,7 +58,12 @@ def test_commercial_price_is_fixed_usd() -> None:
 def test_shipped_rail_cannot_be_enabled_while_decisions_are_open() -> None:
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"}
     with pytest.raises(RegistryError) as err:
-        load_registry(REGISTRY_PATH, environ=environ, available_adapters=ALL_ADAPTERS)
+        load_registry(
+            REGISTRY_PATH,
+            environ=environ,
+            available_adapters=ALL_ADAPTERS,
+            available_price_sources=ALL_SOURCES,
+        )
     message = str(err.value)
     assert "confirmation_policy is not set" in message
     assert "price_policy is incomplete" in message
@@ -73,7 +79,9 @@ def test_rail_cannot_be_enabled_without_an_adapter(tmp_path: Path) -> None:
 def test_complete_rail_with_adapter_is_enabled(tmp_path: Path) -> None:
     path = _write(tmp_path, _complete_dmd(_shipped()))
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "TRUE"}
-    registry = load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+    registry = load_registry(
+        path, environ=environ, available_adapters=ALL_ADAPTERS, available_price_sources=ALL_SOURCES
+    )
     assert registry.rail_state("dmd_pow_native") is RailState.ENABLED
     assert [r for r, _ in registry.enabled_rails("did_registration")] == ["dmd_pow_native"]
 
@@ -82,7 +90,9 @@ def test_complete_rail_with_adapter_is_enabled(tmp_path: Path) -> None:
 def test_kill_switch_wins_over_enable(tmp_path: Path, value: str) -> None:
     path = _write(tmp_path, _complete_dmd(_shipped()))
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true", "DMD_RAIL_DMD_POW_NATIVE_KILL": value}
-    registry = load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+    registry = load_registry(
+        path, environ=environ, available_adapters=ALL_ADAPTERS, available_price_sources=ALL_SOURCES
+    )
     assert registry.rail_state("dmd_pow_native") is RailState.KILLED
     assert registry.enabled_rails("did_registration") == []
 
@@ -91,7 +101,9 @@ def test_kill_switch_wins_over_enable(tmp_path: Path, value: str) -> None:
 def test_kill_switch_off_values(tmp_path: Path, value: str) -> None:
     path = _write(tmp_path, _complete_dmd(_shipped()))
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true", "DMD_RAIL_DMD_POW_NATIVE_KILL": value}
-    registry = load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+    registry = load_registry(
+        path, environ=environ, available_adapters=ALL_ADAPTERS, available_price_sources=ALL_SOURCES
+    )
     assert registry.rail_state("dmd_pow_native") is RailState.ENABLED
 
 
@@ -115,10 +127,17 @@ def test_env_recipient_must_be_configured(tmp_path: Path) -> None:
 
     environ = {"DMD_RAIL_X402_USDC_BASE_ENABLED": "true"}
     with pytest.raises(RegistryError, match="DMD_USDC_BASE_MERCHANT_ADDRESS is empty"):
-        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+        load_registry(
+            path,
+            environ=environ,
+            available_adapters=ALL_ADAPTERS,
+            available_price_sources=ALL_SOURCES,
+        )
 
     environ["DMD_USDC_BASE_MERCHANT_ADDRESS"] = "0xMERCHANT"
-    registry = load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+    registry = load_registry(
+        path, environ=environ, available_adapters=ALL_ADAPTERS, available_price_sources=ALL_SOURCES
+    )
     assert registry.rail_state("x402_usdc_base") is RailState.ENABLED
 
 
@@ -133,7 +152,12 @@ def test_unapproved_rail_can_never_be_enabled(tmp_path: Path) -> None:
         "DMD_USDC_SOLANA_MERCHANT_ADDRESS": "SoLaNaAdDrEsS",
     }
     with pytest.raises(RegistryError, match="not approved"):
-        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+        load_registry(
+            path,
+            environ=environ,
+            available_adapters=ALL_ADAPTERS,
+            available_price_sources=ALL_SOURCES,
+        )
 
 
 def test_unknown_rail_reference_is_rejected(tmp_path: Path) -> None:
@@ -158,14 +182,19 @@ def test_unknown_fields_are_rejected(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "drop", ["source", "max_quote_age_seconds", "max_deviation_bps", "fallback"]
+    "drop", ["source", "max_price_age_seconds", "max_deviation_bps", "fallback"]
 )
 def test_non_usd_rail_needs_a_complete_price_policy(tmp_path: Path, drop: str) -> None:
     data = _complete_dmd(_shipped())
     data["rails"]["dmd_pow_native"]["price_policy"][drop] = None
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"}
     with pytest.raises(RegistryError, match=f"price_policy is incomplete.*{drop}"):
-        load_registry(_write(tmp_path, data), environ=environ, available_adapters=ALL_ADAPTERS)
+        load_registry(
+            _write(tmp_path, data),
+            environ=environ,
+            available_adapters=ALL_ADAPTERS,
+            available_price_sources=ALL_SOURCES,
+        )
 
 
 def test_secondary_source_fallback_needs_a_secondary_source(tmp_path: Path) -> None:
@@ -173,7 +202,12 @@ def test_secondary_source_fallback_needs_a_secondary_source(tmp_path: Path) -> N
     data["rails"]["dmd_pow_native"]["price_policy"]["fallback"] = "secondary_source"
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"}
     with pytest.raises(RegistryError, match="secondary_source"):
-        load_registry(_write(tmp_path, data), environ=environ, available_adapters=ALL_ADAPTERS)
+        load_registry(
+            _write(tmp_path, data),
+            environ=environ,
+            available_adapters=ALL_ADAPTERS,
+            available_price_sources=ALL_SOURCES,
+        )
 
 
 def test_usd_denominated_rail_needs_no_price_policy() -> None:
@@ -202,3 +236,15 @@ def test_directive_values_are_preserved() -> None:
     assert rails["solana_usdc"].enable_env == "DMD_SOLANA_PAYMENTS_ENABLED"
     assert rails["solana_usdc"].recipient.env == "DMD_USDC_SOLANA_MERCHANT_ADDRESS"
     assert len(registry.discovery_terms) == 21
+
+
+def test_price_source_must_be_implemented(tmp_path: Path) -> None:
+    path = _write(tmp_path, _complete_dmd(_shipped()))
+    environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"}
+    with pytest.raises(RegistryError, match="price source approved_dmd_usd_source is not"):
+        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+
+
+def test_terms_version_is_set() -> None:
+    registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
+    assert registry.services["did_registration"].terms_version == "2026-09-18"

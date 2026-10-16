@@ -65,6 +65,9 @@ services:
       - x402_usdc_base
       - x402_dmd_wrapped_base
       - solana_usdc
+    # Version of the terms an agent accepts with each quote. The directive's example uses
+    # 2026-09-18; confirm once the published policy pages exist (DEC-09).
+    terms_version: "2026-09-18"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: https://agenticssocialspaces.debitmydata.com/terms
@@ -94,7 +97,7 @@ rails:
       required_confirmations: null   # DEC-02
     price_policy:                    # DEC-01
       source: null
-      max_quote_age_seconds: null
+      max_price_age_seconds: null
       max_deviation_bps: null
       fallback: null                 # refuse_quote | secondary_source
     wallet_compatibility:

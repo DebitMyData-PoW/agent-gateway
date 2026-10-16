@@ -14,6 +14,8 @@ from dmd_gateway.domain.routes import PaymentRouteRegistry, RailState
 
 router = APIRouter(prefix="/v1", tags=["discovery"])
 
+QUOTE_PATHS = {"did_registration": "/v1/dids/registration-quotes"}
+
 # Wording as specified in the directive's payment-options response.
 AVAILABILITY_NOTICE = (
     "Payment availability may vary by asset, network, wallet policy, geographic eligibility, "
@@ -24,6 +26,12 @@ AVAILABILITY_NOTICE = (
 class Money(BaseModel):
     currency: str
     amount: str
+
+
+class Endpoint(BaseModel):
+    method: str
+    url: str
+    available: bool
 
 
 class Offer(BaseModel):
@@ -37,6 +45,7 @@ class Offer(BaseModel):
     quote_required: bool
     accepting_payments: bool
     payment_options_url: str
+    endpoints: dict[str, Endpoint]
 
 
 class Discovery(BaseModel):
@@ -78,6 +87,7 @@ def discovery(request: Request) -> Discovery:
     offers = []
     policy_urls: dict[str, str] = {}
     for service_id, service in registry.services.items():
+        accepting = bool(registry.enabled_rails(service_id))
         offers.append(
             Offer(
                 id=service_id,
@@ -91,8 +101,19 @@ def discovery(request: Request) -> Discovery:
                     amount=f"{service.commercial_price.amount:.2f}",
                 ),
                 quote_required=service.commercial_price.quote_required,
-                accepting_payments=bool(registry.enabled_rails(service_id)),
+                accepting_payments=accepting,
                 payment_options_url=f"{base}/v1/payment-options?service={service_id}",
+                endpoints={
+                    "quote": Endpoint(
+                        method="POST",
+                        url=f"{base}{QUOTE_PATHS[service_id]}",
+                        available=accepting,
+                    ),
+                    # Registration (payment verification + DID issuance) is not built yet.
+                    "registration": Endpoint(
+                        method=service.method, url=f"{base}{service.path}", available=False
+                    ),
+                },
             )
         )
         policy_urls.update(service.policy_urls)

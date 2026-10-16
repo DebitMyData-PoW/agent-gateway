@@ -30,8 +30,8 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is the **foundation release** (`0.1.0`). It contains everything the payment rails and
-DID issuance plug into, and nothing yet accepts payments:
+This is an early development release (`0.2.0`). It contains the foundation the payment rails
+and DID issuance plug into, plus the quote endpoint. Nothing accepts payments yet:
 
 | Area | State |
 | --- | --- |
@@ -41,7 +41,7 @@ DID issuance plug into, and nothing yet accepts payments:
 | Normalized payment state machine and the DID-issuance rule | done |
 | Exact decimal / base-unit money arithmetic | done |
 | PostgreSQL schema + migration, append-only audit and payment ledgers | done |
-| Quote engine (`POST /v1/dids/registration-quotes`) | next |
+| Quote endpoint (`POST /v1/dids/registration-quotes`), price-source rules, `Idempotency-Key` retries | done (answers only for enabled rails) |
 | Native DMD adapter, controller proof, DID issuance, MCP server, x402 | later phases |
 
 Every payment rail is **off**. See [docs/roadmap.md](docs/roadmap.md) for the task list and
@@ -88,6 +88,19 @@ curl http://localhost:8000/v1/discovery
 curl "http://localhost:8000/v1/payment-options?service=did_registration"
 ```
 
+Request a DID registration quote (the directive's example request):
+
+```bash
+curl -X POST http://localhost:8000/v1/dids/registration-quotes \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: 8f14e45f-ceea-467a-9a3b-3c5a1d2e7b90" \
+  -d '{"display_name": "ResearchClaw-01", "participant_type": "autonomous_agent",
+       "controller_public_key": "ed25519:EXAMPLE_PUBLIC_KEY",
+       "preferred_payment_option": "x402_usdc_base"}'
+```
+
+While every payment rail is off, this answers `409` with `"code": "payment_option_unavailable"`.
+
 Run commands from the repository root (the route registry path is relative to it).
 
 ## Tests
@@ -123,15 +136,16 @@ how an agent may pay. A rail is enabled only when **all** of these hold:
 2. its kill switch (named by `kill_env`) is unset or `0`/`false`/`no`/`off`;
 3. it is `approved` in the registry;
 4. canonical asset identity and confirmation/finality policy are set;
-5. for non-USD assets, the price policy is complete: approved source, maximum quote age,
-   permitted price deviation and fallback;
+5. for non-USD assets, the price policy is complete (approved source, maximum price age,
+   permitted price deviation and fallback) and its price sources are implemented;
 6. its receiving destination is configured;
 7. its payment adapter is implemented.
 
 If a rail is switched on while 3–7 are not met, the gateway **refuses to start** instead of
 running a half-configured rail. Kill switches fail safe: any unrecognised value counts as
-"killed". Kill switches are read at startup, so flipping one takes effect on restart. `/v1/payment-options` lists only enabled rails, so the API never advertises a
-payment method that cannot actually be verified.
+"killed". Kill switches are read at startup, so flipping one takes effect on restart.
+`/v1/payment-options` lists only enabled rails, so the API never advertises a payment method
+that cannot actually be verified.
 
 ## Project layout
 

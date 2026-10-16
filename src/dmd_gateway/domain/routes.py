@@ -7,8 +7,8 @@ environment once at startup. A rail is ENABLED only if all of the following hold
   * its kill switch (``kill_env``) is not set;
   * it is marked ``approved`` in the registry;
   * its canonical asset identity and confirmation/finality policy are set;
-  * for non-USD assets, a complete price policy is set (approved source, maximum quote
-    age, permitted price deviation and fallback);
+  * for non-USD assets, a complete price policy is set (approved source, maximum price
+    age, permitted price deviation and fallback) and its price sources are implemented;
   * its receiving destination is configured;
   * a payment adapter with its ``adapter`` name is actually implemented.
 
@@ -89,7 +89,7 @@ class PricePolicy(_Strict):
     """Conversion policy for non-USD assets: approved, signed, monitored source only."""
 
     source: str | None = None
-    max_quote_age_seconds: int | None = Field(default=None, ge=1)
+    max_price_age_seconds: int | None = Field(default=None, ge=1)
     max_deviation_bps: int | None = Field(default=None, ge=1, le=10_000)
     fallback: Literal["refuse_quote", "secondary_source"] | None = None
     secondary_source: str | None = None
@@ -97,7 +97,7 @@ class PricePolicy(_Strict):
     def missing(self) -> list[str]:
         missing = [
             name
-            for name in ("source", "max_quote_age_seconds", "max_deviation_bps", "fallback")
+            for name in ("source", "max_price_age_seconds", "max_deviation_bps", "fallback")
             if getattr(self, name) is None
         ]
         if self.fallback == "secondary_source" and not self.secondary_source:
@@ -146,6 +146,7 @@ class ServiceConfig(_Strict):
     path: str
     commercial_price: CommercialPrice
     payment_options: tuple[str, ...]
+    terms_version: str = Field(min_length=1, max_length=64)
     policy_urls: dict[str, str] = {}
 
 
@@ -173,7 +174,10 @@ def _kill_on(value: str | None) -> bool:
 
 
 def readiness_problems(
-    rail: RailConfig, environ: Mapping[str, str], available_adapters: Collection[str]
+    rail: RailConfig,
+    environ: Mapping[str, str],
+    available_adapters: Collection[str],
+    available_price_sources: Collection[str] = (),
 ) -> list[str]:
     """Everything that stops a rail from being safely enabled."""
     problems: list[str] = []
@@ -187,6 +191,9 @@ def readiness_problems(
         missing = rail.price_policy.missing()
         if missing:
             problems.append("price_policy is incomplete (missing " + ", ".join(missing) + ")")
+        for source in (rail.price_policy.source, rail.price_policy.secondary_source):
+            if source and source not in available_price_sources:
+                problems.append(f"price source {source} is not implemented")
     if rail.recipient.source == "env" and not (environ.get(rail.recipient.env or "") or "").strip():
         problems.append(f"receiving address variable {rail.recipient.env} is empty")
     if rail.adapter not in available_adapters:
@@ -228,6 +235,7 @@ def load_registry(
     *,
     environ: Mapping[str, str],
     available_adapters: Collection[str],
+    available_price_sources: Collection[str] = (),
 ) -> PaymentRouteRegistry:
     try:
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
@@ -245,7 +253,9 @@ def load_registry(
         elif not _flag_on(environ.get(rail.enable_env)):
             states[rail_id] = RailState.DISABLED
         else:
-            problems = readiness_problems(rail, environ, available_adapters)
+            problems = readiness_problems(
+                rail, environ, available_adapters, available_price_sources
+            )
             if problems:
                 raise RegistryError(
                     f"rail {rail_id!r} is switched on but not ready: " + "; ".join(problems)

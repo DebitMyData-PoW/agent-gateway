@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import dotenv_values
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_DATABASE_URL = "postgresql+psycopg://gateway:gateway-dev-only@localhost:5432/agent_gateway"
@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     mcp_url: str | None = None
 
     route_registry_path: Path = Path("config/payment_routes.yaml")
+
+    # How long a payment quote stays valid. The directive's example quote is valid for
+    # 15 minutes; the final value is an open decision (DEC-03).
+    quote_ttl_seconds: int = Field(default=900, ge=60, le=3600)
 
     @field_validator("mcp_url", mode="before")
     @classmethod

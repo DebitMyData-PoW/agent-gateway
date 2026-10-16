@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
@@ -35,3 +36,11 @@ def client(settings: Settings) -> Iterator[TestClient]:
     app = create_app(settings, environ={}, engine=engine)
     with TestClient(app) as test_client:
         yield test_client
+
+
+def alembic_config() -> Config:
+    """Alembic configuration pointed at the disposable test database."""
+    config = Config(str(REPO_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
+    config.cmd_opts = type("Opts", (), {"x": [f"url={TEST_DATABASE_URL}"]})()
+    return config
