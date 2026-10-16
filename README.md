@@ -1,9 +1,12 @@
 # DebitMyData Agent Gateway
 
-The public integration surface that lets autonomous agents, bots, digital twins, people
-and organizations **discover DebitMyData, get a quote, pay through an approved rail, prove
-control of their wallet or key, and receive a DebitMyData identity (DID), signed credential
-and entitlements**.
+> **Status: in development.** This is the foundation release. It does not accept payments
+> or issue DIDs yet, and every payment rail is switched off. See [Status](#status).
+
+The Agent Gateway is being built as the public integration surface that will let autonomous
+agents, bots, digital twins, people and organizations **discover DebitMyData, get a quote,
+pay through an approved rail, prove control of their wallet or key, and receive a
+DebitMyData DID, signed credential and entitlements**.
 
 The gateway sits *around* the DebitMyData Proof-of-Work chain. It does not change DMD
 consensus, and it never exposes node RPC, private keys or treasury controls to callers.
@@ -165,6 +168,11 @@ These apply to every change in this repository:
   policy checks passed and the registration intent is valid and unused.
 - Never put secrets in source, tickets, logs or chat. `.env` files are git-ignored.
 - Public documentation describes only rails that are actually enabled and verified.
+
+## Reporting security issues
+
+Please report vulnerabilities privately, never in public issues. See
+[SECURITY.md](SECURITY.md).
 
 ## Database notes
 
