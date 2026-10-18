@@ -30,8 +30,8 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.2.0`). It contains the foundation the payment rails
-and DID issuance plug into, plus the quote endpoint. Nothing accepts payments yet:
+This is an early development release (`0.3.0`). The native DMD payment flow works end to end
+on a private regtest chain; nothing accepts real payments yet:
 
 | Area | State |
 | --- | --- |
@@ -42,10 +42,14 @@ and DID issuance plug into, plus the quote endpoint. Nothing accepts payments ye
 | Exact decimal / base-unit money arithmetic | done |
 | PostgreSQL schema + migration, append-only audit and payment ledgers | done |
 | Quote endpoint (`POST /v1/dids/registration-quotes`), price-source rules, `Idempotency-Key` retries | done (answers only for enabled rails) |
-| Native DMD adapter, controller proof, DID issuance, MCP server, x402 | later phases |
+| Native DMD payment adapter: per-quote address, independent verification, confirmations, reorg and double-spend handling | done (regtest) |
+| Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
+| Controller proof, DID issuance, MCP (Agentic Superhighway), x402 / USDC | next |
 
-Every payment rail is **off**. See [docs/roadmap.md](docs/roadmap.md) for the task list and
-the open decisions that must be made before a rail can be switched on.
+Every payment rail is **off** by default. The native DMD rail can be switched on for a
+private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
+needs an approved DMD/USD price source. See [docs/roadmap.md](docs/roadmap.md) for the task
+list and decisions.
 
 ## Quick start
 
@@ -147,20 +151,39 @@ running a half-configured rail. Kill switches fail safe: any unrecognised value 
 `/v1/payment-options` lists only enabled rails, so the API never advertises a payment method
 that cannot actually be verified.
 
+## Payment worker
+
+Payments are tracked by a separate process that watches every open payment on the enabled
+rails and moves it through the normalized statuses:
+
+```bash
+dmd-gateway-worker          # runs until stopped
+dmd-gateway-worker --once   # one pass
+```
+
+It never changes a payment while the node is unreachable, and several workers can run at
+once safely. To try the whole flow on a private chain, follow
+[docs/regtest-demo.md](docs/regtest-demo.md).
+
 ## Project layout
 
 ```
 config/payment_routes.yaml   payment rails, services, commercial price (no secrets)
+config/payment_routes.regtest.yaml   the same, with the DMD rail on a private regtest chain
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
+  worker.py                  payment worker (dmd-gateway-worker)
+  runtime.py                 registry, adapters and price sources shared by API and worker
   settings.py                environment configuration
   observability.py           JSON logging, correlation IDs
   audit.py                   append-only audit helper
   api/                       HTTP routes
-  adapters/                  payment-adapter interface (one adapter per rail)
+  adapters/                  payment adapters (native DMD) and the restricted DMD RPC client
+  pricing/                   price-source rules (approved sources only)
+  services/                  quotes, payment settlement, idempotency
   db/                        SQLAlchemy models and session handling
-  domain/                    money, ids, payment states, issuance rule, route registry
+  domain/                    money, ids, payment states, settlement rules, issuance rule, registry
 tests/
 docs/                        architecture, roadmap, operator checklists
 ```

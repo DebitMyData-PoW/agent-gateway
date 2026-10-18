@@ -40,9 +40,11 @@ class Settings(BaseSettings):
 
     route_registry_path: Path = Path("config/payment_routes.yaml")
 
-    # How long a payment quote stays valid. The directive's example quote is valid for
-    # 15 minutes; the final value is an open decision (DEC-03).
+    # How long a payment quote stays valid: 15 minutes, as in the directive's example (DEC-03).
     quote_ttl_seconds: int = Field(default=900, ge=60, le=3600)
+
+    # How often the payment worker checks open payments.
+    worker_interval_seconds: float = Field(default=10, ge=1, le=600)
 
     @field_validator("mcp_url", mode="before")
     @classmethod

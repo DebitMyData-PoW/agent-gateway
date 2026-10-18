@@ -8,9 +8,10 @@ from decimal import Decimal
 
 from dmd_gateway.adapters.base import (
     ExpectedPayment,
+    ObservedOutput,
     PaymentAdapter,
     PaymentDestination,
-    SettlementObservation,
+    PaymentObservation,
 )
 from dmd_gateway.pricing import PriceObservation, PriceSource
 
@@ -28,8 +29,8 @@ class FakeDmdAdapter(PaymentAdapter):
             payment_reference=payment_intent_id,
         )
 
-    def observe(self, expected: ExpectedPayment) -> SettlementObservation:
-        raise NotImplementedError
+    def observe(self, expected: ExpectedPayment) -> PaymentObservation:
+        return SCRIPTED.observation(expected, self.name)
 
 
 class FakeX402Adapter(PaymentAdapter):
@@ -44,8 +45,80 @@ class FakeX402Adapter(PaymentAdapter):
             payment_reference=payment_intent_id,
         )
 
-    def observe(self, expected: ExpectedPayment) -> SettlementObservation:
-        raise NotImplementedError
+    def observe(self, expected: ExpectedPayment) -> PaymentObservation:
+        return SCRIPTED.observation(expected, self.name)
+
+
+class ScriptedChain:
+    """What the fake adapters 'see' on chain, set by each test per payment intent."""
+
+    def __init__(self) -> None:
+        self.outputs: dict[str, list[ObservedOutput]] = {}
+        self.conflicted: dict[str, list[str]] = {}
+        self.unavailable = False
+
+    def reset(self) -> None:
+        self.__init__()
+
+    def pay(
+        self,
+        payment_intent_id: str,
+        units: int,
+        *,
+        txid: str,
+        vout: int = 0,
+        confirmations: int = 0,
+        first_seen_at: datetime | None = None,
+    ) -> None:
+        outputs = [
+            o for o in self.outputs.get(payment_intent_id, []) if o.transaction_reference != txid
+        ]
+        outputs.append(
+            ObservedOutput(
+                transaction_reference=txid,
+                output_index=vout,
+                amount_base_units=units,
+                confirmations=confirmations,
+                first_seen_at=first_seen_at or datetime.now(UTC),
+                block_hash="ab" * 32 if confirmations else None,
+                block_height=100 if confirmations else None,
+            )
+        )
+        self.outputs[payment_intent_id] = outputs
+
+    def confirm(self, payment_intent_id: str, confirmations: int) -> None:
+        self.outputs[payment_intent_id] = [
+            ObservedOutput(
+                o.transaction_reference,
+                o.output_index,
+                o.amount_base_units,
+                confirmations,
+                o.first_seen_at,
+                "ab" * 32 if confirmations else None,
+                100 if confirmations else None,
+            )
+            for o in self.outputs.get(payment_intent_id, [])
+        ]
+
+    def double_spend(self, payment_intent_id: str) -> None:
+        txids = [o.transaction_reference for o in self.outputs.pop(payment_intent_id, [])]
+        self.conflicted[payment_intent_id] = txids
+
+    def observation(self, expected: ExpectedPayment, adapter: str) -> PaymentObservation:
+        if self.unavailable:
+            from dmd_gateway.adapters.base import AdapterUnavailable
+
+            raise AdapterUnavailable("scripted outage")
+        return PaymentObservation(
+            payment_intent_id=expected.payment_intent_id,
+            adapter=adapter,
+            observed_at=datetime.now(UTC),
+            outputs=tuple(self.outputs.get(expected.payment_intent_id, [])),
+            conflicted_transactions=tuple(self.conflicted.get(expected.payment_intent_id, [])),
+        )
+
+
+SCRIPTED = ScriptedChain()
 
 
 class FixedPriceSource(PriceSource):

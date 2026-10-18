@@ -7,9 +7,12 @@ configuration never enables it by itself.
 
 from __future__ import annotations
 
-from dmd_gateway.adapters.base import PaymentAdapter
+from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter
+from dmd_gateway.adapters.dmd_native import DMDNativePaymentAdapter
 
 # adapter name (as used in config/payment_routes.yaml) -> implementation
-AVAILABLE_ADAPTERS: dict[str, type[PaymentAdapter]] = {}
+AVAILABLE_ADAPTERS: dict[str, type[PaymentAdapter]] = {
+    DMDNativePaymentAdapter.name: DMDNativePaymentAdapter,
+}
 
-__all__ = ["AVAILABLE_ADAPTERS", "PaymentAdapter"]
+__all__ = ["AVAILABLE_ADAPTERS", "AdapterUnavailable", "PaymentAdapter"]

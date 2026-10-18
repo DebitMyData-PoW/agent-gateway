@@ -26,10 +26,10 @@ place; the application logic comes with the related phase.
 - [ ] SEC-03 Review upstream Core security changes relevant to the DMD base
 - [ ] SEC-04 RPC bound to loopback/private network only (operator checklist: [sec-04-rpc-isolation.md](sec-04-rpc-isolation.md))
 - [ ] SEC-05 Dedicated RPC credentials for the gateway adapter
-- [ ] SEC-06 Method-restricted RPC proxy or allowlist
-- [ ] SEC-07 Explicit allowed-method list; reject unlock, key export, admin, mining, shutdown
+- [x] SEC-06 Method-restricted RPC allowlist in the gateway's RPC client (a node-side proxy is still recommended)
+- [x] SEC-07 Explicit allowed-method list; reject unlock, key export, admin, mining, shutdown
 - [ ] SEC-08 Payment receive/tracking wallet separate from treasury
-- [ ] SEC-09 Watch-only / descriptor-based payment tracking
+- [x] SEC-09 Watch-only / descriptor-based payment tracking (the gateway refuses a wallet that can spend)
 - [ ] SEC-10 Firewall verified from an external host
 - [ ] SEC-11 Secondary verification node with tip comparison
 - [ ] SEC-12 Node health and sync checks
@@ -49,13 +49,13 @@ place; the application logic comes with the related phase.
 - [x] GW-08 Health/readiness endpoints that expose no secrets
 - [ ] GW-09 Authentication boundaries for public, internal and operator endpoints
 - [x] GW-10 OpenAPI documentation for public routes
-- [ ] GW-11 Background worker for polling, finality and reconciliation
+- [x] GW-11 Background worker for polling and finality (`dmd-gateway-worker`); full reconciliation is DMD-13
 - [x] GW-12 Per-rail feature flags and kill switches (environment-based; runtime toggle later with OPS-09)
 
 ## Phase 3 – Route registry and quote engine
 
 - [x] QUOTE-01 Payment-options route registry
-- [x] QUOTE-02 `dmd_pow_native` configured (disabled pending DEC-01, DEC-02)
+- [x] QUOTE-02 `dmd_pow_native` configured (disabled on mainnet pending DEC-01; enabled on regtest for demos)
 - [x] QUOTE-03 `x402_usdc_base` configured (disabled pending X402-03, DEC-08)
 - [x] QUOTE-04 Future EVM/Solana/wrapped-DMD rails unapproved and disabled
 - [x] QUOTE-05 `POST /v1/dids/registration-quotes`
@@ -63,28 +63,28 @@ place; the application logic comes with the related phase.
 - [x] QUOTE-07 Fixed 25.00 USD commercial price in every quote
 - [x] QUOTE-08 Asset/network/protocol/recipient/finality/expiry/policy version in every quote
 - [x] QUOTE-09 DMD/USD price source behind an abstraction (the actual source waits on DEC-01)
-- [ ] QUOTE-10 Quote TTL (done, `DMD_GW_QUOTE_TTL_SECONDS`); reject payments to expired quotes (with payment verification)
+- [x] QUOTE-10 Quote TTL (`DMD_GW_QUOTE_TTL_SECONDS`); payments first seen after expiry are never credited
 - [x] QUOTE-11 Store price inputs for audit/reconciliation
-- [ ] QUOTE-12 Stale-price and price-outage behaviour (done: quote refused); underpayment, overpayment and refunds (DEC-04)
+- [x] QUOTE-12 Stale-price/price-outage (quote refused); underpayment, overpayment and late payment recorded as refund due (DEC-04)
 - [x] QUOTE-13 Exact decimal arithmetic with unit tests
 
 ## Phase 4 – Native DMD payment adapter
 
-- [ ] DMD-01 `DMDNativePaymentAdapter` behind the common interface
-- [ ] DMD-02 Unique payment address per intent
-- [ ] DMD-03 Destination stored with the intent before the quote is returned
-- [ ] DMD-04 Detect arrival through the restricted node interface
-- [ ] DMD-05 Independently verify txid, outputs, destination, amount, chain
-- [ ] DMD-06 Confirmation tracking through the normalized states
-- [ ] DMD-07 Final DMD confirmation policy (DEC-02)
-- [ ] DMD-08 Reorg detection and handling
-- [ ] DMD-09 Double-spend / conflict / replacement detection
-- [ ] DMD-10 Deterministic underpaid/overpaid handling
-- [ ] DMD-11 One output credited to at most one intent *(schema)*
-- [ ] DMD-12 Payer-submitted reference treated as a hint only
+- [x] DMD-01 `DMDNativePaymentAdapter` behind the common interface
+- [x] DMD-02 Unique payment address per intent
+- [x] DMD-03 Destination stored with the intent before the quote is returned
+- [x] DMD-04 Detect arrival through the restricted node interface
+- [x] DMD-05 Independently verify txid, outputs, destination, amount, chain
+- [x] DMD-06 Confirmation tracking through the normalized states
+- [x] DMD-07 Final DMD confirmation policy: 6 confirmations (DEC-02)
+- [x] DMD-08 Reorg detection and handling
+- [x] DMD-09 Double-spend / conflict / replacement detection
+- [x] DMD-10 Deterministic underpaid/overpaid handling
+- [x] DMD-11 One output credited to at most one intent
+- [x] DMD-12 Payer-submitted reference treated as a hint only (endpoint to submit it: with MCP)
 - [ ] DMD-13 Periodic reconciliation against the chain
 - [ ] DMD-14 Node failover / second verification node
-- [ ] DMD-15 Address reuse prevention *(schema)* and treasury separation
+- [x] DMD-15 Address reuse prevention and treasury separation (watch-only gateway wallet)
 
 ## Phase 5 – Controller proof, identity and credentials
 
@@ -113,12 +113,15 @@ Additional rails (RAIL-*), abuse prevention and policy (POL-*), monitoring and o
 (OPS-*), developer documentation (DOC-*), testing and security validation (TEST-*),
 deployment and cutover (DEP-*).
 
-## Open decisions (required before production)
+## Decisions
+
+Decisions marked done were made by the development team from the directive's examples
+and can be changed later.
 
 - [ ] DEC-01 DMD/USD price source(s), fallback, maximum age, deviation tolerance
-- [ ] DEC-02 Native DMD confirmation/finality requirement
-- [ ] DEC-03 Quote lifetime
-- [ ] DEC-04 Underpayment / overpayment / late-payment / refund policy
+- [x] DEC-02 Native DMD confirmation requirement: 6 (from the directive's example)
+- [x] DEC-03 Quote lifetime: 15 minutes (from the directive's example)
+- [x] DEC-04 Underpayment: top-up allowed until expiry, then refund; overpayment: accepted, excess refunded; late payment: refunded, never credited
 - [ ] DEC-05 Public identity syntax; whether and when to standardize `did:dmd`
 - [ ] DEC-06 Credential format, signature algorithm, issuer key custody
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets

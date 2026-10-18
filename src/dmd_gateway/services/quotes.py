@@ -12,6 +12,7 @@ refused rather than computed from a price that fails the rail's price policy.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -23,7 +24,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
-from dmd_gateway.adapters.base import PaymentAdapter
+from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import (
     RECIPIENT_KINDS,
@@ -37,6 +38,8 @@ from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.errors import ApiError
 from dmd_gateway.pricing import PriceObservation, PriceSource, PriceUnavailable, select_price
+
+log = logging.getLogger(__name__)
 
 DID_REGISTRATION = "did_registration"
 METADATA_MAX_KEYS = 20
@@ -253,7 +256,19 @@ def create_registration_quote(
     session.flush()
 
     # The destination is fixed and stored before the quote is returned (DMD-03).
-    destination = ctx.adapters[rail_id].prepare_destination(payment_id)
+    try:
+        destination = ctx.adapters[rail_id].prepare_destination(payment_id)
+    except AdapterUnavailable as exc:
+        log.warning(
+            "payment rail unavailable for quote",
+            extra={"event": {"rail": rail_id, "error": str(exc)}},
+        )
+        raise ApiError(
+            503,
+            "payment_rail_unavailable",
+            f"Payment option {rail_id!r} is temporarily unavailable; try again later.",
+            headers={"Retry-After": "60"},
+        ) from exc
     if destination.recipient_kind not in RECIPIENT_KINDS or not destination.recipient:
         raise ApiError(500, "quote_failed", "The payment destination could not be prepared.")
 

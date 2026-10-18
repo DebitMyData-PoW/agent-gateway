@@ -65,7 +65,8 @@ def test_shipped_rail_cannot_be_enabled_while_decisions_are_open() -> None:
             available_price_sources=ALL_SOURCES,
         )
     message = str(err.value)
-    assert "confirmation_policy is not set" in message
+    # Confirmations are decided (6); the DMD/USD price source is still open (DEC-01).
+    assert "confirmation_policy is not set" not in message
     assert "price_policy is incomplete" in message
 
 

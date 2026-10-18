@@ -12,7 +12,6 @@
 #
 # Fields left as null below are open decisions that must be filled before enabling:
 #   price_policy.*          -> DEC-01 (approved, signed, monitored DMD/USD source)
-#   required_confirmations  -> DEC-02 (the directive's example quote uses 6)
 #   canonical_id (USDC)     -> X402-03 (verify the official contract before filling in)
 #   finality (x402)         -> DEC-08 (facilitator settlement policy)
 
@@ -94,7 +93,7 @@ rails:
     recipient:
       source: per_intent_address     # unique DMD payment address per intent
     confirmation_policy:
-      required_confirmations: null   # DEC-02
+      required_confirmations: 6      # DEC-02: as in the directive's example quote
     price_policy:                    # DEC-01
       source: null
       max_price_age_seconds: null

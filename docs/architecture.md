@@ -96,8 +96,25 @@ hold keys that can move funds.
 | failed | refunded |
 | refunded | (final) |
 
-Underpaid, overpaid and late payments only lead to refund or failure until the refund
-policy (DEC-04) is decided. Nothing is ever credited silently.
+Payment policy (DEC-04): an underpayment can be topped up until the quote expires, then it
+becomes `underpaid` and the amount received is due for refund; an overpayment is accepted
+and the excess is due for refund; a payment first seen after the quote expired is never
+credited and is due for refund. Nothing is ever credited silently. These rules live in
+`src/dmd_gateway/domain/settlement.py` and apply to every rail.
+
+## Native DMD payments
+
+* The gateway's node wallet is a **watch-only descriptor wallet** holding only the public
+  receive descriptor of the treasury wallet. The gateway can create addresses and see
+  payments but can never spend; it refuses to run if its wallet has private keys.
+* Each quote gets a fresh address, labelled with the payment-intent ID.
+* The worker checks each payment with read-only RPC calls only: it decodes the raw
+  transaction to verify the output and amount itself, checks that the confirming block is
+  still in the active chain, and treats conflicting or replaced transactions as
+  double-spends.
+* Settlement after 6 confirmations credits each output once in `credited_outputs`.
+* The gateway refuses to start if the node is on a different chain than the rail (for
+  example a regtest node behind a mainnet rail).
 
 The directive's example quotes show rail-specific statuses (`awaiting_authorization`,
 `awaiting_dmd_payment`), while its normalized list has only `awaiting_payment`. Quotes
