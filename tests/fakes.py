@@ -71,6 +71,7 @@ class ScriptedChain:
         self.outputs: dict[str, list[ObservedOutput]] = {}
         self.conflicted: dict[str, list[str]] = {}
         self.unavailable = False
+        self.expected: dict[str, ExpectedPayment] = {}  # what the worker last asked for
 
     def reset(self) -> None:
         self.__init__()
@@ -120,6 +121,7 @@ class ScriptedChain:
         self.conflicted[payment_intent_id] = txids
 
     def observation(self, expected: ExpectedPayment, adapter: str) -> PaymentObservation:
+        self.expected[expected.payment_intent_id] = expected
         if self.unavailable:
             from dmd_gateway.adapters.base import AdapterUnavailable
 

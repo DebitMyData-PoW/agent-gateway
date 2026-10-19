@@ -36,8 +36,9 @@ the quote states the exact amount in that rail's asset.
                  └─────────────────────────────────────────────┘
 ```
 
-* **REST API and MCP** are two front doors to the same services. MCP tools call the same
-  code as REST endpoints; settlement and issuance logic is never duplicated.
+* **REST API and MCP** are two front doors to the same services. Each MCP tool calls the
+  REST API in-process, so validation, issuance rules, audit and error codes are shared;
+  settlement and issuance logic is never duplicated.
 * **Payment adapters** hide each rail behind one interface
   (`src/dmd_gateway/adapters/base.py`) and report the normalized payment status.
 * **The settlement worker** polls adapters in the background and records every status
@@ -70,8 +71,9 @@ hold keys that can move funds.
    Non-USD amounts are rounded up to the next base unit and computed only from a price that
    passes the rail's price policy; otherwise the quote is refused. An `Idempotency-Key`
    header makes retries return the original quote instead of creating a new one.
-3. The agent pays. For native chains it may submit the transaction reference as a hint;
-   the adapter always verifies on chain itself.
+3. The agent pays. It may report the transaction with
+   `POST /v1/payments/{id}/references` (at most 5 per payment, stored append-only); this is
+   only a hint for where to look, and the adapter always verifies on chain itself.
 4. The worker moves the payment through `detected → confirming → verified → settled`.
 5. The agent proves control of its controller key (before or after settlement):
    `POST /v1/dids/registrations/{id}/controller-challenges` returns a one-time message,
@@ -140,6 +142,33 @@ that they are valid curve points of large order, and stored in Multikey form.
   proof method exists yet (DEC-07), and a paid registration that can never be completed
   would only lead to a refund. The wallet address, when given with a key, is recorded but
   not bound to the identity, since it was not proven.
+
+## MCP server
+
+The gateway serves the directive's MCP tools at `/mcp` with the official MCP Python SDK,
+over Streamable HTTP in stateless mode with JSON responses, so any instance can answer any
+request. Discovery advertises the endpoint (`mcp_url`, which can be overridden when agents
+reach it through another public address).
+
+| Tool | REST call |
+| --- | --- |
+| `dmd_discover` | `GET /v1/discovery`, plus a short description of DebitMyData and DMD |
+| `dmd_get_did_registration_offer` | the DID offer and `GET /v1/payment-options` |
+| `dmd_list_supported_payment_options` | `GET /v1/payment-options` |
+| `dmd_create_did_payment_quote` | `POST /v1/dids/registration-quotes` |
+| `dmd_submit_payment_reference` | `POST /v1/payments/{id}/references` |
+| `dmd_get_payment_status` | `GET /v1/payments/{id}` |
+| `dmd_prove_wallet_control` | first call: `POST .../controller-challenges`; second call with the signature: `POST .../controller-proofs` |
+| `dmd_register_did` | `POST /v1/dids/registrations` |
+| `dmd_get_registration_status` | `GET /v1/dids/registrations/{id}` (added to the directive's list) |
+| `dmd_catalog`, `dmd_get_purchase_quote` | the offers and their enabled payment options |
+| `dmd_purchase` | for `did_registration`, the same as creating a quote |
+| `dmd_marketplace_provider_requirements` | states that provider onboarding is not open yet |
+
+Failed calls return the REST error body (`http_status`, `error.code`, details) as a tool
+error. Requests whose `Host` or `Origin` is not the gateway's own address are refused
+(DNS-rebinding protection); `DMD_GW_MCP_ALLOWED_HOSTS` adds host names when needed. Agents
+sign challenges themselves: no tool takes or returns a private key.
 
 ## Identity issuance rule
 

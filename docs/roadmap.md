@@ -81,7 +81,7 @@ place; the application logic comes with the related phase.
 - [x] DMD-09 Double-spend / conflict / replacement detection
 - [x] DMD-10 Deterministic underpaid/overpaid handling
 - [x] DMD-11 One output credited to at most one intent
-- [x] DMD-12 Payer-submitted reference treated as a hint only (endpoint to submit it: with MCP)
+- [x] DMD-12 Payer-submitted reference treated as a hint only (`POST /v1/payments/{id}/references`, MCP `dmd_submit_payment_reference`)
 - [ ] DMD-13 Periodic reconciliation against the chain
 - [ ] DMD-14 Node failover / second verification node
 - [x] DMD-15 Address reuse prevention and treasury separation (watch-only gateway wallet)
@@ -106,11 +106,15 @@ place; the application logic comes with the related phase.
 
 ## Phase 6 – MCP server
 
-- [ ] MCP-01 … MCP-16 `dmd_discover`, `dmd_get_did_registration_offer`,
+- [x] MCP server at `/mcp` (official MCP SDK, Streamable HTTP, stateless, DNS-rebinding protection)
+- [x] All twelve directive tools: `dmd_discover`, `dmd_get_did_registration_offer`,
   `dmd_list_supported_payment_options`, `dmd_create_did_payment_quote`,
   `dmd_submit_payment_reference`, `dmd_get_payment_status`, `dmd_prove_wallet_control`,
   `dmd_register_did`, `dmd_catalog`, `dmd_get_purchase_quote`, `dmd_purchase`,
-  `dmd_marketplace_provider_requirements`, all calling the same services as REST
+  `dmd_marketplace_provider_requirements`, plus `dmd_get_registration_status`; all call the REST API in-process
+- [ ] Public MCP hostname (`agents.debitmydata.com/mcp` in the directive) with the staging/production deployment
+- [ ] Marketplace provider requirements: publish them, then return them from the tool
+- [ ] Integration with the Agentic Superhighway MCP, if its owners share it
 
 ## Phase 7 – x402 / USDC on Base
 

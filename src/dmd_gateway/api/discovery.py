@@ -144,7 +144,7 @@ def discovery(request: Request) -> Discovery:
         service="DebitMyData Agent Gateway",
         version=__version__,
         offers=offers,
-        mcp_url=settings.mcp_url,
+        mcp_url=settings.mcp_url or f"{base}/mcp",
         credential_issuer=(
             CredentialIssuer(
                 did=request.app.state.issuance.issuer.did,

@@ -50,7 +50,7 @@ def configure_logging(level: str = "INFO") -> None:
     root.handlers[:] = [handler]
     root.setLevel(level)
     # HTTP client libraries log every request at INFO, including node RPC calls.
-    for noisy in ("httpx", "httpcore"):
+    for noisy in ("httpx", "httpcore", "httpx2", "httpcore2", "mcp"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

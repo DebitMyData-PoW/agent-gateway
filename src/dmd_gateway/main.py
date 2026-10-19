@@ -22,6 +22,7 @@ from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import IssuerKey, load_issuer_key
+from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
 from dmd_gateway.services.quotes import QuoteContext
@@ -68,7 +69,8 @@ def create_app(
                 }
             },
         )
-        yield
+        async with app.state.mcp.session_manager.run():
+            yield
         engine.dispose()
 
     app = FastAPI(
@@ -104,4 +106,5 @@ def create_app(
     app.include_router(payments.router)
     app.include_router(registrations.router)
     app.include_router(identities.router)
+    app.state.mcp = mount_mcp(app, settings)
     return app

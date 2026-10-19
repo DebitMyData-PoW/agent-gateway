@@ -48,6 +48,7 @@ from dmd_gateway.domain.settlement import (
     refund_due,
     summarize,
 )
+from dmd_gateway.services.payment_references import submitted_references
 
 log = logging.getLogger(__name__)
 S = PaymentStatus
@@ -99,12 +100,15 @@ def _last_event(session: Session, payment_intent_id: str) -> PaymentEvent | None
 
 
 def _known_transactions(session: Session, payment_intent_id: str) -> tuple[str, ...]:
+    """Transactions seen before plus references submitted by the payer (hints only)."""
     seen: dict[str, None] = {}
     for detail in session.scalars(
         select(PaymentEvent.detail).where(PaymentEvent.payment_intent_id == payment_intent_id)
     ):
         for txid in (detail or {}).get("transactions", []):
             seen[txid] = None
+    for reference in submitted_references(session, payment_intent_id):
+        seen[reference] = None
     return tuple(seen)
 
 

@@ -37,7 +37,11 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = 3
 
     public_base_url: str = "http://localhost:8000"
+    # The MCP endpoint is served at <public_base_url>/mcp. Set mcp_url only when agents reach
+    # it at another public address (for example through a proxy).
     mcp_url: str | None = None
+    # Extra Host header values accepted by the MCP endpoint (DNS-rebinding protection).
+    mcp_allowed_hosts: list[str] = []
 
     route_registry_path: Path = Path("config/payment_routes.yaml")
 

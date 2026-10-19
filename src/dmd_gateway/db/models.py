@@ -4,8 +4,9 @@ Conventions:
   * Token amounts are integer base units in NUMERIC(78, 0) (wide enough for 18-decimal
     ERC-20 tokens); USD amounts are NUMERIC(12, 2). Never floats.
   * Status columns are constrained to their allowed values in the database itself.
-  * ``audit_events``, ``payment_events``, ``credited_outputs`` and ``controller_proofs`` are
-    append-only: the migrations install triggers that reject UPDATE, DELETE and TRUNCATE.
+  * ``audit_events``, ``payment_events``, ``credited_outputs``, ``controller_proofs`` and
+    ``payment_references`` are append-only: the migrations install triggers that reject
+    UPDATE, DELETE and TRUNCATE.
   * ``credited_outputs`` has a primary key on (network, transaction, output) so a single
     payment output can never be credited to two intents (DMD-11).
 """
@@ -237,6 +238,24 @@ class CreditedOutput(Base):
     credited_at: Mapped[datetime] = created_at()
 
 
+class PaymentReference(Base):
+    """Append-only: transaction references submitted by payers (DMD-12).
+
+    A reference is only a hint telling the adapter where to look; the payment is still
+    verified independently on chain before anything is credited.
+    """
+
+    __tablename__ = "payment_references"
+    __table_args__ = (UniqueConstraint("payment_intent_id", "reference"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    payment_intent_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_intents.id"), nullable=False, index=True
+    )
+    reference: Mapped[str] = mapped_column(Text, nullable=False)
+    submitted_at: Mapped[datetime] = created_at()
+
+
 class AgentIdentity(Base):
     __tablename__ = "identities"
     __table_args__ = (
@@ -386,4 +405,10 @@ class AuditEvent(Base):
     )
 
 
-APPEND_ONLY_TABLES = ("audit_events", "payment_events", "credited_outputs", "controller_proofs")
+APPEND_ONLY_TABLES = (
+    "audit_events",
+    "payment_events",
+    "credited_outputs",
+    "controller_proofs",
+    "payment_references",
+)

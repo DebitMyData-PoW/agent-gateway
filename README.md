@@ -30,9 +30,9 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.4.0`). The whole registration flow (quote, native
+This is an early development release (`0.5.0`). The whole registration flow (quote, native
 DMD payment, controller proof, DID and signed credential) works end to end on a private
-regtest chain; nothing accepts real payments yet:
+regtest chain, through REST and through MCP; nothing accepts real payments yet:
 
 | Area | State |
 | --- | --- |
@@ -47,7 +47,8 @@ regtest chain; nothing accepts real payments yet:
 | Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
 | Controller proof: one-time challenges signed with the agent's Ed25519 key | done |
 | DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
-| MCP (Agentic Superhighway), x402 / USDC, wallet-control proofs, controller rotation and revocation | next |
+| MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
+| x402 / USDC, wallet-control proofs, controller rotation and revocation, staging deployment | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
@@ -120,8 +121,16 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Send the signature | `POST /v1/dids/registrations/{registration_intent_id}/controller-proofs` |
 | See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
 | Receive the DID, signed credential and entitlements | `POST /v1/dids/registrations` |
+| Optionally report the payment transaction (a hint only) | `POST /v1/payments/{payment_intent_id}/references` |
 | Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` |
 | Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
+
+The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_discover`,
+`dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,
+`dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
+`dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
+`dmd_get_purchase_quote`, `dmd_purchase` and `dmd_marketplace_provider_requirements`. Each
+tool calls the REST API above in-process, so both give the same results and error codes.
 
 DID issuance needs a credential signing key (`DMD_GW_ISSUER_KEY_PATH`, created with
 `dmd-gateway-issuer-key secrets/issuer-key.pem`). Without it, everything else works and the
@@ -196,6 +205,7 @@ config/payment_routes.regtest.yaml   the same, with the DMD rail on a private re
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
+  mcp_server.py              MCP tools at /mcp, calling the REST API in-process
   worker.py                  payment worker (dmd-gateway-worker)
   identity/                  controller keys, did:web documents, issuer key, signed credentials
   runtime.py                 registry, adapters and price sources shared by API and worker
@@ -205,10 +215,10 @@ src/dmd_gateway/
   api/                       HTTP routes
   adapters/                  payment adapters (native DMD) and the restricted DMD RPC client
   pricing/                   price-source rules (approved sources only)
-  services/                  quotes, payment settlement, controller proofs, registrations, idempotency
+  services/                  quotes, settlement, payment references, controller proofs, registrations
   db/                        SQLAlchemy models and session handling
   domain/                    money, ids, payment states, settlement rules, issuance rule, registry
-scripts/demo_agent.py        agent side for demos: key, challenge signature, credential check
+scripts/demo_agent.py        agent side for demos: key, signature, credential check, MCP client
 tests/
 docs/                        architecture, roadmap, operator checklists
 ```
@@ -238,8 +248,8 @@ Please report vulnerabilities privately, never in public issues. See
 
 ## Database notes
 
-`audit_events`, `payment_events`, `credited_outputs` and `controller_proofs` are
-append-only: database triggers reject `UPDATE`, `DELETE` and `TRUNCATE`. `credited_outputs` has a primary key on
+`audit_events`, `payment_events`, `credited_outputs`, `controller_proofs` and
+`payment_references` are append-only: database triggers reject `UPDATE`, `DELETE` and `TRUNCATE`. `credited_outputs` has a primary key on
 (network, transaction, output index), so a payment output can be credited to only one
 intent. In staging and production, run migrations as a separate owner role and let the
 application connect as a role that has only the privileges it needs.

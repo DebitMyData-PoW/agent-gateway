@@ -23,7 +23,7 @@ def test_readyz_reports_unavailable_database_without_details(client: TestClient)
 def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     body = client.get("/v1/discovery").json()
     assert body["service"] == "DebitMyData Agent Gateway"
-    assert body["mcp_url"] is None  # not advertised until configured
+    assert body["mcp_url"] == "http://localhost:8000/mcp"  # served by the gateway itself
     (offer,) = body["offers"]
     assert offer["id"] == "did_registration"
     assert offer["commercial_price"] == {"currency": "USD", "amount": "25.00"}
