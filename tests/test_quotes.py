@@ -17,11 +17,18 @@ from alembic import command
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
+from dmd_gateway.identity.issuer import IssuerKey
 from dmd_gateway.main import create_app
 from dmd_gateway.settings import Settings
 
 from .conftest import REGISTRY_PATH, TEST_DATABASE_URL, UNREACHABLE_DB, alembic_config
-from .fakes import FakeDmdAdapter, FakeX402Adapter, fixed_price_factory
+from .fakes import (
+    AGENT_CONTROLLER,
+    AGENT_PUBLIC_HEX,
+    FakeDmdAdapter,
+    FakeX402Adapter,
+    fixed_price_factory,
+)
 
 URL = "/v1/dids/registration-quotes"
 MERCHANT = "0x1111111111111111111111111111111111111111"
@@ -39,7 +46,7 @@ ENABLED = {
 EXAMPLE_REQUEST: dict[str, Any] = {
     "display_name": "ResearchClaw-01",
     "participant_type": "autonomous_agent",
-    "controller_public_key": "ed25519:EXAMPLE_PUBLIC_KEY",
+    "controller_public_key": f"ed25519:{AGENT_PUBLIC_HEX}",
     "controller_wallet_address": "0x0000000000000000000000000000000000000000",
     "preferred_payment_option": "x402_usdc_base",
     "metadata": {"service_category": "research-agent"},
@@ -79,6 +86,7 @@ def _app_client(
     *,
     environ: dict[str, str] | None = None,
     price: str = "0.2",
+    issuer_key: IssuerKey | None = None,
     **price_kwargs: object,
 ) -> TestClient:
     settings = Settings(
@@ -92,6 +100,7 @@ def _app_client(
         engine=engine,
         adapters=ADAPTERS,
         price_sources={PRICE_SOURCE: fixed_price_factory(PRICE_SOURCE, price, **price_kwargs)},
+        issuer_key=issuer_key,
     )
     return TestClient(app)
 
@@ -122,6 +131,11 @@ def test_unknown_payment_option(client: TestClient) -> None:
         {"display_name": "x" * 101},
         {"display_name": "bad\nname"},
         {"controller_public_key": "not a key"},
+        {"controller_public_key": "secp256k1:" + "02" + "11" * 32},
+        {"controller_public_key": "ed25519:01" + "00" * 31},  # weak key (the identity point)
+        {"controller_public_key": "ed25519:" + "zz" * 32},
+        # No wallet-control proof exists yet, so a wallet alone cannot control a DID.
+        {"controller_public_key": None},
         {"controller_wallet_address": "short"},
         {"metadata": {f"k{i}": i for i in range(21)}},
         {"metadata": {"nested": {"not": "allowed"}}},
@@ -265,7 +279,8 @@ def test_quote_is_stored_with_events_and_audit(db_client: TestClient, engine: En
         payment = conn.execute(
             text("SELECT * FROM payment_intents WHERE id = :id"), {"id": payment_id}
         ).one()
-    assert registration.controller_public_key == "ed25519:EXAMPLE_PUBLIC_KEY"
+    # Stored in its canonical (Multikey) form whatever encoding the agent used.
+    assert registration.controller_public_key == AGENT_CONTROLLER
     assert registration.controller_wallet_address == EXAMPLE_REQUEST["controller_wallet_address"]
     assert registration.agent_metadata == {"service_category": "research-agent"}
     assert registration.status == "awaiting_payment"

@@ -6,6 +6,8 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from dmd_gateway.adapters.base import (
     ExpectedPayment,
     ObservedOutput,
@@ -13,7 +15,20 @@ from dmd_gateway.adapters.base import (
     PaymentDestination,
     PaymentObservation,
 )
+from dmd_gateway.identity.crypto import encode_signature
 from dmd_gateway.pricing import PriceObservation, PriceSource
+
+# A fixed agent controller key (RFC 8032 test vector 1) so that tests are deterministic.
+AGENT_KEY = Ed25519PrivateKey.from_private_bytes(
+    bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+)
+AGENT_PUBLIC_HEX = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+AGENT_CONTROLLER = "ed25519:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw"
+
+
+def sign_challenge(message: str, key: Ed25519PrivateKey = AGENT_KEY) -> str:
+    """What the agent does with a controller challenge: sign the exact message bytes."""
+    return encode_signature(key.sign(message.encode("utf-8")))
 
 
 class FakeDmdAdapter(PaymentAdapter):

@@ -35,7 +35,11 @@ def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     quote, registration = offer["endpoints"]["quote"], offer["endpoints"]["registration"]
     assert quote["url"].endswith("/v1/dids/registration-quotes")
     assert quote["available"] is False  # no payment rail is enabled
-    assert registration["available"] is False  # not built yet
+    assert registration["available"] is False  # no rail enabled and no issuer key
+    assert registration["url"].endswith("/v1/dids/registrations")
+    challenge = offer["endpoints"]["controller_challenge"]["url"]
+    assert challenge.endswith("/registrations/{registration_intent_id}/controller-challenges")
+    assert body["credential_issuer"] is None  # no issuer key configured
     assert "terms" in body["policy_urls"]
 
 
@@ -80,4 +84,14 @@ def test_openapi_is_published(client: TestClient) -> None:
         "/v1/discovery",
         "/v1/payment-options",
         "/v1/dids/registration-quotes",
+        "/v1/payments/{payment_intent_id}",
+        "/v1/dids/registrations",
+        "/v1/dids/registrations/{registration_intent_id}",
+        "/v1/dids/registrations/{registration_intent_id}/controller-challenges",
+        "/v1/dids/registrations/{registration_intent_id}/controller-proofs",
+        "/v1/dids/{identity_id}",
+        "/v1/credentials/{credential_id}",
+        "/v1/entitlements/{identity_id}",
+        "/agents/{suffix}/did.json",
+        "/.well-known/did.json",
     } <= set(paths)

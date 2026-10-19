@@ -9,3 +9,6 @@ venv
 .ruff_cache
 tests
 docs
+secrets
+*.pem
+*.key

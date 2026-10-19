@@ -37,6 +37,7 @@ from dmd_gateway.domain.money import format_base_units, to_base_units, usd_to_ba
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.errors import ApiError
+from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
 from dmd_gateway.pricing import PriceObservation, PriceSource, PriceUnavailable, select_price
 
 log = logging.getLogger(__name__)
@@ -81,12 +82,29 @@ class QuoteRequest(BaseModel):
     preferred_payment_option: str = Field(min_length=1, max_length=64)
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
+    @field_validator("controller_public_key")
+    @classmethod
+    def _valid_controller_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            return parse_controller_key(value).canonical
+        except ControllerKeyError as exc:
+            raise ValueError(str(exc)) from exc
+
     @model_validator(mode="after")
     def _controller_required(self) -> QuoteRequest:
         if not self.controller_public_key and not self.controller_wallet_address:
             raise ValueError(
                 "controller_public_key or controller_wallet_address is required "
                 "(the controller of the DID)"
+            )
+        if not self.controller_public_key:
+            # Paying for a registration that can never be completed would only lead to a
+            # refund, so a controller that cannot prove control yet is refused up front.
+            raise ValueError(
+                "controller_public_key is required: wallet-control proofs are not available "
+                "yet, so the DID controller must be an ed25519 public key"
             )
         return self
 

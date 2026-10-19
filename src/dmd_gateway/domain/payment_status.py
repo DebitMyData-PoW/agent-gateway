@@ -52,6 +52,25 @@ ALLOWED_TRANSITIONS: dict[PaymentStatus, frozenset[PaymentStatus]] = {
 }
 
 
+# What the paying agent should do next, by payment status (shown by the status endpoints).
+NEXT_ACTIONS: dict[PaymentStatus, str] = {
+    S.CREATED: "send_payment",
+    S.AWAITING_PAYMENT: "send_payment",
+    S.DETECTED: "wait_for_confirmations",
+    S.CONFIRMING: "wait_for_confirmations",
+    S.VERIFIED: "wait_for_confirmations",
+    S.OVERPAID: "wait_for_confirmations",
+    S.REORGED: "wait_for_confirmations",
+    S.SETTLED: "prove_wallet_control",
+    S.EXPIRED: "request_new_quote",
+    S.FAILED: "request_new_quote",
+    S.UNDERPAID: "contact_support_for_refund",
+    S.REFUNDED: "request_new_quote",
+    S.REVERSED: "contact_support",
+    S.DISPUTED: "contact_support",
+}
+
+
 class InvalidTransition(ValueError):
     def __init__(self, current: PaymentStatus, new: PaymentStatus) -> None:
         super().__init__(f"payment status cannot move from {current} to {new}")

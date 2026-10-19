@@ -16,30 +16,12 @@ from sqlalchemy import select
 from dmd_gateway.db.models import PaymentEvent, PaymentIntent
 from dmd_gateway.db.session import transaction
 from dmd_gateway.domain.money import format_base_units
-from dmd_gateway.domain.payment_status import PaymentStatus
+from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
 from dmd_gateway.errors import ApiError
 
 router = APIRouter(prefix="/v1", tags=["payments"])
 
-S = PaymentStatus
 ID_PATTERN = r"^dmd_payment_intent_[0-9A-HJKMNP-TV-Z]{26}$"
-
-NEXT_ACTIONS: dict[PaymentStatus, str] = {
-    S.CREATED: "send_payment",
-    S.AWAITING_PAYMENT: "send_payment",
-    S.DETECTED: "wait_for_confirmations",
-    S.CONFIRMING: "wait_for_confirmations",
-    S.VERIFIED: "wait_for_confirmations",
-    S.OVERPAID: "wait_for_confirmations",
-    S.REORGED: "wait_for_confirmations",
-    S.SETTLED: "prove_wallet_control",
-    S.EXPIRED: "request_new_quote",
-    S.FAILED: "request_new_quote",
-    S.UNDERPAID: "contact_support_for_refund",
-    S.REFUNDED: "request_new_quote",
-    S.REVERSED: "contact_support",
-    S.DISPUTED: "contact_support",
-}
 
 
 class PaymentStatusResponse(BaseModel):

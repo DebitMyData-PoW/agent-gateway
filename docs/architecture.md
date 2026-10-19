@@ -73,9 +73,12 @@ hold keys that can move funds.
 3. The agent pays. For native chains it may submit the transaction reference as a hint;
    the adapter always verifies on chain itself.
 4. The worker moves the payment through `detected → confirming → verified → settled`.
-5. The agent answers a one-time controller challenge to prove control of its wallet/key.
-6. When the issuance rule passes, the gateway creates the identity, signs the credential,
-   grants entitlements and writes the audit trail in the same transaction.
+5. The agent proves control of its controller key (before or after settlement):
+   `POST /v1/dids/registrations/{id}/controller-challenges` returns a one-time message,
+   and the agent sends its signature to `POST /v1/dids/registrations/{id}/controller-proofs`.
+6. `POST /v1/dids/registrations` issues the identity once the issuance rule passes: the
+   gateway creates the DID, signs the credential, grants entitlements and writes the audit
+   trail in one transaction. `GET /v1/dids/registrations/{id}` shows what is still missing.
 
 ## Normalized payment status
 
@@ -121,22 +124,69 @@ The directive's example quotes show rail-specific statuses (`awaiting_authorizat
 therefore report `payment_status: awaiting_payment` plus a `next_action`
 (`authorize_x402_payment` or `send_payment`) until this is confirmed.
 
+## Controller proof
+
+The quote names the DID controller: an Ed25519 public key (`ed25519:` followed by a
+Multikey `z6Mk...`, 64 hex characters or base64). Keys are checked at quote time, including
+that they are valid curve points of large order, and stored in Multikey form.
+
+* A challenge is a short text containing the gateway, the registration, the controller key,
+  a random nonce and its validity window (5 minutes). The agent signs the exact UTF-8 bytes.
+* A challenge can be answered once. A wrong signature uses it up, so it cannot be replayed
+  or guessed; a malformed one (not 64 bytes of base64url/base64/hex) does not.
+* At most 5 unanswered challenges can be open per registration.
+* Every answer is stored in `controller_proofs`, which is append-only, and audited.
+* A controller given only as a wallet address is refused at quote time for now: no wallet
+  proof method exists yet (DEC-07), and a paid registration that can never be completed
+  would only lead to a refund. The wallet address, when given with a key, is recorded but
+  not bound to the identity, since it was not proven.
+
 ## Identity issuance rule
 
 An identity is issued only when **all** of these hold:
 
 * payment status is `settled`;
-* controller proof is `verified`;
-* rate-limit, fraud, policy and compliance checks passed;
-* the registration intent was valid when paid and has not been used before.
+* controller proof is `verified` for the registration's controller key;
+* policy checks passed: the payment rail is still enabled (a killed rail also stops
+  issuance), the settled outputs are credited to this payment, and the registration is not
+  held for review. Registration quotas, anomaly detection and compliance screening are
+  still to come (POL-*, DEC-10, DEC-11);
+* the registration intent is valid (not expired, rejected or cancelled) and has not been
+  used before.
 
-Issuance is idempotent: one registration intent produces at most one identity
-(`identities.registration_intent_id` is unique), and one payment output can be credited to
-at most one intent (`credited_outputs` primary key).
+Issuance is idempotent: repeating `POST /v1/dids/registrations` returns the identity that
+was already issued; one registration intent produces at most one identity
+(`identities.registration_intent_id` is unique), each identity is bound to the proof that
+verified its controller (`identities.controller_proof_id`), and one payment output can be
+credited to at most one intent (`credited_outputs` primary key). If a payment behind an
+issued identity is later reorganized away, the worker records the alert
+`alert.issued_identity_payment_reorged` for an operator.
+
+## Identifiers, DID documents and credentials
+
+* **DID (DEC-05):** `did:web:<gateway host>:agents:<id>`. `did:web` is an existing DID
+  method, so standard resolvers fetch `https://<gateway host>/agents/<id>/did.json`, which
+  lists the controller key (`Multikey`) for authentication and assertions. A deactivated
+  identity answers 410.
+* **Issuer:** `did:web:<gateway host>`, whose document at `/.well-known/did.json` lists the
+  Ed25519 key that signs credentials.
+* **Credential (DEC-06):** a W3C Verifiable Credential (data model 2.0) of type
+  `DebitMyDataRegistrationCredential`, signed with a Data Integrity proof using the
+  `eddsa-jcs-2022` cryptosuite (RFC 8785 canonical JSON, SHA-256, Ed25519). It is also the
+  signed registration receipt: subject DID, display name, participant type, controller key
+  and when it was verified, registration and payment intent, rail, asset, network, amount,
+  settled outputs, commercial price, terms version and entitlements.
+  `scripts/demo_agent.py verify-credential` checks one using only public information.
+* **Entitlements:** `dmd_did_holder` is granted with the identity; product and marketplace
+  eligibility come later (ID-11).
+* **Issuer key custody (ID-15):** development and staging read the key from a file only its
+  owner can read (`DMD_GW_ISSUER_KEY_PATH`, created with `dmd-gateway-issuer-key`).
+  Production refuses a key file: it needs a separate signer so the key never sits on a
+  public API host.
 
 ## Identifier wording
 
 The product is "DebitMyData Agentic DID Registration", and public descriptions use the
-wording set in the directive. One caution: `did:dmd` is not yet a published DID method, so
-until its method specification, resolution rules and governance are published, do not
-claim that DebitMyData DIDs resolve or interoperate as a standard W3C DID method.
+wording set in the directive. Identities are standard `did:web` identifiers. Do not claim a
+`did:dmd` method until its method specification, resolution rules and governance are
+published.

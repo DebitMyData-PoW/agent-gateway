@@ -1,7 +1,7 @@
 # DebitMyData Agent Gateway
 
-> **Status: in development.** This is the foundation release. It does not accept payments
-> or issue DIDs yet, and every payment rail is switched off. See [Status](#status).
+> **Status: in development.** Nothing accepts real payments yet and every payment rail is
+> switched off by default. The full flow runs on a private regtest chain. See [Status](#status).
 
 The Agent Gateway is being built as the public integration surface that will let autonomous
 agents, bots, digital twins, people and organizations **discover DebitMyData, get a quote,
@@ -30,8 +30,9 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.3.0`). The native DMD payment flow works end to end
-on a private regtest chain; nothing accepts real payments yet:
+This is an early development release (`0.4.0`). The whole registration flow (quote, native
+DMD payment, controller proof, DID and signed credential) works end to end on a private
+regtest chain; nothing accepts real payments yet:
 
 | Area | State |
 | --- | --- |
@@ -44,7 +45,9 @@ on a private regtest chain; nothing accepts real payments yet:
 | Quote endpoint (`POST /v1/dids/registration-quotes`), price-source rules, `Idempotency-Key` retries | done (answers only for enabled rails) |
 | Native DMD payment adapter: per-quote address, independent verification, confirmations, reorg and double-spend handling | done (regtest) |
 | Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
-| Controller proof, DID issuance, MCP (Agentic Superhighway), x402 / USDC | next |
+| Controller proof: one-time challenges signed with the agent's Ed25519 key | done |
+| DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
+| MCP (Agentic Superhighway), x402 / USDC, wallet-control proofs, controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
@@ -92,18 +95,38 @@ curl http://localhost:8000/v1/discovery
 curl "http://localhost:8000/v1/payment-options?service=did_registration"
 ```
 
-Request a DID registration quote (the directive's example request):
+Request a DID registration quote (the directive's example request, with an example
+controller key; `python scripts/demo_agent.py new-key agent-key.pem` creates a real one):
 
 ```bash
 curl -X POST http://localhost:8000/v1/dids/registration-quotes \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: 8f14e45f-ceea-467a-9a3b-3c5a1d2e7b90" \
   -d '{"display_name": "ResearchClaw-01", "participant_type": "autonomous_agent",
-       "controller_public_key": "ed25519:EXAMPLE_PUBLIC_KEY",
+       "controller_public_key": "ed25519:z6MktwupdmLXVVqTzCw4i46r4uGyosGXRnR3XjN4Zq7oMMsw",
        "preferred_payment_option": "x402_usdc_base"}'
 ```
 
 While every payment rail is off, this answers `409` with `"code": "payment_option_unavailable"`.
+
+## Registration flow
+
+| Step | Endpoint |
+| --- | --- |
+| Discover the offer and enabled payment options | `GET /v1/discovery`, `GET /v1/payment-options` |
+| Get a quote (fixed 25.00 USD, exact amount in the chosen asset) | `POST /v1/dids/registration-quotes` |
+| Pay, then follow the payment | `GET /v1/payments/{payment_intent_id}` |
+| Get a one-time message to sign with the controller key | `POST /v1/dids/registrations/{registration_intent_id}/controller-challenges` |
+| Send the signature | `POST /v1/dids/registrations/{registration_intent_id}/controller-proofs` |
+| See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
+| Receive the DID, signed credential and entitlements | `POST /v1/dids/registrations` |
+| Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` |
+| Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
+
+DID issuance needs a credential signing key (`DMD_GW_ISSUER_KEY_PATH`, created with
+`dmd-gateway-issuer-key secrets/issuer-key.pem`). Without it, everything else works and the
+issuance endpoint answers `503`. See [docs/architecture.md](docs/architecture.md) for the
+rules behind each step.
 
 Run commands from the repository root (the route registry path is relative to it).
 
@@ -162,7 +185,7 @@ dmd-gateway-worker --once   # one pass
 ```
 
 It never changes a payment while the node is unreachable, and several workers can run at
-once safely. To try the whole flow on a private chain, follow
+once safely. To try the whole flow on a private chain, from quote to DID, follow
 [docs/regtest-demo.md](docs/regtest-demo.md).
 
 ## Project layout
@@ -174,6 +197,7 @@ migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
   worker.py                  payment worker (dmd-gateway-worker)
+  identity/                  controller keys, did:web documents, issuer key, signed credentials
   runtime.py                 registry, adapters and price sources shared by API and worker
   settings.py                environment configuration
   observability.py           JSON logging, correlation IDs
@@ -181,9 +205,10 @@ src/dmd_gateway/
   api/                       HTTP routes
   adapters/                  payment adapters (native DMD) and the restricted DMD RPC client
   pricing/                   price-source rules (approved sources only)
-  services/                  quotes, payment settlement, idempotency
+  services/                  quotes, payment settlement, controller proofs, registrations, idempotency
   db/                        SQLAlchemy models and session handling
   domain/                    money, ids, payment states, settlement rules, issuance rule, registry
+scripts/demo_agent.py        agent side for demos: key, challenge signature, credential check
 tests/
 docs/                        architecture, roadmap, operator checklists
 ```
@@ -213,8 +238,8 @@ Please report vulnerabilities privately, never in public issues. See
 
 ## Database notes
 
-`audit_events`, `payment_events` and `credited_outputs` are append-only: database triggers
-reject `UPDATE`, `DELETE` and `TRUNCATE`. `credited_outputs` has a primary key on
+`audit_events`, `payment_events`, `credited_outputs` and `controller_proofs` are
+append-only: database triggers reject `UPDATE`, `DELETE` and `TRUNCATE`. `credited_outputs` has a primary key on
 (network, transaction, output index), so a payment output can be credited to only one
 intent. In staging and production, run migrations as a separate owner role and let the
 application connect as a role that has only the privileges it needs.

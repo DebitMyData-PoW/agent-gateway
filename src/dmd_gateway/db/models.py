@@ -4,8 +4,8 @@ Conventions:
   * Token amounts are integer base units in NUMERIC(78, 0) (wide enough for 18-decimal
     ERC-20 tokens); USD amounts are NUMERIC(12, 2). Never floats.
   * Status columns are constrained to their allowed values in the database itself.
-  * ``audit_events``, ``payment_events`` and ``credited_outputs`` are append-only: the
-    migration installs triggers that reject UPDATE, DELETE and TRUNCATE on them.
+  * ``audit_events``, ``payment_events``, ``credited_outputs`` and ``controller_proofs`` are
+    append-only: the migrations install triggers that reject UPDATE, DELETE and TRUNCATE.
   * ``credited_outputs`` has a primary key on (network, transaction, output) so a single
     payment output can never be credited to two intents (DMD-11).
 """
@@ -254,6 +254,10 @@ class AgentIdentity(Base):
     registration_intent_id: Mapped[str] = mapped_column(
         ForeignKey("registration_intents.id"), nullable=False, unique=True
     )
+    # The verified proof that bound the controller to this identity (ID-08).
+    controller_proof_id: Mapped[str] = mapped_column(
+        ForeignKey("controller_proofs.id", use_alter=True), nullable=False, unique=True
+    )
     status: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
@@ -285,8 +289,13 @@ class ControllerChallenge(Base):
 
 
 class ControllerProof(Base):
+    """Append-only record of every answer to a controller challenge, accepted or not."""
+
     __tablename__ = "controller_proofs"
-    __table_args__ = (CheckConstraint(one_of("status", PROOF_STATUSES), name="status"),)
+    __table_args__ = (
+        CheckConstraint(one_of("status", PROOF_STATUSES), name="status"),
+        CheckConstraint("status <> 'verified' OR verified_at IS NOT NULL", name="verified_at_set"),
+    )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     # Unique: a challenge can be answered once, which blocks replay (TEST-08).
@@ -297,6 +306,7 @@ class ControllerProof(Base):
     signature: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -376,4 +386,4 @@ class AuditEvent(Base):
     )
 
 
-APPEND_ONLY_TABLES = ("audit_events", "payment_events", "credited_outputs")
+APPEND_ONLY_TABLES = ("audit_events", "payment_events", "credited_outputs", "controller_proofs")

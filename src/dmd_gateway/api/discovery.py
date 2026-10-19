@@ -48,11 +48,17 @@ class Offer(BaseModel):
     endpoints: dict[str, Endpoint]
 
 
+class CredentialIssuer(BaseModel):
+    did: str
+    did_document_url: str
+
+
 class Discovery(BaseModel):
     service: str
     version: str
     offers: list[Offer]
     mcp_url: str | None
+    credential_issuer: CredentialIssuer | None
     policy_urls: dict[str, str]
     keywords: list[str]
 
@@ -86,8 +92,10 @@ def discovery(request: Request) -> Discovery:
     base = settings.public_base_url.rstrip("/")
     offers = []
     policy_urls: dict[str, str] = {}
+    issuing = request.app.state.issuance.available
     for service_id, service in registry.services.items():
         accepting = bool(registry.enabled_rails(service_id))
+        registration = f"{base}/v1/dids/registrations/{{registration_intent_id}}"
         offers.append(
             Offer(
                 id=service_id,
@@ -109,9 +117,24 @@ def discovery(request: Request) -> Discovery:
                         url=f"{base}{QUOTE_PATHS[service_id]}",
                         available=accepting,
                     ),
-                    # Registration (payment verification + DID issuance) is not built yet.
+                    "registration_status": Endpoint(
+                        method="GET", url=registration, available=accepting
+                    ),
+                    "controller_challenge": Endpoint(
+                        method="POST",
+                        url=f"{registration}/controller-challenges",
+                        available=accepting,
+                    ),
+                    "controller_proof": Endpoint(
+                        method="POST",
+                        url=f"{registration}/controller-proofs",
+                        available=accepting,
+                    ),
+                    # Issues the DID once payment is settled and the controller proof verified.
                     "registration": Endpoint(
-                        method=service.method, url=f"{base}{service.path}", available=False
+                        method=service.method,
+                        url=f"{base}{service.path}",
+                        available=accepting and issuing,
                     ),
                 },
             )
@@ -122,6 +145,14 @@ def discovery(request: Request) -> Discovery:
         version=__version__,
         offers=offers,
         mcp_url=settings.mcp_url,
+        credential_issuer=(
+            CredentialIssuer(
+                did=request.app.state.issuance.issuer.did,
+                did_document_url=f"{base}/.well-known/did.json",
+            )
+            if issuing
+            else None
+        ),
         policy_urls=policy_urls,
         keywords=list(registry.discovery_terms),
     )

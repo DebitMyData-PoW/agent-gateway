@@ -44,7 +44,7 @@ place; the application logic comes with the related phase.
 - [x] GW-03 Structured configuration for domains, route registry, feature flags
 - [x] GW-04 Database schema for intents, payments, identities, proofs, credentials, entitlements, policy versions, audit
 - [x] GW-05 Append-only audit semantics (database triggers)
-- [x] GW-06 Idempotency-key support for mutating endpoints (`Idempotency-Key` header)
+- [x] GW-06 Idempotency for mutating endpoints (`Idempotency-Key` header on quotes; DID issuance is idempotent by registration)
 - [x] GW-07 Request correlation IDs and safe structured logs
 - [x] GW-08 Health/readiness endpoints that expose no secrets
 - [ ] GW-09 Authentication boundaries for public, internal and operator endpoints
@@ -88,9 +88,21 @@ place; the application logic comes with the related phase.
 
 ## Phase 5 – Controller proof, identity and credentials
 
-- [ ] ID-01 … ID-15 Identity schema *(schema)*, one-time challenges *(schema)*, per-wallet proof methods,
-  binding, issuance after settlement, signed credentials, entitlements, rotation,
-  suspension/revocation/recovery without deleting history, issuer-key custody
+- [x] ID-01 Identity record with lifecycle states (active/suspended/revoked; the transitions come with ID-13)
+- [x] ID-02 Public identifier: `did:web:<gateway host>:agents:<id>` (DEC-05); no `did:dmd` claim
+- [x] ID-03 One-time challenges with a short expiry (5 minutes), limited per registration
+- [x] ID-04 Controller proof per key family: Ed25519 keys first
+- [ ] ID-05 Native DMD wallet proof supported by official DMD wallets (DEC-07)
+- [ ] ID-06 EVM controller proof, with the x402/EVM rail
+- [ ] ID-07 Solana controller proof, only when that rail is enabled
+- [x] ID-08 Verified proof bound to the registration and the identity
+- [x] ID-09 Identity issued only after settlement, verified proof and policy checks; idempotent
+- [x] ID-10 Signed registration credential/receipt (W3C VC 2.0, `eddsa-jcs-2022`, DEC-06)
+- [ ] ID-11 Entitlements: `dmd_did_holder` done; product and marketplace eligibility open
+- [ ] ID-12 Controller rotation with proof and audit history
+- [ ] ID-13 Suspension/revocation/recovery without deleting history
+- [ ] ID-14 Transfer/new-registration policy for material controller changes
+- [ ] ID-15 Issuer key custody: key file for development/staging (refused in production); separate production signer and rotation procedure open
 
 ## Phase 6 – MCP server
 
@@ -122,8 +134,8 @@ and can be changed later.
 - [x] DEC-02 Native DMD confirmation requirement: 6 (from the directive's example)
 - [x] DEC-03 Quote lifetime: 15 minutes (from the directive's example)
 - [x] DEC-04 Underpayment: top-up allowed until expiry, then refund; overpayment: accepted, excess refunded; late payment: refunded, never credited
-- [ ] DEC-05 Public identity syntax; whether and when to standardize `did:dmd`
-- [ ] DEC-06 Credential format, signature algorithm, issuer key custody
+- [x] DEC-05 Public identity syntax: `did:web` hosted by the gateway; `did:dmd` only once a method specification is published
+- [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody stays open (ID-15)
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
 - [ ] DEC-08 Base/USDC receiving account and x402 facilitator
 - [ ] DEC-09 Policy URLs and version owners

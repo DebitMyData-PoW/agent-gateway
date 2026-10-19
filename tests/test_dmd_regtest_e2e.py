@@ -7,8 +7,9 @@ Skipped unless these are set (plus TEST_DATABASE_URL):
     DMD_REGTEST_RPC_PASSWORD=...
 
 The test creates its own fresh wallets (payer, treasury and a watch-only gateway wallet),
-mines test coins, and then runs the real flow: quote -> payment -> worker -> settlement,
-plus a chain reorganization and a double-spend. Never point this at a mainnet node.
+mines test coins, and then runs the real flow: quote -> payment -> worker -> settlement ->
+controller proof -> DID and signed credential, plus a chain reorganization and a
+double-spend. Never point this at a mainnet node.
 """
 
 from __future__ import annotations
@@ -25,15 +26,20 @@ from typing import Any
 import httpx
 import pytest
 from alembic import command
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
 from dmd_gateway.db.session import session_factory
+from dmd_gateway.identity.crypto import verify_proof
+from dmd_gateway.identity.did import issuer_did
+from dmd_gateway.identity.issuer import IssuerKey
 from dmd_gateway.main import create_app
 from dmd_gateway.services.settlement import run_pass
 from dmd_gateway.settings import Settings
 
 from .conftest import REPO_ROOT, TEST_DATABASE_URL, alembic_config
+from .fakes import AGENT_CONTROLLER, sign_challenge
 
 RPC_URL = os.environ.get("DMD_REGTEST_RPC_URL")
 RPC_USER = os.environ.get("DMD_REGTEST_RPC_USER")
@@ -132,7 +138,9 @@ def client(node: dict[str, Any], engine: Engine) -> Iterator[TestClient]:
         "DMD_RPC_WALLET": node["wallet"],
         "DMD_STATIC_TEST_PRICE_USD": TEST_PRICE,
     }
-    with TestClient(create_app(settings, environ=environ, engine=engine)) as test_client:
+    issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did(settings.public_base_url))
+    app = create_app(settings, environ=environ, engine=engine, issuer_key=issuer)
+    with TestClient(app) as test_client:
         yield test_client
 
 
@@ -140,7 +148,7 @@ def new_quote(client: TestClient) -> dict[str, Any]:
     body = {
         "display_name": "RegtestAgent-01",
         "participant_type": "autonomous_agent",
-        "controller_public_key": "ed25519:REGTEST_PUBLIC_KEY",
+        "controller_public_key": AGENT_CONTROLLER,
         "preferred_payment_option": "dmd_pow_native",
     }
     response = client.post(URL, json=body)
@@ -210,6 +218,37 @@ def test_payment_settles_after_six_confirmations(
             .all()
         )
     assert credited == [txid]
+
+
+def test_paid_registration_gets_a_verifiable_did(client: TestClient, node: dict[str, Any]) -> None:
+    q = new_quote(client)
+    rid, pid = q["registration_intent_id"], q["payment_intent_id"]
+    option = q["selected_payment_option"]
+    txid = node["payer"]("sendtoaddress", option["recipient"], option["amount"])
+    wait_for(client, pid, "confirming")
+    mine(node, 6)
+    wait_for(client, pid, "settled")
+
+    challenge = client.post(f"/v1/dids/registrations/{rid}/controller-challenges").json()
+    proof = client.post(
+        f"/v1/dids/registrations/{rid}/controller-proofs",
+        json={
+            "challenge_id": challenge["challenge_id"],
+            "signature": sign_challenge(challenge["message"]),
+        },
+    )
+    assert proof.status_code == 201, proof.text
+    assert proof.json()["next_action"] == "register_did"
+
+    response = client.post("/v1/dids/registrations", json={"registration_intent_id": rid})
+    assert response.status_code == 201, response.text
+    issued = response.json()
+    assert issued["did"].startswith("did:web:localhost%3A8000:agents:")
+    payment = issued["credential"]["credentialSubject"]["registration"]["payment"]
+    assert payment["network"] == "dmd:regtest"
+    assert payment["outputs"][0].startswith(f"{txid}:")
+    (method,) = client.get("/.well-known/did.json").json()["verificationMethod"]
+    assert verify_proof(issued["credential"], method["publicKeyMultibase"])
 
 
 def test_reorg_reopens_and_resettles(client: TestClient, node: dict[str, Any]) -> None:
