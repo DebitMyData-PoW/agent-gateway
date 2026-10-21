@@ -52,7 +52,8 @@ regtest chain, through REST and through MCP; nothing accepts real payments yet:
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
-needs an approved DMD/USD price source. See [docs/roadmap.md](docs/roadmap.md) for the task
+needs an approved DMD/USD price source. A staging server with the full flow on a private
+regtest chain runs at `https://staging-api.debitmydata.io` (see [docs/staging.md](docs/staging.md)). See [docs/roadmap.md](docs/roadmap.md) for the task
 list and decisions.
 
 ## Quick start
@@ -202,6 +203,7 @@ once safely. To try the whole flow on a private chain, from quote to DID, follow
 ```
 config/payment_routes.yaml   payment rails, services, commercial price (no secrets)
 config/payment_routes.regtest.yaml   the same, with the DMD rail on a private regtest chain
+deploy/staging/              staging server setup (nginx, systemd services, Cloudflare-only firewall)
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory

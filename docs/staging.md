@@ -1,0 +1,154 @@
+# Staging server
+
+The staging server runs the whole gateway on one VPS at `https://staging-api.debitmydata.io`,
+with a **private DMD regtest chain** whose coins have no value. It exists for demos and
+end-to-end tests. Production (`api.debitmydata.io`) will be a separate server, set up after
+the security review.
+
+```
+Internet ── Cloudflare proxy (TLS, WAF) ──► VPS :443, open to Cloudflare only
+                                             nginx (Cloudflare origin certificate)
+                                               └► gateway API + MCP (127.0.0.1:8000)
+                                                    ├► payment worker
+                                                    ├► PostgreSQL 16 (local)
+                                                    └► DMD node, regtest (RPC on 127.0.0.1 only)
+```
+
+## 1. Before you start
+
+**VPS:** Ubuntu 24.04 LTS, 2 vCPU, 4 GB RAM. SSH on your own port, allowed in UFW, and UFW
+active. The setup never changes SSH or other existing UFW rules.
+
+**Cloudflare** (domain `debitmydata.io`):
+
+1. DNS: an `A` record `staging-api` → the VPS address, **Proxied** (orange cloud). No other
+   record may point at the VPS, so its address stays hidden.
+2. SSL/TLS → Overview: mode **Full (strict)**.
+3. SSL/TLS → Origin Server → **Create Certificate** for `staging-api.debitmydata.io`
+   (15 years). Keep the certificate and its private key; they go on the server only.
+4. Security → WAF → Custom rules: a **Skip** rule for
+   `(http.host eq "staging-api.debitmydata.io")` that skips Browser Integrity Check,
+   Security Level and Super Bot Fight Mode, placed first. Agents are not browsers.
+5. Security → Bots: **Bot Fight Mode off** (it cannot be skipped by a rule).
+
+**DMD Core:** copy your working `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
+the VPS and make them executable (`chmod 755`). Use the build whose regtest chain starts
+correctly.
+
+## 2. Install
+
+As root on the VPS:
+
+```bash
+# The Cloudflare origin certificate and key (paste each, save with Ctrl+O, Enter, Ctrl+X)
+mkdir -p /etc/ssl/cloudflare
+nano /etc/ssl/cloudflare/origin.pem
+nano /etc/ssl/cloudflare/origin.key
+chmod 600 /etc/ssl/cloudflare/origin.key
+
+# The gateway
+git clone https://github.com/DebitMyData-PoW/agent-gateway.git /opt/agent-gateway
+/opt/agent-gateway/deploy/staging/setup.sh
+```
+
+`setup.sh` installs nginx, PostgreSQL and Python packages, creates the `gateway` and `dmd`
+service users, generates every password and the credential signing key on the server (none
+is ever printed), starts the regtest node and creates its test wallets, updates the database,
+starts the API and the worker, and opens port 443 to Cloudflare's address ranges only. It ends
+with `{"status":"ready",...}`.
+
+Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
+<https://staging-api.debitmydata.io/docs>.
+
+| What | Where |
+| --- | --- |
+| Settings and secrets (root only) | `/etc/dmd-gateway/gateway.env` |
+| Credential signing key | `/etc/dmd-gateway/keys/issuer-key.pem` |
+| DMD node settings / data | `/etc/debitmydata/debitmydata.conf` / `/var/lib/debitmydata` |
+| Services | `debitmydata`, `dmd-gateway-api`, `dmd-gateway-worker`, `nginx`, `postgresql` |
+| Logs | `journalctl -u dmd-gateway-api -f` (same for the others) |
+| DMD command line | `dmd-cli ...` (for example `dmd-cli getblockchaininfo`) |
+
+## 3. Demo on staging
+
+Run as root on the VPS, one block at a time. The VPS plays both the agent and the agent's DMD
+wallet; everything else goes through the public address, Cloudflare included.
+
+```bash
+cd /opt/agent-gateway
+GW=https://staging-api.debitmydata.io
+PY=/opt/agent-gateway/.venv/bin/python
+[ -f /root/agent-key.pem ] || $PY scripts/demo_agent.py new-key /root/agent-key.pem
+AGENT_KEY=$($PY scripts/demo_agent.py public-key /root/agent-key.pem)
+
+curl -s $GW/v1/payment-options | jq
+QUOTE=$(curl -s -X POST $GW/v1/dids/registration-quotes \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg key "$AGENT_KEY" '{display_name: "StagingAgent-01",
+        participant_type: "autonomous_agent", controller_public_key: $key,
+        preferred_payment_option: "dmd_pow_native"}')")
+echo "$QUOTE" | jq
+REG=$(echo "$QUOTE" | jq -r .registration_intent_id)
+PAY=$(echo "$QUOTE" | jq -r .payment_intent_id)
+ADDR=$(echo "$QUOTE" | jq -r .selected_payment_option.recipient)
+AMOUNT=$(echo "$QUOTE" | jq -r .selected_payment_option.amount)
+```
+
+```bash
+dmd-cli -rpcwallet=payer-test sendtoaddress $ADDR $AMOUNT
+sleep 12
+curl -s $GW/v1/payments/$PAY | jq '{status, confirmations}'
+dmd-cli generatetoaddress 6 $(dmd-cli -rpcwallet=payer-test getnewaddress) > /dev/null
+sleep 12
+curl -s $GW/v1/payments/$PAY | jq '{status, confirmations, next_action}'
+```
+
+```bash
+CHALLENGE=$(curl -s -X POST $GW/v1/dids/registrations/$REG/controller-challenges)
+SIG=$(echo "$CHALLENGE" | $PY scripts/demo_agent.py sign /root/agent-key.pem)
+CID=$(echo "$CHALLENGE" | jq -r .challenge_id)
+curl -s -X POST $GW/v1/dids/registrations/$REG/controller-proofs \
+  -H "Content-Type: application/json" \
+  -d "{\"challenge_id\": \"$CID\", \"signature\": \"$SIG\"}" | jq '{status, next_action}'
+curl -s -X POST $GW/v1/dids/registrations \
+  -H "Content-Type: application/json" \
+  -d "{\"registration_intent_id\": \"$REG\"}" > /tmp/registration.json
+jq '{did, did_document_url, entitlements}' /tmp/registration.json
+$PY scripts/demo_agent.py verify-credential /tmp/registration.json
+```
+
+The DID document URL printed above opens in any browser, as does the issuer key at
+<https://staging-api.debitmydata.io/.well-known/did.json>.
+
+Through MCP, the same as section 5 of [regtest-demo.md](regtest-demo.md) with
+`--url $GW/mcp` added to each `demo_agent.py mcp-...` command and `dmd-cli` instead of
+`debitmydata-cli`, for example:
+
+```bash
+$PY scripts/demo_agent.py mcp-tools --url $GW/mcp
+$PY scripts/demo_agent.py mcp-call dmd_get_did_registration_offer --url $GW/mcp | jq .offer.commercial_price
+```
+
+Any MCP client can connect to `https://staging-api.debitmydata.io/mcp` (Streamable HTTP).
+
+## 4. Updating
+
+After pushing changes to GitHub:
+
+```bash
+/opt/agent-gateway/deploy/staging/update.sh
+```
+
+It pulls the latest commit and runs `setup.sh` again: packages, database schema and services
+are updated; secrets, keys, wallets and data are kept. When Cloudflare changes its address
+ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
+
+## How staging differs from production
+
+| | Staging | Production (to come) |
+| --- | --- | --- |
+| Chain | private regtest, coins without value | DMD mainnet, after the price source decision |
+| Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
+| Credential signing key | file on the server | separate signing service (ID-15) |
+| DMD/USD price | fixed test price (1.00 USD) | approved price source (DEC-01) |
+| Server | `staging-api.debitmydata.io` | separate server at `api.debitmydata.io` |

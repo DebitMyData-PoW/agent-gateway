@@ -1,0 +1,26 @@
+[Unit]
+Description=DebitMyData Agent Gateway payment worker
+After=network-online.target postgresql.service debitmydata.service
+Wants=network-online.target
+
+[Service]
+User=gateway
+Group=gateway
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=/etc/dmd-gateway/gateway.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@APP_DIR@/.venv/bin/dmd-gateway-worker
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

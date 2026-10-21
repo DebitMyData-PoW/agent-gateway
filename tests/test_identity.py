@@ -139,7 +139,7 @@ def test_canonical_json_refuses_ambiguous_values(value: object) -> None:
 
 
 def _issuer() -> IssuerKey:
-    return IssuerKey(Ed25519PrivateKey.generate(), issuer_did("https://api.debitmydata.com"))
+    return IssuerKey(Ed25519PrivateKey.generate(), issuer_did("https://api.debitmydata.io"))
 
 
 def test_eddsa_jcs_2022_proof_matches_the_specification() -> None:
@@ -192,12 +192,12 @@ def test_tampered_or_foreign_credentials_fail_verification() -> None:
 
 
 def test_did_web_identifiers() -> None:
-    assert did_web_host("https://API.debitmydata.com") == "api.debitmydata.com"
+    assert did_web_host("https://API.debitmydata.io") == "api.debitmydata.io"
     assert did_web_host("http://localhost:8000") == "localhost%3A8000"
-    assert issuer_did("https://api.debitmydata.com") == "did:web:api.debitmydata.com"
+    assert issuer_did("https://api.debitmydata.io") == "did:web:api.debitmydata.io"
     ident = "dmd_identity_01JA8Z3T6H5K9V2M4Q7R8S0W1X"
-    assert agent_did("https://api.debitmydata.com", ident) == (
-        "did:web:api.debitmydata.com:agents:01JA8Z3T6H5K9V2M4Q7R8S0W1X"
+    assert agent_did("https://api.debitmydata.io", ident) == (
+        "did:web:api.debitmydata.io:agents:01JA8Z3T6H5K9V2M4Q7R8S0W1X"
     )
     # did:web resolution: replace ':' with '/', decode %3A, add /did.json.
     assert did_document_url("http://localhost:8000", ident) == (
@@ -207,8 +207,8 @@ def test_did_web_identifiers() -> None:
 
 def test_did_documents() -> None:
     key = crypto.parse_controller_key(AGENT_CONTROLLER)
-    did = "did:web:api.debitmydata.com:agents:01JA8Z3T6H5K9V2M4Q7R8S0W1X"
-    document = agent_did_document(did, key, record_url="https://api.debitmydata.com/v1/dids/x")
+    did = "did:web:api.debitmydata.io:agents:01JA8Z3T6H5K9V2M4Q7R8S0W1X"
+    document = agent_did_document(did, key, record_url="https://api.debitmydata.io/v1/dids/x")
     (method,) = document["verificationMethod"]
     assert method == {
         "id": f"{did}#{key.multibase}",
@@ -217,16 +217,16 @@ def test_did_documents() -> None:
         "publicKeyMultibase": key.multibase,
     }
     assert document["authentication"] == [method["id"]] == document["assertionMethod"]
-    issuer = issuer_did_document("did:web:api.debitmydata.com", key.multibase)
-    assert issuer["assertionMethod"] == [f"did:web:api.debitmydata.com#{key.multibase}"]
+    issuer = issuer_did_document("did:web:api.debitmydata.io", key.multibase)
+    assert issuer["assertionMethod"] == [f"did:web:api.debitmydata.io#{key.multibase}"]
 
 
 def test_registration_credential_is_signed_and_names_the_payment() -> None:
     issuer = _issuer()
-    did = agent_did("https://api.debitmydata.com", "dmd_identity_01JA8Z3T6H5K9V2M4Q7R8S0W1X")
+    did = agent_did("https://api.debitmydata.io", "dmd_identity_01JA8Z3T6H5K9V2M4Q7R8S0W1X")
     credential = registration_credential(
         RegistrationFacts(
-            credential_url="https://api.debitmydata.com/v1/credentials/dmd_credential_X",
+            credential_url="https://api.debitmydata.io/v1/credentials/dmd_credential_X",
             subject_did=did,
             display_name="ResearchClaw-01",
             participant_type="autonomous_agent",
@@ -260,7 +260,7 @@ def test_registration_credential_is_signed_and_names_the_payment() -> None:
 
 def test_challenge_message_is_stable() -> None:
     message = challenge_message(
-        audience="https://api.debitmydata.com",
+        audience="https://api.debitmydata.io",
         registration_intent_id="dmd_did_intent_X",
         controller=AGENT_CONTROLLER,
         nonce="n0nce",
@@ -269,7 +269,7 @@ def test_challenge_message_is_stable() -> None:
     )
     assert message == (
         "DebitMyData controller proof\n"
-        "Audience: https://api.debitmydata.com\n"
+        "Audience: https://api.debitmydata.io\n"
         "Purpose: did_registration\n"
         "Registration: dmd_did_intent_X\n"
         f"Controller: {AGENT_CONTROLLER}\n"
@@ -323,6 +323,6 @@ def test_production_refuses_a_signing_key_on_the_api_host(tmp_path: Path) -> Non
             _env_file=None,
             environment="production",
             database_url="postgresql+psycopg://prod:secret@db/prod",
-            public_base_url="https://api.debitmydata.com",
+            public_base_url="https://api.debitmydata.io",
             issuer_key_path=tmp_path / "issuer.pem",
         )
