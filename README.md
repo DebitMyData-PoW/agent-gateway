@@ -30,7 +30,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.5.0`). The whole registration flow (quote, native
+This is an early development release (`0.6.0`). The whole registration flow (quote, native
 DMD payment, controller proof, DID and signed credential) works end to end on a private
 regtest chain, through REST and through MCP; nothing accepts real payments yet:
 
@@ -48,13 +48,15 @@ regtest chain, through REST and through MCP; nothing accepts real payments yet:
 | Controller proof: one-time challenges signed with the agent's Ed25519 key | done |
 | DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
-| x402 / USDC, wallet-control proofs, controller rotation and revocation, staging deployment | next |
+| Staging server behind Cloudflare; the whole flow can be tried from its `/docs` page (staging-only test tools) | done |
+| x402 / USDC, wallet-control proofs, controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
 needs an approved DMD/USD price source. A staging server with the full flow on a private
-regtest chain runs at `https://staging-api.debitmydata.io` (see [docs/staging.md](docs/staging.md)). See [docs/roadmap.md](docs/roadmap.md) for the task
-list and decisions.
+regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
+from its [docs page](https://staging-api.debitmydata.io/docs) (see [docs/staging.md](docs/staging.md)).
+See [docs/roadmap.md](docs/roadmap.md) for the task list and decisions.
 
 ## Quick start
 

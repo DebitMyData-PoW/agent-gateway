@@ -84,6 +84,10 @@ DMD_STATIC_TEST_PRICE_USD=1.00
 EOF
     umask 022
 fi
+# Settings added after the first install: appended once, never changed if already set.
+add_setting() { grep -qE "^$1=" "$ENV_FILE" || printf '%s=%s\n' "$1" "$2" >>"$ENV_FILE"; }
+add_setting DMD_GW_STAGING_TEST_TOOLS true  # test tools on the docs page (never in production)
+add_setting DMD_GW_STAGING_PAYER_WALLET payer-test
 chmod 600 "$ENV_FILE"
 
 # ------------------------------------------------------------------ DMD node

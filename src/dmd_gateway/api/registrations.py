@@ -110,7 +110,13 @@ def create_challenge(
 
 
 class ProofRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [{"challenge_id": "dmd_challenge_...", "signature": "<base64url>"}]
+        },
+    )
 
     challenge_id: str = Field(pattern=CHALLENGE_ID)
     signature: str = Field(
@@ -184,7 +190,11 @@ def submit_proof(
 
 
 class RegistrationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={"examples": [{"registration_intent_id": "dmd_did_intent_..."}]},
+    )
 
     registration_intent_id: str = Field(pattern=REGISTRATION_ID)
 

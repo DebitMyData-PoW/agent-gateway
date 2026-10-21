@@ -69,7 +69,39 @@ Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
 | Logs | `journalctl -u dmd-gateway-api -f` (same for the others) |
 | DMD command line | `dmd-cli ...` (for example `dmd-cli getblockchaininfo`) |
 
-## 3. Demo on staging
+## 3. Try it from the docs page
+
+Anyone can run the whole registration from a browser at
+<https://staging-api.debitmydata.io/docs>, with nothing to install. The top of that page lists
+the nine steps, each linked to its endpoint: open it, click **Execute**, and copy the values
+named into the next step.
+
+Three endpoints in the **staging** section stand in for what a real agent does with its own
+key and wallet:
+
+| Endpoint | Stands in for |
+| --- | --- |
+| `POST /v1/staging/test-agent-keys` | the agent creating its own Ed25519 key |
+| `POST /v1/staging/test-payments` | the agent paying the quote from its DMD wallet, and the chain confirming it (6 blocks are mined) |
+| `POST /v1/staging/test-signatures` | the agent signing the controller challenge with its key |
+
+Everything else is the real API, and the gateway checks the payment on chain exactly as it
+will in production. The tools only exist when `DMD_GW_STAGING_TEST_TOOLS=true` (set by
+`setup.sh`): the gateway refuses to start with them in production, and the test payer only
+ever sends on a regtest chain, only the exact amount of an unpaid quote, once.
+
+Test payments come from the `payer-test` wallet. Regtest block rewards halve every 150 blocks,
+so one chain holds test coins for a few hundred registrations at the 1.00 USD test price. When
+a test payment answers "no spendable test coins left", start a fresh chain (DIDs already issued
+stay valid):
+
+```bash
+systemctl stop dmd-gateway-worker dmd-gateway-api debitmydata
+mv /var/lib/debitmydata/regtest /var/lib/debitmydata/regtest-old
+/opt/agent-gateway/deploy/staging/setup.sh
+```
+
+## 4. Demo from the command line
 
 Run as root on the VPS, one block at a time. The VPS plays both the agent and the agent's DMD
 wallet; everything else goes through the public address, Cloudflare included.
@@ -131,7 +163,7 @@ $PY scripts/demo_agent.py mcp-call dmd_get_did_registration_offer --url $GW/mcp 
 
 Any MCP client can connect to `https://staging-api.debitmydata.io/mcp` (Streamable HTTP).
 
-## 4. Updating
+## 5. Updating
 
 After pushing changes to GitHub:
 
@@ -151,4 +183,5 @@ ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
 | DMD/USD price | fixed test price (1.00 USD) | approved price source (DEC-01) |
+| Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Server | `staging-api.debitmydata.io` | separate server at `api.debitmydata.io` |

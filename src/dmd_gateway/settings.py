@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # How long an agent has to sign a controller challenge.
     controller_challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
 
+    # Staging only: test tools on the API docs page that stand in for an agent's own key and
+    # DMD wallet (a throwaway key, signing, paying a quote with regtest test coins). Refused
+    # in production. The test payer uses DMD_RPC_URL/USER/PASSWORD with this wallet.
+    staging_test_tools: bool = False
+    staging_payer_wallet: str = Field(default="payer-test", min_length=1, max_length=64)
+
     @field_validator("mcp_url", "issuer_key_path", mode="before")
     @classmethod
     def _empty_to_none(cls, value: object) -> object:
@@ -91,6 +97,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "production must not keep the credential signing key on the API host (ID-15)"
             )
+        if self.environment == "production" and self.staging_test_tools:
+            raise ValueError("staging test tools must never be enabled in production")
         return self
 
 

@@ -1,0 +1,259 @@
+"""Staging-only test tools, so the whole registration can be tried from the API docs page.
+
+    POST /v1/staging/test-agent-keys    a throwaway agent key (the agent's own key in production)
+    POST /v1/staging/test-payments      pay a quote with test coins, then mine the confirmations
+    POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key
+
+Only mounted when ``staging_test_tools`` is on, which settings refuse in production. See
+``dmd_gateway.services.staging_tools`` for the other safeguards.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from decimal import Decimal
+
+from fastapi import APIRouter, Request
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import select
+
+from dmd_gateway.api.payments import ID_PATTERN as PAYMENT_ID
+from dmd_gateway.api.registrations import CHALLENGE_ID
+from dmd_gateway.audit import record_audit_event
+from dmd_gateway.db.models import AuditEvent, ControllerChallenge, PaymentIntent
+from dmd_gateway.db.session import transaction
+from dmd_gateway.domain.payment_status import PaymentStatus
+from dmd_gateway.errors import ApiError
+from dmd_gateway.identity.crypto import encode_signature
+from dmd_gateway.services.staging_tools import (
+    RegtestPayer,
+    StagingToolError,
+    load_test_agent_key,
+    new_test_agent_key,
+    public_key_of,
+)
+
+router = APIRouter(prefix="/v1/staging", tags=["staging"])
+
+TEST_RAIL = "dmd_pow_native"
+TEST_NETWORK = "dmd:regtest"
+PAYMENT_ACTION = "staging.test_payment_sent"
+
+
+# --------------------------------------------------------------------------- agent key
+
+
+class ThrowawayKeyResponse(BaseModel):
+    controller_public_key: str = Field(
+        description="Put this in controller_public_key when you request a quote."
+    )
+    private_key: str = Field(description="Keep it for POST /v1/staging/test-signatures.")
+    note: str
+
+
+@router.post(
+    "/test-agent-keys",
+    status_code=201,
+    response_model=ThrowawayKeyResponse,
+    summary="Staging only: create a throwaway agent key",
+    description=(
+        "Stands in for the agent's own key so the flow can be tried from this page. A real "
+        "agent creates its key itself and never shares the private key. Nothing is stored."
+    ),
+)
+def create_test_agent_key() -> ThrowawayKeyResponse:
+    key = new_test_agent_key()
+    return ThrowawayKeyResponse(
+        controller_public_key=key.controller_public_key,
+        private_key=key.private_key,
+        note="Test key for the staging server only; it is not kept by the gateway.",
+    )
+
+
+# --------------------------------------------------------------------------- payment
+
+
+class StagingPaymentRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={"examples": [{"payment_intent_id": "dmd_payment_intent_..."}]},
+    )
+
+    payment_intent_id: str = Field(pattern=PAYMENT_ID)
+
+
+class StagingPaymentResponse(BaseModel):
+    payment_intent_id: str
+    transaction_reference: str
+    amount: str
+    asset: str
+    recipient: str
+    blocks_mined: int
+    next_step: str
+
+
+@router.post(
+    "/test-payments",
+    status_code=201,
+    response_model=StagingPaymentResponse,
+    summary="Staging only: pay a quote with test coins and mine its confirmations",
+    description=(
+        "Stands in for the agent's own DMD wallet. The staging test wallet sends the exact "
+        "quoted amount to the quoted address on the private regtest chain (coins without "
+        "value), then mines the required confirmations. The gateway then verifies the "
+        "payment on chain like any other: check GET /v1/payments/{payment_intent_id}."
+    ),
+    responses={
+        404: {"description": "Unknown payment intent."},
+        409: {"description": "Already paid, expired, or not a test-chain quote."},
+        503: {"description": "The test wallet or its node is not available."},
+    },
+)
+def create_test_payment(body: StagingPaymentRequest, request: Request) -> StagingPaymentResponse:
+    now = datetime.now(UTC)
+    with transaction(request.app.state.session_factory) as session:
+        intent = session.scalars(
+            select(PaymentIntent)
+            .where(PaymentIntent.id == body.payment_intent_id)
+            .with_for_update()
+        ).one_or_none()
+        if intent is None:
+            raise ApiError(404, "not_found", "Unknown payment intent.")
+        if intent.rail_id != TEST_RAIL or intent.network != TEST_NETWORK:
+            raise ApiError(
+                409, "not_a_test_payment", "Only quotes on the DMD regtest chain can be test-paid."
+            )
+        if intent.status != PaymentStatus.AWAITING_PAYMENT:
+            raise ApiError(
+                409,
+                "not_awaiting_payment",
+                f"This payment is {intent.status}; only an unpaid quote can be test-paid.",
+            )
+        if intent.quote_expires_at <= now:
+            raise ApiError(409, "quote_expired", "This quote has expired; request a new one.")
+        already = session.scalar(
+            select(AuditEvent.id)
+            .where(AuditEvent.action == PAYMENT_ACTION, AuditEvent.subject_id == intent.id)
+            .limit(1)
+        )
+        if already is not None:
+            raise ApiError(
+                409,
+                "already_test_paid",
+                "This quote was already paid with test coins; check its payment status.",
+            )
+
+        amount = Decimal(intent.amount_base_units) / Decimal(10) ** intent.asset_decimals
+        amount = amount.quantize(Decimal(1).scaleb(-intent.asset_decimals))
+        confirmations = intent.required_confirmations or 6
+        try:
+            payment = _payer(request).pay(intent.recipient, amount, confirmations)
+        except StagingToolError as exc:
+            raise ApiError(503, "test_wallet_unavailable", str(exc)) from exc
+        record_audit_event(
+            session,
+            action=PAYMENT_ACTION,
+            subject_type="payment_intent",
+            subject_id=intent.id,
+            actor_type="system",
+            data={
+                "transaction_reference": payment.transaction_reference,
+                "blocks_mined": payment.blocks_mined,
+                "topped_up": payment.topped_up,
+            },
+        )
+        return StagingPaymentResponse(
+            payment_intent_id=intent.id,
+            transaction_reference=payment.transaction_reference,
+            amount=str(amount),
+            asset=intent.asset_symbol,
+            recipient=intent.recipient,
+            blocks_mined=payment.blocks_mined,
+            next_step=(
+                "Wait about 10 seconds, then GET /v1/payments/"
+                f"{intent.id}: its status becomes settled."
+            ),
+        )
+
+
+def _payer(request: Request) -> RegtestPayer:
+    state = request.app.state
+    if state.staging_payer is None:
+        try:
+            state.staging_payer = RegtestPayer.from_environ(
+                state.environ, state.settings.staging_payer_wallet
+            )
+        except StagingToolError as exc:
+            raise ApiError(503, "test_wallet_unavailable", str(exc)) from exc
+    return state.staging_payer
+
+
+# --------------------------------------------------------------------------- signature
+
+
+class StagingSignatureRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [{"challenge_id": "dmd_challenge_...", "private_key": "z3u2..."}]
+        },
+    )
+
+    challenge_id: str = Field(pattern=CHALLENGE_ID)
+    private_key: str = Field(
+        min_length=40, max_length=60, description="The private_key from test-agent-keys."
+    )
+
+
+class StagingSignatureResponse(BaseModel):
+    challenge_id: str
+    signature: str
+    matches_controller: bool = Field(
+        description="Whether this key is the registration's controller key. If not, the "
+        "gateway will refuse the proof (useful to see a wrong key being refused)."
+    )
+    next_step: str
+
+
+@router.post(
+    "/test-signatures",
+    response_model=StagingSignatureResponse,
+    summary="Staging only: sign a controller challenge with the throwaway key",
+    description=(
+        "Stands in for the agent signing the challenge message with its own key. Send the "
+        "signature to POST /v1/dids/registrations/{registration_intent_id}/controller-proofs."
+    ),
+    responses={
+        404: {"description": "Unknown challenge."},
+        409: {"description": "The challenge was already used or has expired."},
+        422: {"description": "The private key is not one from test-agent-keys."},
+    },
+)
+def create_test_signature(
+    body: StagingSignatureRequest, request: Request
+) -> StagingSignatureResponse:
+    try:
+        key = load_test_agent_key(body.private_key)
+    except StagingToolError as exc:
+        raise ApiError(422, "invalid_private_key", str(exc)) from exc
+    with transaction(request.app.state.session_factory) as session:
+        challenge = session.get(ControllerChallenge, body.challenge_id)
+        if challenge is None:
+            raise ApiError(404, "not_found", "Unknown challenge.")
+        if challenge.used_at is not None or challenge.expires_at <= datetime.now(UTC):
+            raise ApiError(
+                409, "challenge_closed", "This challenge was used or has expired; get a new one."
+            )
+        signature = encode_signature(key.sign(challenge.message.encode("utf-8")))
+        return StagingSignatureResponse(
+            challenge_id=challenge.id,
+            signature=signature,
+            matches_controller=public_key_of(key) == challenge.controller_value,
+            next_step=(
+                "POST /v1/dids/registrations/"
+                f"{challenge.registration_intent_id}/controller-proofs with this challenge_id "
+                "and signature."
+            ),
+        )

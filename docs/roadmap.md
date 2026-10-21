@@ -14,7 +14,7 @@ place; the application logic comes with the related phase.
 - [ ] P0-02 Tag/back up the current DMD Core production release
 - [ ] P0-03 Inventory nodes, Electrum servers, explorer, wallets, pool, DNS, TLS, hosting (kept outside this public repository)
 - [ ] P0-04 Decide which hosts may reach private DMD RPC; deny all others
-- [x] P0-05 Staging environment (`deploy/staging`, [staging.md](staging.md)); production comes after the security review
+- [x] P0-05 Staging environment (`deploy/staging`, [staging.md](staging.md)), with staging-only test tools so the flow can be tried from its docs page; production comes after the security review
 - [ ] P0-06 Owners for DNS/TLS, DevOps, database, treasury, policy approval, incident response
 - [ ] P0-08 Secrets inventory (never in tickets, chat, source or docs)
 - [ ] P0-09 Branch/release strategy and rollback procedure

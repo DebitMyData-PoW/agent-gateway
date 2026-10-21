@@ -69,7 +69,20 @@ MetadataValue = str | int | bool | None
 class QuoteRequest(BaseModel):
     """Request body, as in the directive's example request."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "display_name": "TestAgent-01",
+                    "participant_type": "autonomous_agent",
+                    "controller_public_key": "ed25519:z6Mk<your agent public key>",
+                    "preferred_payment_option": "dmd_pow_native",
+                }
+            ]
+        },
+    )
 
     display_name: str = Field(min_length=1, max_length=100, pattern=_NO_CONTROL_CHARS.pattern)
     participant_type: ParticipantType
