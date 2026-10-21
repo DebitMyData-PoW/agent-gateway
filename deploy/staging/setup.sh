@@ -172,9 +172,10 @@ rm -f /etc/nginx/sites-enabled/default
 step "Checking the gateway through nginx"
 for _ in $(seq 1 30); do
     curl -sk --noproxy '*' --resolve "$HOSTNAME_PUBLIC:443:127.0.0.1" "https://$HOSTNAME_PUBLIC/readyz" |
-        grep -q '"ready"' && break
+        grep '"ready"' >/dev/null && break
     sleep 1
 done
-curl -sk --noproxy '*' --resolve "$HOSTNAME_PUBLIC:443:127.0.0.1" "https://$HOSTNAME_PUBLIC/readyz"
+curl -sk --noproxy '*' --resolve "$HOSTNAME_PUBLIC:443:127.0.0.1" "https://$HOSTNAME_PUBLIC/readyz" ||
+    fail "nginx does not answer on port 443: check 'systemctl status nginx dmd-gateway-api'"
 echo
 printf '\nDone. Open https://%s/v1/discovery from your computer.\n' "$HOSTNAME_PUBLIC"

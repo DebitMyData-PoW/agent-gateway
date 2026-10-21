@@ -18,14 +18,15 @@ ranges="$(printf '%s\n' "$ranges" | grep -E '^[0-9a-fA-F:.]+/[0-9]{1,3}$' || tru
 nginx -t -q
 $SYSTEMCTL reload nginx
 
-if ufw status | grep -q '^Status: active'; then
+if ufw status | grep '^Status: active' >/dev/null; then  # not -q: see pipefail
     # Remove the previous Cloudflare rules (highest number first), then add the current ones.
-    ufw status numbered | grep '# cloudflare' | sed -E 's/^\[ *([0-9]+)\].*/\1/' | sort -rn |
-        while read -r n; do ufw --force delete "$n" >/dev/null; done
+    # (grep finds nothing on the first run, which must not stop the script.)
+    { ufw status numbered | grep '# cloudflare' || true; } | sed -E 's/^\[ *([0-9]+)\].*/\1/' |
+        sort -rn | while read -r n; do ufw --force delete "$n" >/dev/null; done
     printf '%s\n' "$ranges" | while read -r cidr; do
         ufw allow proto tcp from "$cidr" to any port 443 comment cloudflare >/dev/null
     done
-    echo "UFW: port 443 allowed from $(printf '%s\n' "$ranges" | wc -l) Cloudflare ranges."
+    echo "UFW: port 443 allowed from $(ufw status | grep -c '# cloudflare') Cloudflare rules."
 else
     echo "WARNING: UFW is not active. Enable it after allowing your SSH port," \
         "then run this script again." >&2
