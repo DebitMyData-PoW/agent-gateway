@@ -124,7 +124,35 @@ credited and is due for refund. Nothing is ever credited silently. These rules l
 The directive's example quotes show rail-specific statuses (`awaiting_authorization`,
 `awaiting_dmd_payment`), while its normalized list has only `awaiting_payment`. Quotes
 therefore report `payment_status: awaiting_payment` plus a `next_action`
-(`authorize_x402_payment` or `send_payment`) until this is confirmed.
+(`prove_wallet_control` for x402, `send_payment` for DMD) until this is confirmed.
+
+## x402 payments (USDC on Base)
+
+x402 payments follow x402 protocol version 2, scheme `exact` with EIP-3009
+`transferWithAuthorization`, on the registration route itself:
+
+1. The quote fixes the amount (25.000000 USDC), the USDC contract, the network and the
+   receiving address (one merchant address from the environment, stored with the quote).
+2. Once the controller is proven, `POST /v1/dids/registrations` answers `402` with the
+   payment requirements in a `PAYMENT-REQUIRED` header, plus the `bazaar` discovery
+   description. Nothing is asked for while the DID could not be issued (controller not
+   proven, intent closed, issuance off), so no agent pays for a DID it cannot get.
+3. The agent signs and calls again with `PAYMENT-SIGNATURE`. The gateway checks the signed
+   authorization against the quote (amount, recipient, asset, network, validity window),
+   stores it in `x402_authorizations` (one live authorization per intent; an authorization
+   never counts for two intents), has the facilitator verify it, records that it is about
+   to settle, then has the facilitator settle it. The gateway never signs or sends anything.
+4. The adapter then checks the chain itself through read-only RPC: the transaction
+   succeeded, contains the USDC contract's `AuthorizationUsed` event for exactly the payer
+   and nonce received for this intent and the `Transfer` to the intent's receiving address,
+   and its block is still in the chain. If the facilitator's answer is lost, the same event
+   finds the payment. The common settlement rules then apply (5 confirmations on Base,
+   DEC-16), the transfer is credited once (transaction and log index), and the DID is
+   issued in the same answer with a `PAYMENT-RESPONSE` header, or `202` while confirming.
+
+Because the receiving address is shared, a transfer counts for an intent only through the
+authorization received for that intent; transaction references sent by payers are refused
+on this rail.
 
 ## Controller proof
 

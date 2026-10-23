@@ -65,6 +65,15 @@ PROOF_STATUSES = ("verified", "rejected")
 CHALLENGE_PURPOSES = ("registration", "rotation", "recovery")
 RECIPIENT_KINDS = ("per_intent_address", "shared_with_reference")
 ACTOR_TYPES = ("system", "worker", "agent", "operator")
+X402_AUTHORIZATION_STATUSES = (
+    "received",  # stored, not yet checked by the facilitator
+    "verify_rejected",  # refused before settlement: no funds can have moved
+    "submitted",  # sent for settlement; the outcome is checked on chain
+    "settled",  # the facilitator reported a transaction (still checked on chain)
+    "settle_rejected",  # the facilitator refused to settle (still watched on chain)
+)
+# At most one authorization per payment intent is in progress or settled at a time.
+X402_LIVE_STATUSES = ("received", "submitted", "settled")
 POLICY_KINDS = ("terms", "privacy", "payment", "refund", "did", "marketplace", "security")
 CONTROLLER_PRESENT = "controller_public_key IS NOT NULL OR controller_wallet_address IS NOT NULL"
 
@@ -254,6 +263,55 @@ class PaymentReference(Base):
     )
     reference: Mapped[str] = mapped_column(Text, nullable=False)
     submitted_at: Mapped[datetime] = created_at()
+
+
+class X402Authorization(Base):
+    """A signed x402 payment authorization received for a payment intent (X402-04..X402-07).
+
+    Stored before the facilitator is asked anything, so the gateway always knows which
+    (payer, nonce) it may find used on chain for this intent, even if it stopped while the
+    facilitator was settling. The (network, asset, payer, nonce) key stops one authorization
+    from ever being counted for two intents.
+    """
+
+    __tablename__ = "x402_authorizations"
+    __table_args__ = (
+        UniqueConstraint("network", "asset", "payer", "nonce"),
+        CheckConstraint(one_of("status", X402_AUTHORIZATION_STATUSES), name="status"),
+        CheckConstraint("value > 0", name="value_positive"),
+        CheckConstraint(
+            "status <> 'settled' OR settle_transaction IS NOT NULL",
+            name="settled_has_transaction",
+        ),
+        Index(
+            "uq_x402_authorizations_live_per_intent",
+            "payment_intent_id",
+            unique=True,
+            postgresql_where=text(one_of("status", X402_LIVE_STATUSES)),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    payment_intent_id: Mapped[str] = mapped_column(
+        ForeignKey("payment_intents.id"), nullable=False, index=True
+    )
+    network: Mapped[str] = mapped_column(Text, nullable=False)
+    asset: Mapped[str] = mapped_column(Text, nullable=False)  # token contract, lower case
+    pay_to: Mapped[str] = mapped_column(Text, nullable=False)  # lower case
+    payer: Mapped[str] = mapped_column(Text, nullable=False)  # lower case
+    nonce: Mapped[str] = mapped_column(Text, nullable=False)  # 0x + 64 hex, lower case
+    value: Mapped[Decimal] = mapped_column(TokenUnits, nullable=False)
+    valid_after: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    valid_before: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # The PaymentPayload and PaymentRequirements exactly as used with the facilitator.
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    requirements: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    search_from_block: Mapped[int | None] = mapped_column(BigInteger)
+    settle_transaction: Mapped[str | None] = mapped_column(Text)
+    failure_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
 
 
 class AgentIdentity(Base):

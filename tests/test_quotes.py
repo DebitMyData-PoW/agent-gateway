@@ -40,6 +40,8 @@ ENABLED = {
     "DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true",
     "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
     "DMD_USDC_BASE_MERCHANT_ADDRESS": MERCHANT,
+    "DMD_X402_FACILITATOR_URL": "https://facilitator.test",
+    "DMD_BASE_RPC_URL": "https://rpc.test",
 }
 
 # The directive's example request.
@@ -74,7 +76,6 @@ def ready_registry(tmp_path_factory: pytest.TempPathFactory) -> Path:
     }
     usdc = data["rails"]["x402_usdc_base"]
     usdc["asset"]["canonical_id"] = USDC_ID
-    usdc["confirmation_policy"]["finality"] = "facilitator_settled"
     path = tmp_path_factory.mktemp("registry") / "payment_routes.yaml"
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     return path
@@ -225,10 +226,12 @@ def test_usdc_quote_matches_the_directive(db_client: TestClient, engine: Engine)
     assert option["recipient"] == MERCHANT
     assert option["token_contract"] == "0x2222222222222222222222222222222222222222"
     assert option["payment_reference"] == quote["payment_intent_id"]
-    assert option["finality"] == "facilitator_settled"
+    assert option["required_confirmations"] == 5
+    assert option["transfer_method"] == "eip3009"
     assert quote["price_quote"] is None  # USD-denominated: no conversion
     assert quote["payment_status"] == "awaiting_payment"
-    assert quote["next_action"] == "authorize_x402_payment"
+    # x402: the controller is proven first; the payment answers the 402 of the registration.
+    assert quote["next_action"] == "prove_wallet_control"
     assert quote["controller_proof_required"] is True
     assert quote["terms_version"] == "2026-09-18"
     assert "refund_policy" in quote["policy_urls"]

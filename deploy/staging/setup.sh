@@ -139,6 +139,20 @@ if [ ! -s "$ISSUER_KEY" ]; then
     runuser -u gateway -- "$APP_DIR/.venv/bin/dmd-gateway-issuer-key" "$ISSUER_KEY" | grep -v Set
 fi
 
+step "Preparing the x402 rail: USDC on Base Sepolia (test USDC only)"
+# A test wallet that signs the docs page's x402 test payments. It also receives them, so its
+# test USDC is never used up (the facilitator pays the network fee, so it needs no ETH).
+if [ -z "$(env_value DMD_STAGING_BASE_PAYER_KEY)" ]; then
+    printf 'DMD_STAGING_BASE_PAYER_KEY=0x%s\n' "$(secret)" >>"$ENV_FILE"
+fi
+TEST_WALLET="$(DMD_KEY="$(env_value DMD_STAGING_BASE_PAYER_KEY)" "$APP_DIR/.venv/bin/python" -c \
+    'import os; from eth_account import Account; print(Account.from_key(os.environ["DMD_KEY"]).address)')"
+add_setting DMD_USDC_BASE_MERCHANT_ADDRESS "$TEST_WALLET"
+add_setting DMD_X402_FACILITATOR_URL https://x402.org/facilitator
+add_setting DMD_BASE_RPC_URL https://sepolia.base.org
+add_setting DMD_RAIL_X402_USDC_BASE_ENABLED true
+chmod 600 "$ENV_FILE"
+
 run_as_gateway() {
     # shellcheck disable=SC1090  # the settings file is generated above
     (cd "$APP_DIR" && set -a && . "$ENV_FILE" && set +a && runuser -u gateway -- "$@")
@@ -183,3 +197,7 @@ curl -sk --noproxy '*' --resolve "$HOSTNAME_PUBLIC:443:127.0.0.1" "https://$HOST
     fail "nginx does not answer on port 443: check 'systemctl status nginx dmd-gateway-api'"
 echo
 printf '\nDone. Open https://%s/v1/discovery from your computer.\n' "$HOSTNAME_PUBLIC"
+printf '\nx402 test wallet (Base Sepolia): %s\n' "$TEST_WALLET"
+printf 'Give it at least 25 test USDC at https://faucet.circle.com (network: Base Sepolia).\n'
+printf 'Its balance: https://sepolia.basescan.org/token/0x036CbD53842c5426634e7929541eC2318f3dCF7e?a=%s\n' \
+    "$TEST_WALLET"

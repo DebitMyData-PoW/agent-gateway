@@ -1,7 +1,8 @@
 # Staging server
 
 The staging server runs the whole gateway on one VPS at `https://staging-api.debitmydata.io`,
-with a **private DMD regtest chain** whose coins have no value. It exists for demos and
+on test networks whose coins have no value: a **private DMD regtest chain**, and **Base
+Sepolia** for USDC through x402. It exists for demos and
 end-to-end tests. Production (`api.debitmydata.io`) will be a separate server, set up after
 the security review.
 
@@ -11,7 +12,9 @@ Internet ── Cloudflare proxy (TLS, WAF) ──► VPS :443, open to Cloudfla
                                                └► gateway API + MCP (127.0.0.1:8000)
                                                     ├► payment worker
                                                     ├► PostgreSQL 16 (local)
-                                                    └► DMD node, regtest (RPC on 127.0.0.1 only)
+                                                    ├► DMD node, regtest (RPC on 127.0.0.1 only)
+                                                    └► Base Sepolia: x402.org facilitator and
+                                                       sepolia.base.org (read only), over HTTPS
 ```
 
 ## 1. Before you start
@@ -82,7 +85,7 @@ key and wallet:
 | Endpoint | Stands in for |
 | --- | --- |
 | `POST /v1/staging/test-agent-keys` | the agent creating its own Ed25519 key |
-| `POST /v1/staging/test-payments` | the agent paying the quote from its DMD wallet, and the chain confirming it (6 blocks are mined) |
+| `POST /v1/staging/test-payments` | the agent paying the quote: from its DMD wallet (6 blocks are mined to confirm it), or for an x402 quote, the agent's wallet signing the USDC payment |
 | `POST /v1/staging/test-signatures` | the agent signing the controller challenge with its key |
 
 Everything else is the real API, and the gateway checks the payment on chain exactly as it
@@ -100,6 +103,41 @@ systemctl stop dmd-gateway-worker dmd-gateway-api debitmydata
 mv /var/lib/debitmydata/regtest /var/lib/debitmydata/regtest-old
 /opt/agent-gateway/deploy/staging/setup.sh
 ```
+
+### Paying with USDC through x402 (Base Sepolia)
+
+The same page can pay with USDC instead of DMD, through x402 the way Coinbase-compatible
+agent wallets pay:
+
+1. Step 1 as before; in step 2 use `"preferred_payment_option": "x402_usdc_base"`. The quote
+   is 25.000000 USDC on Base Sepolia (`eip155:84532`).
+2. Skip steps 3 and 4: do steps 5 to 7 (challenge, signature, proof) first. On x402 the
+   payment is taken last, only once the DID can be issued.
+3. Step 8 without anything else answers **402**: its `PAYMENT-REQUIRED` header (also in the
+   error body) says what to pay.
+4. Call step 3 (`test-payments`) with your `payment_intent_id`: the staging test wallet
+   signs the payment and returns `payment_signature`. Nothing moves yet.
+5. Step 8 again, with `payment_signature` pasted into its `PAYMENT-SIGNATURE` field, within
+   5 minutes. The facilitator settles it on Base Sepolia, the gateway checks the transfer on
+   chain, and the DID comes back in the same answer, with a `PAYMENT-RESPONSE` header naming
+   the transaction (viewable on `https://sepolia.basescan.org/tx/<transaction>`). If it
+   answers 202, the payment is still confirming: call step 8 again without the header.
+
+An agent with its own Base Sepolia wallet pays the same 402 itself, with any x402 client.
+
+**The test wallet.** `setup.sh` creates it once (`DMD_STAGING_BASE_PAYER_KEY` in
+`/etc/dmd-gateway/gateway.env`) and prints its address. On staging it is also the receiving
+address (`DMD_USDC_BASE_MERCHANT_ADDRESS`), so its test payments come back to it and its test
+USDC is never used up; it needs no ETH, since the facilitator pays the network fee. Give it
+25 test USDC once at <https://faucet.circle.com> (network Base Sepolia; the faucet gives 20 per
+request every 2 hours, so two requests). To see its address again:
+
+```bash
+grep -E 'DMD_USDC_BASE_MERCHANT_ADDRESS' /etc/dmd-gateway/gateway.env
+```
+
+If a test payment answers that the facilitator refused it with `insufficient_funds`, the test
+wallet needs test USDC.
 
 ## 4. Demo from the command line
 
@@ -180,6 +218,7 @@ ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 | | Staging | Production (to come) |
 | --- | --- | --- |
 | Chain | private regtest, coins without value | DMD mainnet, after the price source decision |
+| USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address, a production facilitator (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
 | DMD/USD price | fixed test price (1.00 USD) | approved price source (DEC-01) |

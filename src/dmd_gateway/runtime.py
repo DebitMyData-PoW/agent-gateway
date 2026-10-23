@@ -6,7 +6,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from dmd_gateway.adapters import AVAILABLE_ADAPTERS, PaymentAdapter
-from dmd_gateway.domain.routes import PaymentRouteRegistry, RailState, RegistryError, load_registry
+from dmd_gateway.domain.routes import (
+    TEST_NETWORKS,
+    PaymentRouteRegistry,
+    RailState,
+    RegistryError,
+    load_registry,
+)
 from dmd_gateway.pricing import AVAILABLE_PRICE_SOURCES, PriceSource
 from dmd_gateway.pricing.static_test import TEST_ONLY_PRICE_SOURCES
 from dmd_gateway.settings import Settings
@@ -52,6 +58,11 @@ def build_runtime(
         )
         if uses_test_price and rail.network.endswith(":mainnet"):
             raise RegistryError(f"rail {rail_id!r} uses a test-only price source on mainnet")
+        if settings.environment == "production" and rail.network in TEST_NETWORKS:
+            raise RegistryError(
+                f"rail {rail_id!r} is on the test network {rail.network}; "
+                "production only accepts real networks"
+            )
 
     return Runtime(
         registry=registry,

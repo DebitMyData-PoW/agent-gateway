@@ -38,18 +38,48 @@ def _settings(path: Path, environment: str = "development") -> Settings:
     )
 
 
-def test_regtest_registry_differs_only_in_the_dmd_rail() -> None:
+TEST_RAILS = {"dmd_pow_native", "x402_usdc_base"}
+ENABLE_USDC = {
+    "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
+    "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "ab" * 20,
+    "DMD_X402_FACILITATOR_URL": "https://facilitator.test",
+    "DMD_BASE_RPC_URL": "https://rpc.test",
+}
+
+
+def test_regtest_registry_differs_only_in_the_test_network_rails() -> None:
     main, regtest = _load(REGISTRY_PATH), _load(REGTEST_PATH)
     assert regtest["services"] == main["services"]
     assert regtest["discovery_terms"] == main["discovery_terms"]
     for rail_id in main["rails"]:
-        if rail_id != "dmd_pow_native":
+        if rail_id not in TEST_RAILS:
             assert regtest["rails"][rail_id] == main["rails"][rail_id]
     dmd = regtest["rails"]["dmd_pow_native"]
     assert dmd["network"] == "dmd:regtest"
     assert dmd["asset"]["canonical_id"] == "dmd:regtest/native"
     assert dmd["confirmation_policy"]["required_confirmations"] == 6
     assert dmd["price_policy"]["source"] == "static_test_price"
+
+    usdc, main_usdc = regtest["rails"]["x402_usdc_base"], main["rails"]["x402_usdc_base"]
+    assert usdc["network"] == "eip155:84532"
+    assert usdc["asset"]["canonical_id"] == (
+        "eip155:84532/erc20:0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+    )
+    assert usdc["x402"]["asset_eip712_name"] == "USDC"
+    # Everything else about the rail is the same as in production.
+    same = {"name", "protocol", "scheme", "transfer_method", "adapter", "recipient"}
+    assert {key: usdc[key] for key in same} == {key: main_usdc[key] for key in same}
+    assert usdc["enable_env"] == main_usdc["enable_env"]
+
+
+def test_base_sepolia_rail_can_be_enabled_outside_production() -> None:
+    runtime = build_runtime(_settings(REGTEST_PATH, "staging"), ENABLE_USDC)
+    assert list(runtime.adapters) == ["x402_usdc_base"]
+
+
+def test_test_networks_are_refused_in_production() -> None:
+    with pytest.raises(RegistryError, match="test network eip155:84532"):
+        build_runtime(_settings(REGTEST_PATH, "production"), ENABLE_USDC)
 
 
 def test_regtest_dmd_rail_can_be_enabled_in_development() -> None:

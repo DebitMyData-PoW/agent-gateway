@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -119,14 +121,15 @@ def test_enable_flag_must_be_explicit(tmp_path: Path, value: str) -> None:
     assert registry.rail_state("dmd_pow_native") is RailState.DISABLED
 
 
-def test_env_recipient_must_be_configured(tmp_path: Path) -> None:
-    data = _shipped()
-    rail = data["rails"]["x402_usdc_base"]
-    rail["asset"]["canonical_id"] = "eip155:8453/erc20:0xTEST"
-    rail["confirmation_policy"]["finality"] = "facilitator_settled"
-    path = _write(tmp_path, data)
+X402_SERVICES = {
+    "DMD_X402_FACILITATOR_URL": "https://facilitator.test",
+    "DMD_BASE_RPC_URL": "https://rpc.test",
+}
 
-    environ = {"DMD_RAIL_X402_USDC_BASE_ENABLED": "true"}
+
+def test_env_recipient_must_be_configured(tmp_path: Path) -> None:
+    path = _write(tmp_path, _shipped())
+    environ = {"DMD_RAIL_X402_USDC_BASE_ENABLED": "true", **X402_SERVICES}
     with pytest.raises(RegistryError, match="DMD_USDC_BASE_MERCHANT_ADDRESS is empty"):
         load_registry(
             path,
@@ -136,10 +139,73 @@ def test_env_recipient_must_be_configured(tmp_path: Path) -> None:
         )
 
     environ["DMD_USDC_BASE_MERCHANT_ADDRESS"] = "0xMERCHANT"
+    with pytest.raises(RegistryError, match="is not an EVM address"):
+        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+
+    environ["DMD_USDC_BASE_MERCHANT_ADDRESS"] = "0x" + "ab" * 20
     registry = load_registry(
         path, environ=environ, available_adapters=ALL_ADAPTERS, available_price_sources=ALL_SOURCES
     )
     assert registry.rail_state("x402_usdc_base") is RailState.ENABLED
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (lambda r: r.update(scheme="upto"), "scheme 'upto' is not supported"),
+        (lambda r: r.update(transfer_method="permit2"), "transfer method 'permit2'"),
+        (lambda r: r.update(network="solana:mainnet"), "is not an EVM network"),
+        (
+            lambda r: r["asset"].update(canonical_id="eip155:8453/erc20:0xTEST"),
+            "canonical_id must be eip155:8453/erc20:",
+        ),
+        (
+            lambda r: r["asset"].update(canonical_id="eip155:1/erc20:0x" + "22" * 20),
+            "canonical_id must be eip155:8453/erc20:",
+        ),
+        (
+            lambda r: r.update(confirmation_policy={"finality": "facilitator_settled"}),
+            "required_confirmations is not set",
+        ),
+        (lambda r: r.pop("x402"), "x402 settings"),
+    ],
+)
+def test_x402_rail_needs_a_complete_configuration(
+    tmp_path: Path, change: Any, problem: str
+) -> None:
+    data = _shipped()
+    change(data["rails"]["x402_usdc_base"])
+    path = _write(tmp_path, data)
+    environ = {
+        "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
+        "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "ab" * 20,
+        **X402_SERVICES,
+    }
+    with pytest.raises(RegistryError, match=re.escape(problem)):
+        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+
+
+@pytest.mark.parametrize("missing", sorted(X402_SERVICES))
+def test_x402_rail_needs_its_facilitator_and_rpc(tmp_path: Path, missing: str) -> None:
+    path = _write(tmp_path, _shipped())
+    environ = {
+        "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
+        "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "ab" * 20,
+        **X402_SERVICES,
+    }
+    environ[missing] = " "
+    with pytest.raises(RegistryError, match=f"{missing} is empty"):
+        load_registry(path, environ=environ, available_adapters=ALL_ADAPTERS)
+
+
+def test_shipped_usdc_rail_names_circles_contract_and_domain() -> None:
+    registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=ALL_ADAPTERS)
+    usdc = registry.rails["x402_usdc_base"]
+    assert usdc.token_contract == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    assert usdc.evm_chain_id == 8453
+    assert usdc.x402 is not None
+    assert (usdc.x402.asset_eip712_name, usdc.x402.asset_eip712_version) == ("USD Coin", "2")
+    assert usdc.confirmation_policy.required_confirmations == 5
 
 
 def test_unapproved_rail_can_never_be_enabled(tmp_path: Path) -> None:

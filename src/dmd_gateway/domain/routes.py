@@ -13,13 +13,16 @@ environment once at startup. A rail is ENABLED only if all of the following hold
   * a payment adapter with its ``adapter`` name is actually implemented.
 
 If a rail is switched on but any of the last six conditions fail, startup fails with a
-``RegistryError`` rather than silently running a half-configured payment rail.
+``RegistryError`` rather than silently running a half-configured payment rail. x402 rails
+must also name the token's EIP-712 domain and have their facilitator and chain RPC
+addresses configured (see ``x402_problems``).
 
 Kill switches fail safe: any value other than empty/0/false/no/off counts as "killed".
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Mapping
 from decimal import Decimal
 from enum import StrEnum
@@ -34,6 +37,15 @@ from dmd_gateway.domain.money import parse_amount
 ENV_NAME = r"^[A-Z][A-Z0-9_]*$"
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"", "0", "false", "no", "off"}
+
+# Networks whose coins have no value. A rail on one of them never runs in production.
+TEST_NETWORKS = frozenset(
+    {"dmd:regtest", "dmd:testnet", "dmd:testnet4", "dmd:signet", "eip155:84532"}
+)
+EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_EVM_NETWORK = re.compile(r"^eip155:([1-9][0-9]{0,18})$")
+# Transfer methods of the x402 "exact" scheme that the gateway implements.
+X402_TRANSFER_METHODS = frozenset({"eip3009"})
 
 
 class RegistryError(RuntimeError):
@@ -105,6 +117,22 @@ class PricePolicy(_Strict):
         return missing
 
 
+class X402Config(_Strict):
+    """What an x402 rail needs beyond the common fields.
+
+    The token's EIP-712 domain (name and version) is part of what the payer signs, so it is
+    kept here under change control with the contract address. The facilitator (verifies and
+    broadcasts payments) and the chain RPC (used to check settlements independently) are
+    deployment addresses read from the environment, since RPC addresses often carry an API
+    key.
+    """
+
+    asset_eip712_name: str = Field(min_length=1, max_length=64)
+    asset_eip712_version: str = Field(min_length=1, max_length=16)
+    facilitator_url_env: str = Field(pattern=ENV_NAME)
+    rpc_url_env: str = Field(pattern=ENV_NAME)
+
+
 class RailConfig(_Strict):
     name: str
     stage: Literal["initial", "future"]
@@ -118,9 +146,26 @@ class RailConfig(_Strict):
     recipient: RecipientConfig
     confirmation_policy: ConfirmationPolicy = ConfirmationPolicy()
     price_policy: PricePolicy = PricePolicy()
+    x402: X402Config | None = None
     wallet_compatibility: tuple[str, ...] = ()
     enable_env: str = Field(pattern=ENV_NAME)
     kill_env: str = Field(pattern=ENV_NAME)
+
+    @property
+    def evm_chain_id(self) -> int | None:
+        match = _EVM_NETWORK.match(self.network)
+        return int(match.group(1)) if match else None
+
+    @property
+    def token_contract(self) -> str | None:
+        """The ERC-20 contract from ``canonical_id`` (``eip155:<chain>/erc20:<address>``)."""
+        if self.evm_chain_id is None or not self.asset.canonical_id:
+            return None
+        prefix = f"{self.network}/erc20:"
+        if not self.asset.canonical_id.startswith(prefix):
+            return None
+        address = self.asset.canonical_id[len(prefix) :]
+        return address if EVM_ADDRESS.match(address) else None
 
 
 class CommercialPrice(_Strict):
@@ -198,6 +243,33 @@ def readiness_problems(
         problems.append(f"receiving address variable {rail.recipient.env} is empty")
     if rail.adapter not in available_adapters:
         problems.append(f"payment adapter {rail.adapter} is not implemented")
+    if rail.protocol == "x402":
+        problems.extend(x402_problems(rail, environ))
+    return problems
+
+
+def x402_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]:
+    """Extra conditions for an x402 rail (EVM "exact" scheme with EIP-3009 tokens)."""
+    problems: list[str] = []
+    if rail.scheme != "exact":
+        problems.append(f"x402 scheme {rail.scheme!r} is not supported (only 'exact')")
+    if (rail.transfer_method or "eip3009") not in X402_TRANSFER_METHODS:
+        problems.append(f"x402 transfer method {rail.transfer_method!r} is not supported")
+    if rail.evm_chain_id is None:
+        problems.append(f"network {rail.network!r} is not an EVM network (eip155:<chain id>)")
+    elif rail.asset.canonical_id and rail.token_contract is None:
+        problems.append(f"asset.canonical_id must be {rail.network}/erc20:<0x contract address>")
+    if rail.confirmation_policy.required_confirmations is None:
+        problems.append("confirmation_policy.required_confirmations is not set")
+    if rail.x402 is None:
+        problems.append("x402 settings (token EIP-712 domain, facilitator, RPC) are missing")
+    else:
+        for name in (rail.x402.facilitator_url_env, rail.x402.rpc_url_env):
+            if not (environ.get(name) or "").strip():
+                problems.append(f"{name} is empty")
+    recipient = (environ.get(rail.recipient.env or "") or "").strip()
+    if recipient and not EVM_ADDRESS.match(recipient):
+        problems.append(f"{rail.recipient.env} is not an EVM address (0x + 40 hex characters)")
     return problems
 
 

@@ -1,7 +1,8 @@
 """Staging-only test tools, so the whole registration can be tried from the API docs page.
 
     POST /v1/staging/test-agent-keys    a throwaway agent key (the agent's own key in production)
-    POST /v1/staging/test-payments      pay a quote with test coins, then mine the confirmations
+    POST /v1/staging/test-payments      pay a quote with test coins (DMD: send and mine the
+                                        confirmations; x402: sign the payment)
     POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key
 
 Only mounted when ``staging_test_tools`` is on, which settings refuse in production. See
@@ -16,28 +17,37 @@ from decimal import Decimal
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from dmd_gateway.adapters.x402 import X402PaymentAdapter
 from dmd_gateway.api.payments import ID_PATTERN as PAYMENT_ID
 from dmd_gateway.api.registrations import CHALLENGE_ID
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import AuditEvent, ControllerChallenge, PaymentIntent
 from dmd_gateway.db.session import transaction
+from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import encode_signature
+from dmd_gateway.services.payment_references import X402_ADAPTER
+from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.services.staging_tools import (
+    BASE_SEPOLIA,
+    BaseSepoliaTestPayer,
     RegtestPayer,
     StagingToolError,
     load_test_agent_key,
     new_test_agent_key,
     public_key_of,
 )
+from dmd_gateway.services.x402_payments import encode_header, payment_terms, resource_info
 
 router = APIRouter(prefix="/v1/staging", tags=["staging"])
 
 TEST_RAIL = "dmd_pow_native"
 TEST_NETWORK = "dmd:regtest"
 PAYMENT_ACTION = "staging.test_payment_sent"
+X402_SIGNED_ACTION = "staging.test_x402_payment_signed"
 
 
 # --------------------------------------------------------------------------- agent key
@@ -85,11 +95,20 @@ class StagingPaymentRequest(BaseModel):
 
 class StagingPaymentResponse(BaseModel):
     payment_intent_id: str
-    transaction_reference: str
     amount: str
     asset: str
     recipient: str
-    blocks_mined: int
+    # DMD quotes: the test coins were sent and confirmed.
+    transaction_reference: str | None = None
+    blocks_mined: int | None = None
+    # x402 quotes: a payment signed by the test wallet; nothing moves until it is used.
+    payment_signature: str | None = Field(
+        default=None,
+        description="x402 quotes: put this in the PAYMENT-SIGNATURE header of "
+        "POST /v1/dids/registrations.",
+    )
+    payer: str | None = None
+    valid_until: datetime | None = None
     next_step: str
 
 
@@ -97,16 +116,20 @@ class StagingPaymentResponse(BaseModel):
     "/test-payments",
     status_code=201,
     response_model=StagingPaymentResponse,
-    summary="Staging only: pay a quote with test coins and mine its confirmations",
+    summary="Staging only: pay a quote with test coins",
     description=(
-        "Stands in for the agent's own DMD wallet. The staging test wallet sends the exact "
-        "quoted amount to the quoted address on the private regtest chain (coins without "
-        "value), then mines the required confirmations. The gateway then verifies the "
-        "payment on chain like any other: check GET /v1/payments/{payment_intent_id}."
+        "Stands in for the agent's own wallet, on test networks whose coins have no value. "
+        "**DMD quotes:** the staging test wallet sends the exact quoted amount to the quoted "
+        "address on the private regtest chain, then mines the required confirmations; the "
+        "gateway then verifies the payment on chain like any other (check "
+        "GET /v1/payments/{payment_intent_id}). **x402 quotes (USDC on Base Sepolia):** the "
+        "staging test wallet signs the x402 payment for the quote and returns it as "
+        "`payment_signature`; send it in the PAYMENT-SIGNATURE header of "
+        "POST /v1/dids/registrations, after proving the controller key."
     ),
     responses={
         404: {"description": "Unknown payment intent."},
-        409: {"description": "Already paid, expired, or not a test-chain quote."},
+        409: {"description": "Already paid, expired, or not a test-network quote."},
         503: {"description": "The test wallet or its node is not available."},
     },
 )
@@ -120,18 +143,13 @@ def create_test_payment(body: StagingPaymentRequest, request: Request) -> Stagin
         ).one_or_none()
         if intent is None:
             raise ApiError(404, "not_found", "Unknown payment intent.")
+        if intent.adapter == X402_ADAPTER:
+            return _sign_x402_test_payment(session, request, intent, now)
         if intent.rail_id != TEST_RAIL or intent.network != TEST_NETWORK:
             raise ApiError(
                 409, "not_a_test_payment", "Only quotes on the DMD regtest chain can be test-paid."
             )
-        if intent.status != PaymentStatus.AWAITING_PAYMENT:
-            raise ApiError(
-                409,
-                "not_awaiting_payment",
-                f"This payment is {intent.status}; only an unpaid quote can be test-paid.",
-            )
-        if intent.quote_expires_at <= now:
-            raise ApiError(409, "quote_expired", "This quote has expired; request a new one.")
+        _check_open(intent, now)
         already = session.scalar(
             select(AuditEvent.id)
             .where(AuditEvent.action == PAYMENT_ACTION, AuditEvent.subject_id == intent.id)
@@ -175,6 +193,69 @@ def create_test_payment(body: StagingPaymentRequest, request: Request) -> Stagin
                 f"{intent.id}: its status becomes settled."
             ),
         )
+
+
+def _check_open(intent: PaymentIntent, now: datetime) -> None:
+    if intent.status != PaymentStatus.AWAITING_PAYMENT:
+        raise ApiError(
+            409,
+            "not_awaiting_payment",
+            f"This payment is {intent.status}; only an unpaid quote can be test-paid.",
+        )
+    if intent.quote_expires_at <= now:
+        raise ApiError(409, "quote_expired", "This quote has expired; request a new one.")
+
+
+def _sign_x402_test_payment(
+    session: Session, request: Request, intent: PaymentIntent, now: datetime
+) -> StagingPaymentResponse:
+    if intent.network != BASE_SEPOLIA:
+        raise ApiError(
+            409, "not_a_test_payment", "Only x402 quotes on Base Sepolia can be test-paid."
+        )
+    _check_open(intent, now)
+    state = request.app.state
+    adapter = state.quote_context.adapters.get(intent.rail_id)
+    if not isinstance(adapter, X402PaymentAdapter):
+        raise ApiError(503, "test_wallet_unavailable", "The x402 payment option is not enabled.")
+    service = state.registry.services[DID_REGISTRATION]
+    resource = resource_info(state.settings.public_base_url, service.path, service.title)
+    requirements, required = payment_terms(
+        adapter, intent, resource, state.settings.public_base_url, now
+    )
+    try:
+        payer = BaseSepoliaTestPayer.from_environ(state.environ)
+        signed = payer.sign(
+            requirements, required["resource"], required["extensions"], int(now.timestamp())
+        )
+    except StagingToolError as exc:
+        raise ApiError(503, "test_wallet_unavailable", str(exc)) from exc
+    record_audit_event(
+        session,
+        action=X402_SIGNED_ACTION,
+        subject_type="payment_intent",
+        subject_id=intent.id,
+        actor_type="system",
+        data={"payer": signed.payer, "valid_before": signed.valid_before},
+    )
+    amount = format_base_units(int(intent.amount_base_units), intent.asset_decimals)
+    valid_until = datetime.fromtimestamp(signed.valid_before, UTC)
+    return StagingPaymentResponse(
+        payment_intent_id=intent.id,
+        amount=amount,
+        asset=intent.asset_symbol,
+        recipient=intent.recipient,
+        payment_signature=encode_header(signed.payment_payload),
+        payer=signed.payer,
+        valid_until=valid_until,
+        next_step=(
+            "Once the controller proof is verified, POST /v1/dids/registrations with "
+            f'{{"registration_intent_id": "{intent.registration_intent_id}"}} and this '
+            "payment_signature in the PAYMENT-SIGNATURE header, before "
+            f"{valid_until:%H:%M:%S} UTC. The payment is settled on Base Sepolia and the DID "
+            "is issued in the same answer."
+        ),
+    )
 
 
 def _payer(request: Request) -> RegtestPayer:

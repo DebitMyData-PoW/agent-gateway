@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from dmd_gateway import __version__
-from dmd_gateway.domain.routes import PaymentRouteRegistry, RailState
+from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 
 router = APIRouter(prefix="/v1", tags=["discovery"])
 
@@ -67,9 +67,13 @@ class PaymentOption(BaseModel):
     id: str
     name: str
     asset: str
+    asset_id: str | None
+    token_contract: str | None
+    decimals: int
     network: str
     payment_protocol: str
     scheme: str | None
+    transfer_method: str | None
     wallet_compatibility: list[str]
     status: RailState
 
@@ -79,6 +83,12 @@ class PaymentOptions(BaseModel):
     commercial_fee: Money
     supported_payment_options: list[PaymentOption]
     notice: str
+
+
+def _transfer_method(rail: RailConfig) -> str | None:
+    if rail.protocol == "x402":
+        return rail.transfer_method or "eip3009"  # the x402 "exact" scheme's default
+    return rail.transfer_method
 
 
 def _registry(request: Request) -> PaymentRouteRegistry:
@@ -175,9 +185,13 @@ def payment_options(
             id=rail_id,
             name=rail.name,
             asset=rail.asset.symbol,
+            asset_id=rail.asset.canonical_id,
+            token_contract=rail.token_contract,
+            decimals=rail.asset.decimals,
             network=rail.network,
             payment_protocol=rail.protocol,
             scheme=rail.scheme,
+            transfer_method=_transfer_method(rail),
             wallet_compatibility=list(rail.wallet_compatibility),
             status=RailState.ENABLED,
         )

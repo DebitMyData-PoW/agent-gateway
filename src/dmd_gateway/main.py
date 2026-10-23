@@ -138,8 +138,8 @@ def _openapi_tags(settings: Settings) -> list[dict[str, str]]:
         {
             "name": "staging",
             "description": "Staging only: test tools that stand in for an agent's own key and "
-            "DMD wallet, on a private test chain whose coins have no value. Not available in "
-            "production.",
+            "wallet, on test networks whose coins have no value (a private DMD chain, and Base "
+            "Sepolia for USDC). Not available in production.",
         },
         {
             "name": "registration",
@@ -240,6 +240,13 @@ def _add_try_it_guide(app: FastAPI) -> None:
             f"{len(TRY_IT_STEPS)} in your browser.",
             "",
             "Do step 3 within 15 minutes of step 2, and steps 5 to 7 within 5 minutes.",
+            "",
+            "**Paying with USDC through x402 (Base Sepolia test USDC) instead:** in step 2 "
+            'use `"preferred_payment_option": "x402_usdc_base"`, skip steps 3 and 4, and do '
+            "steps 5 to 7 first. Then call step 3 with your `payment_intent_id`: the test "
+            "wallet signs the payment and returns `payment_signature`. Paste it into the "
+            "`PAYMENT-SIGNATURE` field of step 8 (within 5 minutes): the payment is settled "
+            "on Base Sepolia, checked on chain, and the DID is issued in the same answer.",
         ]
         schema["info"]["description"] += "\n\n" + "\n".join(lines)
         return schema

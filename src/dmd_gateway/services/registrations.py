@@ -52,6 +52,9 @@ from dmd_gateway.services.controller_proofs import verified_proof
 
 DID_HOLDER = "dmd_did_holder"
 INVALID_REGISTRATION_STATUSES = frozenset({"expired", "rejected", "cancelled"})
+# x402: once the controller is proven, POST /v1/dids/registrations answers with HTTP 402
+# and the agent pays there (the payment is settled and checked before the DID is issued).
+X402_PAY_ACTION = "register_did_with_x402_payment"
 
 
 @dataclass(frozen=True)
@@ -84,7 +87,7 @@ class RegistrationState:
         return ControllerProofStatus.VERIFIED if self.proof else ControllerProofStatus.PENDING
 
 
-def _payment_for(
+def payment_for(
     session: Session, registration_intent_id: str, *, lock: bool
 ) -> PaymentIntent | None:
     query = (
@@ -101,7 +104,7 @@ def _payment_for(
 def evaluate(
     session: Session, ctx: IssuanceContext, registration: RegistrationIntent
 ) -> RegistrationState:
-    payment = _payment_for(session, registration.id, lock=False)
+    payment = payment_for(session, registration.id, lock=False)
     identity = session.scalars(
         select(AgentIdentity).where(AgentIdentity.registration_intent_id == registration.id)
     ).first()
@@ -148,15 +151,26 @@ def evaluate(
         state.blockers = [
             b for b in blockers if not b.startswith("policy, risk or compliance")
         ] + policy_failures
-    state.next_action = _next_action(state, policy_failures)
+    x402 = payment is not None and is_x402_rail(ctx.registry, payment.rail_id)
+    state.next_action = _next_action(state, policy_failures, x402=x402)
     return state
 
 
-def _next_action(state: RegistrationState, policy_failures: list[str]) -> str:
+def is_x402_rail(registry: PaymentRouteRegistry, rail_id: str) -> bool:
+    rail = registry.rails.get(rail_id)
+    return rail is not None and rail.protocol == "x402"
+
+
+def _next_action(state: RegistrationState, policy_failures: list[str], *, x402: bool) -> str:
     if state.identity is not None:
         return "none"
     if state.registration.status in INVALID_REGISTRATION_STATUSES:
         return "request_new_quote"
+    if x402 and state.payment_status is PaymentStatus.AWAITING_PAYMENT:
+        # Paying comes last on x402, so nothing is charged for a DID that cannot be issued.
+        if state.proof is None:
+            return "prove_wallet_control"
+        return "contact_support" if policy_failures else X402_PAY_ACTION
     if state.payment_status is not PaymentStatus.SETTLED:
         return NEXT_ACTIONS[state.payment_status]
     if state.proof is None:
@@ -178,7 +192,7 @@ def complete_registration(
     session: Session, ctx: IssuanceContext, registration_intent_id: str, now: datetime
 ) -> IssuedIdentity:
     # Lock order matches the payment worker: payment intent first, then the registration.
-    _payment_for(session, registration_intent_id, lock=True)
+    payment_for(session, registration_intent_id, lock=True)
     registration = session.get(RegistrationIntent, registration_intent_id, with_for_update=True)
     if registration is None:
         raise ApiError(404, "not_found", "Unknown registration intent.")

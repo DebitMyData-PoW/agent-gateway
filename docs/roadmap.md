@@ -119,10 +119,34 @@ place; the application logic comes with the related phase.
 
 ## Phase 7 – x402 / USDC on Base
 
-- [ ] X402-01 … X402-11 Re-verify current x402/Bazaar specifications, adapter, canonical
-  USDC contract, merchant address from configuration, HTTP 402 flow, settlement
-  verification, idempotent fulfilment, Bazaar metadata for enabled routes only, low-value
-  production validation, independent kill switch
+- [x] X402-01 Specifications re-checked: x402 protocol version 2 (`PAYMENT-REQUIRED`,
+  `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE` headers, CAIP-2 networks), scheme `exact` with
+  EIP-3009, facilitator `/verify` `/settle` `/supported`, `bazaar` extension, MCP transport
+- [x] X402-02 `X402PaymentAdapter` behind the common interface; read-only Base RPC client
+  (method allowlist) and facilitator client
+- [x] X402-03 Canonical USDC contracts from Circle: Base `0x833589fC…02913` (EIP-712
+  "USD Coin", "2"), Base Sepolia `0x036CbD53…F7e` ("USDC", "2")
+- [x] X402-04 Receiving address from configuration (`DMD_USDC_BASE_MERCHANT_ADDRESS`), stored
+  with each quote
+- [x] X402-05 HTTP 402 on `POST /v1/dids/registrations`; payment asked for only once the
+  controller is proven and issuance is possible
+- [x] X402-06 Payment checked against the quote (amount, recipient, asset, network, validity
+  window) before the facilitator; facilitator verify, then settle
+- [x] X402-07 Settlement checked on chain by the gateway itself: successful transaction, the
+  token's `AuthorizationUsed` for exactly the payer and nonce received, the `Transfer` to the
+  receiving address, block still in the chain, confirmations (DEC-16); a lost facilitator
+  answer is recovered from the chain
+- [x] X402-08 Idempotent fulfilment: one live authorization per intent, an authorization
+  never counts for two intents, a settled payment is never charged again, 202 while confirming
+- [x] X402-09 Bazaar description (`bazaar` extension and service metadata) in the 402 of the
+  enabled route only; MCP payments (`dmd_register_did` with `x402_payment` or
+  `_meta["x402/payment"]`)
+- [ ] X402-10 Low-value production validation on Base mainnet (needs DEC-08)
+- [x] X402-11 Independent kill switch (`DMD_RAIL_X402_USDC_BASE_KILL`); test networks refused
+  in production
+- [x] Staging on Base Sepolia, with a test wallet that signs x402 payments from the docs page
+- [ ] Authentication for a production facilitator that requires it (for example Coinbase
+  CDP API keys), once DEC-08 names the facilitator
 
 ## Phases 8–13
 
@@ -142,7 +166,8 @@ and can be changed later.
 - [x] DEC-05 Public identity syntax: `did:web` hosted by the gateway; `did:dmd` only once a method specification is published
 - [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody stays open (ID-15)
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
-- [ ] DEC-08 Base/USDC receiving account and x402 facilitator
+- [ ] DEC-08 Base/USDC receiving account and production x402 facilitator (staging uses the
+  public x402.org test facilitator)
 - [ ] DEC-09 Policy URLs and version owners
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds
@@ -150,3 +175,5 @@ and can be changed later.
 - [ ] DEC-13 Hosting topology and secret management
 - [ ] DEC-14 Database backup and retention policy
 - [ ] DEC-15 Which EVM/Solana assets enter the next phase
+- [x] DEC-16 x402 confirmations before a USDC payment counts: 5 Base blocks (about 10
+  seconds); 2 on Base Sepolia
