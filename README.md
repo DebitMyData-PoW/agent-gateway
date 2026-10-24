@@ -1,8 +1,7 @@
 # DebitMyData Agent Gateway
 
 > **Status: in development.** Nothing accepts real payments yet and every payment rail is
-> switched off by default. The full flow runs on test networks (a private DMD regtest chain,
-> and Base Sepolia for USDC through x402). See [Status](#status).
+> switched off by default. The full flow runs on a private regtest chain. See [Status](#status).
 
 The Agent Gateway is being built as the public integration surface that will let autonomous
 agents, bots, digital twins, people and organizations **discover DebitMyData, get a quote,
@@ -31,10 +30,9 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.7.1`). The whole registration flow (quote,
-payment, controller proof, DID and signed credential) works end to end on test networks,
-through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
-through x402 (Base Sepolia); nothing accepts real payments yet:
+This is an early development release (`0.5.0`). The whole registration flow (quote, native
+DMD payment, controller proof, DID and signed credential) works end to end on a private
+regtest chain, through REST and through MCP; nothing accepts real payments yet:
 
 | Area | State |
 | --- | --- |
@@ -50,17 +48,12 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Controller proof: one-time challenges signed with the agent's Ed25519 key | done |
 | DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
-| Staging server behind Cloudflare; the whole flow can be tried from its `/docs` page (staging-only test tools) | done |
-| x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia; mainnet needs the receiving address and a production facilitator) |
-| Wallet-control proofs (EVM, smart wallets), controller rotation and revocation | next |
+| x402 / USDC, wallet-control proofs, controller rotation and revocation, staging deployment | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it still
-needs an approved DMD/USD price source. The x402 USDC rail runs on Base Sepolia on staging; on
-Base mainnet it needs DebitMyData's receiving address and a production facilitator. A staging server with the full flow on a private
-regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
-from its [docs page](https://staging-api.debitmydata.io/docs) (see [docs/staging.md](docs/staging.md)).
-See [docs/roadmap.md](docs/roadmap.md) for the task list and decisions.
+needs an approved DMD/USD price source. See [docs/roadmap.md](docs/roadmap.md) for the task
+list and decisions.
 
 ## Quick start
 
@@ -123,11 +116,11 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | --- | --- |
 | Discover the offer and enabled payment options | `GET /v1/discovery`, `GET /v1/payment-options` |
 | Get a quote (fixed 25.00 USD, exact amount in the chosen asset) | `POST /v1/dids/registration-quotes` |
-| Pay (DMD), then follow the payment | `GET /v1/payments/{payment_intent_id}` |
+| Pay, then follow the payment | `GET /v1/payments/{payment_intent_id}` |
 | Get a one-time message to sign with the controller key | `POST /v1/dids/registrations/{registration_intent_id}/controller-challenges` |
 | Send the signature | `POST /v1/dids/registrations/{registration_intent_id}/controller-proofs` |
 | See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
-| Receive the DID, signed credential and entitlements (x402: pay here, see below) | `POST /v1/dids/registrations` |
+| Receive the DID, signed credential and entitlements | `POST /v1/dids/registrations` |
 | Optionally report the payment transaction (a hint only) | `POST /v1/payments/{payment_intent_id}/references` |
 | Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` |
 | Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
@@ -138,19 +131,6 @@ The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_disc
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase` and `dmd_marketplace_provider_requirements`. Each
 tool calls the REST API above in-process, so both give the same results and error codes.
-
-**Paying with x402 (USDC on Base).** Quote with `"preferred_payment_option":
-"x402_usdc_base"`, prove the controller key, then call `POST /v1/dids/registrations`. It
-answers `402` with a `PAYMENT-REQUIRED` header (x402 version 2, scheme `exact`: the quoted
-amount in USDC base units, the USDC contract, the network and DebitMyData's receiving
-address, plus a Bazaar discovery description). Call it again with the signed payment in the
-`PAYMENT-SIGNATURE` header: the gateway checks it against the quote, the facilitator verifies
-and settles it, the gateway checks the settlement on chain itself, and the DID comes back in
-the same answer with a `PAYMENT-RESPONSE` header (or `202` if the confirmations take longer;
-then call again without paying). Payment is asked for only once everything else is ready, so
-an agent is never charged for a DID that cannot be issued. Any standard x402 client can pay
-it; through MCP, `dmd_register_did` returns the payment requirements and takes the payment in
-`x402_payment` or `_meta["x402/payment"]`.
 
 DID issuance needs a credential signing key (`DMD_GW_ISSUER_KEY_PATH`, created with
 `dmd-gateway-issuer-key secrets/issuer-key.pem`). Without it, everything else works and the
@@ -195,14 +175,9 @@ how an agent may pay. A rail is enabled only when **all** of these hold:
 5. for non-USD assets, the price policy is complete (approved source, maximum price age,
    permitted price deviation and fallback) and its price sources are implemented;
 6. its receiving destination is configured;
-7. its payment adapter is implemented;
-8. x402 rails only: the `exact` scheme with EIP-3009 transfers, the token's EIP-712 domain,
-   a confirmation count, and their facilitator and chain RPC addresses
-   (`DMD_X402_FACILITATOR_URL`, `DMD_BASE_RPC_URL`).
+7. its payment adapter is implemented.
 
-Rails on test networks (DMD regtest/testnets, Base Sepolia) are refused in production.
-
-If a rail is switched on while 3–8 are not met, the gateway **refuses to start** instead of
+If a rail is switched on while 3–7 are not met, the gateway **refuses to start** instead of
 running a half-configured rail. Kill switches fail safe: any unrecognised value counts as
 "killed". Kill switches are read at startup, so flipping one takes effect on restart.
 `/v1/payment-options` lists only enabled rails, so the API never advertises a payment method
@@ -226,8 +201,7 @@ once safely. To try the whole flow on a private chain, from quote to DID, follow
 
 ```
 config/payment_routes.yaml   payment rails, services, commercial price (no secrets)
-config/payment_routes.regtest.yaml   the same, on test networks (DMD regtest, Base Sepolia)
-deploy/staging/              staging server setup (nginx, systemd services, Cloudflare-only firewall)
+config/payment_routes.regtest.yaml   the same, with the DMD rail on a private regtest chain
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
@@ -239,11 +213,9 @@ src/dmd_gateway/
   observability.py           JSON logging, correlation IDs
   audit.py                   append-only audit helper
   api/                       HTTP routes
-  adapters/                  payment adapters (native DMD, x402 USDC), restricted RPC clients,
-                             x402 facilitator client
+  adapters/                  payment adapters (native DMD) and the restricted DMD RPC client
   pricing/                   price-source rules (approved sources only)
-  services/                  quotes, settlement, payment references, controller proofs,
-                             registrations, x402 payments, staging test tools
+  services/                  quotes, settlement, payment references, controller proofs, registrations
   db/                        SQLAlchemy models and session handling
   domain/                    money, ids, payment states, settlement rules, issuance rule, registry
 scripts/demo_agent.py        agent side for demos: key, signature, credential check, MCP client

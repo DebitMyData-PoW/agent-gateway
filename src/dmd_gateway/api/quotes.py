@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Header, Request
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
 from dmd_gateway.db.session import transaction
@@ -23,29 +23,6 @@ router = APIRouter(prefix="/v1", tags=["registration"])
 
 IDEMPOTENCY_SCOPE = "dids.registration_quotes"
 
-_KEY = "ed25519:z6Mk<your agent public key>"
-# The two ways to pay, offered as ready-made bodies in the docs page's "Examples" list.
-EXAMPLES = {
-    "dmd": {
-        "summary": "Pay in DMD (native DebitMyData PoW)",
-        "value": {
-            "controller_public_key": _KEY,
-            "display_name": "TestAgent-01",
-            "participant_type": "autonomous_agent",
-            "preferred_payment_option": "dmd_pow_native",
-        },
-    },
-    "x402": {
-        "summary": "Pay in USDC through x402 (Base)",
-        "value": {
-            "controller_public_key": _KEY,
-            "display_name": "TestAgent-01",
-            "participant_type": "autonomous_agent",
-            "preferred_payment_option": "x402_usdc_base",
-        },
-    },
-}
-
 _ERRORS = {
     409: {"description": "The chosen payment option is not currently available."},
     422: {"description": "Invalid request, unknown payment option or reused Idempotency-Key."},
@@ -61,7 +38,7 @@ _ERRORS = {
     responses={**_ERRORS},
 )
 def create_quote(
-    body: Annotated[QuoteRequest, Body(openapi_examples=EXAMPLES)],
+    body: QuoteRequest,
     request: Request,
     idempotency_key: Annotated[
         str | None,
