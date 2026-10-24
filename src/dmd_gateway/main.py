@@ -168,8 +168,8 @@ TRY_IT_STEPS = [
         "post",
         "/v1/dids/registration-quotes",
         "/v1/dids/registration-quotes",
-        "put your `controller_public_key` in the body. Keep `registration_intent_id` and "
-        "`payment_intent_id`.",
+        "in the body, replace `ed25519:z6Mk<your agent public key>` with your "
+        "`controller_public_key`. Keep `registration_intent_id` and `payment_intent_id`.",
     ),
     (
         "post",
@@ -241,9 +241,10 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "",
             "Do step 3 within 15 minutes of step 2, and steps 5 to 7 within 5 minutes.",
             "",
-            "**Paying with USDC through x402 (Base Sepolia test USDC) instead:** in step 2 "
-            'use `"preferred_payment_option": "x402_usdc_base"`, skip steps 3 and 4, and do '
-            "steps 5 to 7 first. Then call step 3 with your `payment_intent_id`: the test "
+            "**Paying with USDC through x402 (Base Sepolia test USDC) instead:** in step 2, "
+            'pick **Pay in USDC through x402** in the Examples list (or set `"preferred_payment_'
+            'option": "x402_usdc_base"`), skip steps 3 and 4, and do steps 5 to 7 first. '
+            "Then call step 3 with your `payment_intent_id`: the test "
             "wallet signs the payment and returns `payment_signature`. Paste it into the "
             "`PAYMENT-SIGNATURE` field of step 8 (within 5 minutes): the payment is settled "
             "on Base Sepolia, checked on chain, and the DID is issued in the same answer.",

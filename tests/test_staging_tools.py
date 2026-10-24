@@ -102,6 +102,9 @@ def test_docs_pages_carry_the_dmd_favicon(client: TestClient) -> None:
     assert 'href="/favicon.png"' in docs.text
     assert '"tryItOutEnabled": true' in docs.text
     assert '"deepLinking": true' in docs.text
+    # Links to a section of the page open it in place, not in a new tab.
+    assert "dmdOpenSection" in docs.text
+    assert docs.text.index("dmdOpenSection") > docs.text.index("SwaggerUIBundle")
     redoc = client.get("/redoc")
     assert redoc.status_code == 200
     assert 'href="/favicon.png"' in redoc.text
@@ -128,6 +131,14 @@ def test_docs_page_guide_links_to_each_endpoint(staging_client: TestClient) -> N
     linked = [operations[link] for link in links]  # every link names a real operation
     assert linked[0] == KEYS and linked[2] == PAYMENTS and linked[5] == SIGNATURES
     assert linked[7] == "/v1/dids/registrations"
+
+
+def test_quote_offers_one_example_per_way_to_pay(staging_client: TestClient) -> None:
+    schema = staging_client.get("/openapi.json").json()
+    body = schema["paths"]["/v1/dids/registration-quotes"]["post"]["requestBody"]
+    examples = body["content"]["application/json"]["examples"]
+    options = [example["value"]["preferred_payment_option"] for example in examples.values()]
+    assert options == ["dmd_pow_native", "x402_usdc_base"]
 
 
 def test_throwaway_keys_round_trip(staging_client: TestClient) -> None:
