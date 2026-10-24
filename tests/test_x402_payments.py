@@ -587,6 +587,18 @@ async def test_paying_through_mcp(registry: Path, engine: Engine, way: str) -> N
 # --------------------------------------------------------------------------- staging
 
 
+def sepolia_registry(registry: Path, directory: Path) -> Path:
+    """The registry with USDC on Base Sepolia, the network the staging test wallet uses."""
+    data = yaml.safe_load(registry.read_text(encoding="utf-8"))
+    usdc = data["rails"]["x402_usdc_base"]
+    usdc["network"] = "eip155:84532"
+    usdc["asset"]["canonical_id"] = f"eip155:84532/erc20:{TOKEN}"
+    path = directory / "sepolia.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    CHAIN.chain_id = 84532
+    return path
+
+
 def test_staging_test_payer_signs_payments_the_registration_accepts(
     registry: Path, engine: Engine, tmp_path: Path
 ) -> None:
@@ -603,15 +615,9 @@ def test_staging_test_payer_signs_payments_the_registration_accepts(
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "not_a_test_payment"
 
-    data = yaml.safe_load(registry.read_text(encoding="utf-8"))
-    usdc = data["rails"]["x402_usdc_base"]
-    usdc["network"] = "eip155:84532"
-    usdc["asset"]["canonical_id"] = f"eip155:84532/erc20:{TOKEN}"
-    sepolia = tmp_path / "sepolia.yaml"
-    sepolia.write_text(yaml.safe_dump(data), encoding="utf-8")
-    CHAIN.chain_id = 84532
-
-    app = make_app(sepolia, engine, environ=environ, staging_test_tools=True)
+    app = make_app(
+        sepolia_registry(registry, tmp_path), engine, environ=environ, staging_test_tools=True
+    )
     with TestClient(app) as client:
         q, required = ready(client)
         response = client.post(
@@ -670,3 +676,63 @@ def test_refused_payments_are_limited_per_quote(client: TestClient, engine: Engi
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "too_many_payment_attempts"
     assert len(FACILITATOR.verify_calls) == 10
+
+
+def test_usdc_registration_from_the_docs_page_forms(
+    registry: Path, engine: Engine, tmp_path: Path
+) -> None:
+    """The docs-page order for USDC (2, 5, 6, 7, 3, 8), every body sent as the page's form,
+    with the two signatures first swapped: each refusal says where the other one goes."""
+    payer = TestPayer()
+    environ = {**ENVIRON, "DMD_STAGING_BASE_PAYER_KEY": payer.account.key.hex()}
+    app = make_app(
+        sepolia_registry(registry, tmp_path), engine, environ=environ, staging_test_tools=True
+    )
+    with TestClient(app) as client:
+        schema = client.get("/openapi.json").json()
+        content = schema["paths"][QUOTES]["post"]["requestBody"]["content"]
+        fields = content["application/x-www-form-urlencoded"]["schema"]["properties"]
+        assert fields["preferred_payment_option"]["enum"] == ["dmd_pow_native", "x402_usdc_base"]
+
+        key = client.post("/v1/staging/test-agent-keys").json()
+        q = client.post(
+            QUOTES,
+            data={
+                "display_name": "FormAgent-01",
+                "participant_type": "autonomous_agent",
+                "controller_public_key": key["controller_public_key"],
+                "preferred_payment_option": "x402_usdc_base",
+            },
+        )
+        assert q.status_code == 201, q.text
+        rid, pid = q.json()["registration_intent_id"], q.json()["payment_intent_id"]
+        challenge = client.post(
+            f"{REGISTER}/{rid}/controller-challenges", data={"controller_type": "ed25519"}
+        )
+        assert challenge.status_code == 201, challenge.text
+        cid = challenge.json()["challenge_id"]
+        signed = client.post(
+            "/v1/staging/test-signatures",
+            data={"challenge_id": cid, "private_key": key["private_key"]},
+        ).json()
+        paid = client.post("/v1/staging/test-payments", data={"payment_intent_id": pid})
+        assert paid.status_code == 201, paid.text
+        payment = paid.json()["payment_signature"]
+
+        proofs = f"{REGISTER}/{rid}/controller-proofs"
+        swapped = client.post(proofs, data={"challenge_id": cid, "signature": payment})
+        assert swapped.status_code == 422
+        assert "PAYMENT-SIGNATURE header" in swapped.json()["detail"][0]["msg"]
+        proof = client.post(proofs, data={"challenge_id": cid, "signature": signed["signature"]})
+        assert proof.status_code == 201, proof.text
+
+        form = {"registration_intent_id": rid}
+        swapped = client.post(
+            REGISTER, data=form, headers={"PAYMENT-SIGNATURE": signed["signature"]}
+        )
+        assert swapped.status_code == 400
+        assert "controller-proof signature" in swapped.json()["error"]["message"]
+        issued = client.post(REGISTER, data=form, headers={"PAYMENT-SIGNATURE": payment})
+    assert issued.status_code == 201, issued.text
+    assert issued.json()["identity_id"]
+    assert decode(issued.headers["PAYMENT-RESPONSE"])["success"] is True

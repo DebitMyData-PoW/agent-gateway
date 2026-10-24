@@ -102,9 +102,6 @@ def test_docs_pages_carry_the_dmd_favicon(client: TestClient) -> None:
     assert 'href="/favicon.png"' in docs.text
     assert '"tryItOutEnabled": true' in docs.text
     assert '"deepLinking": true' in docs.text
-    # Links to a section of the page open it in place, not in a new tab.
-    assert "dmdOpenSection" in docs.text
-    assert docs.text.index("dmdOpenSection") > docs.text.index("SwaggerUIBundle")
     redoc = client.get("/redoc")
     assert redoc.status_code == 200
     assert 'href="/favicon.png"' in redoc.text
@@ -139,6 +136,77 @@ def test_quote_offers_one_example_per_way_to_pay(staging_client: TestClient) -> 
     examples = body["content"]["application/json"]["examples"]
     options = [example["value"]["preferred_payment_option"] for example in examples.values()]
     assert options == ["dmd_pow_native", "x402_usdc_base"]
+
+
+FORM = "application/x-www-form-urlencoded"
+
+
+def test_docs_page_shows_request_bodies_as_fields(staging_client: TestClient) -> None:
+    schema = staging_client.get("/openapi.json").json()
+    for path, item in schema["paths"].items():
+        for operation in item.values():
+            content = operation.get("requestBody", {}).get("content", {})
+            if path.startswith("/v1/") and "application/json" in content:
+                # The form comes first, so the docs page opens with it; JSON stays listed.
+                assert list(content)[0] == FORM, path
+            else:
+                assert FORM not in content, path
+    body = schema["paths"]["/v1/dids/registration-quotes"]["post"]["requestBody"]["content"]
+    fields = body[FORM]["schema"]
+    assert set(fields["properties"]) == {
+        "display_name",
+        "participant_type",
+        "controller_public_key",
+        "preferred_payment_option",
+    }
+    assert fields["required"] == [
+        "display_name",
+        "participant_type",
+        "controller_public_key",
+        "preferred_payment_option",
+    ]
+    assert fields["properties"]["display_name"]["default"] == "TestAgent-01"
+    # Fields to paste into start empty, never with a made-up value matching their pattern.
+    assert fields["properties"]["controller_public_key"]["example"] == ""
+    assert fields["properties"]["participant_type"]["description"].startswith("What kind")
+    assert "autonomous_agent" in fields["properties"]["participant_type"]["enum"]
+    assert "examples" in body["application/json"]
+
+
+def test_forms_are_turned_into_the_same_json(staging_client: TestClient) -> None:
+    def post(content: str) -> httpx.Response:
+        return staging_client.post(PAYMENTS, content=content, headers={"Content-Type": FORM})
+
+    # An empty field is not sent at all: "required", not "wrong format".
+    missing = post("payment_intent_id=")
+    assert missing.status_code == 422
+    assert missing.json()["detail"][0]["type"] == "missing"
+    twice = post(f"payment_intent_id={PAYMENT_ID}&payment_intent_id={PAYMENT_ID}")
+    assert (twice.status_code, twice.json()["error"]["code"]) == (422, "invalid_form")
+    assert post("a=" + "x" * 20_000).status_code == 413
+
+
+def test_forms_are_json_only_outside_staging(client: TestClient) -> None:
+    schema = client.get("/openapi.json").json()
+    assert FORM not in json.dumps(schema)
+    response = client.post(
+        "/v1/dids/registration-quotes",
+        content="display_name=Agent&participant_type=autonomous_agent",
+        headers={"Content-Type": FORM},
+    )
+    assert response.status_code == 422
+
+
+def test_a_payment_sent_as_the_controller_signature_says_where_it_goes(
+    staging_client: TestClient,
+) -> None:
+    rid = "dmd_did_intent_" + "0" * 26
+    response = staging_client.post(
+        f"/v1/dids/registrations/{rid}/controller-proofs",
+        json={"challenge_id": CHALLENGE_ID, "signature": "eyJ4NDAyVmVyc2lvbiI6Mn0" * 10},
+    )
+    assert response.status_code == 422
+    assert "PAYMENT-SIGNATURE header" in response.json()["detail"][0]["msg"]
 
 
 def test_throwaway_keys_round_trip(staging_client: TestClient) -> None:
@@ -272,12 +340,22 @@ def regtest_registry(ready_registry: Path, tmp_path: Path) -> Path:  # noqa: F81
 class ScriptedPayer:
     """Pays on the scripted chain: the fake DMD adapter then sees the payment."""
 
-    def __init__(self) -> None:
+    def __init__(self, txid: str = "cd" * 32) -> None:
+        self.txid = txid
         self.paid: list[tuple[str, Decimal, int]] = []
 
     def pay(self, address: str, amount: Decimal, confirmations: int) -> StagingPayment:
         self.paid.append((address, amount, confirmations))
-        return StagingPayment("cd" * 32, confirmations, topped_up=False)
+        return StagingPayment(self.txid, confirmations, topped_up=False)
+
+
+def send(
+    client: TestClient, url: str, fields: dict[str, str], *, form: bool, **kwargs: Any
+) -> httpx.Response:
+    """POST as an agent does (JSON) or as the staging docs page does (a form)."""
+    if form:
+        return client.post(url, data=fields, **kwargs)
+    return client.post(url, json=fields, **kwargs)
 
 
 def tick(app: FastAPI) -> None:
@@ -286,8 +364,9 @@ def tick(app: FastAPI) -> None:
 
 
 @needs_db
+@pytest.mark.parametrize("form", [False, True], ids=["json", "form"])
 def test_whole_registration_from_the_docs_page_endpoints(
-    regtest_registry: Path, engine: Engine
+    regtest_registry: Path, engine: Engine, form: bool
 ) -> None:
     SCRIPTED.reset()
     issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did("http://localhost:8000"))
@@ -299,27 +378,43 @@ def test_whole_registration_from_the_docs_page_endpoints(
         price_sources={PRICE_SOURCE: fixed_price_factory(PRICE_SOURCE, "1.00")},
         issuer_key=issuer,
     )
-    payer = ScriptedPayer()
+    txid = ("ce" if form else "cd") * 32  # one transaction can only ever pay one quote
+    payer = ScriptedPayer(txid)
     app.state.staging_payer = payer
     client = TestClient(app)
 
+    # The docs page lists the enabled payment options to pick from.
+    schema = client.get("/openapi.json").json()
+    body = schema["paths"]["/v1/dids/registration-quotes"]["post"]["requestBody"]["content"]
+    options = body["application/x-www-form-urlencoded"]["schema"]["properties"]
+    assert options["preferred_payment_option"]["enum"] == ["dmd_pow_native"]
+
     # 1. A throwaway agent key, 2. a quote for it.
     key = client.post(KEYS).json()
-    quote = client.post(
-        "/v1/dids/registration-quotes",
-        json={
-            "display_name": "DocsPageAgent-01",
-            "participant_type": "autonomous_agent",
-            "controller_public_key": key["controller_public_key"],
-            "preferred_payment_option": "dmd_pow_native",
-        },
-    )
+    fields = {
+        "display_name": "DocsPageAgent-01",
+        "participant_type": "autonomous_agent",
+        "controller_public_key": key["controller_public_key"],
+        "preferred_payment_option": "dmd_pow_native",
+    }
+    if form:
+        fields["controller_wallet_address"] = ""  # a field left empty counts as not sent
+    quote = send(client, "/v1/dids/registration-quotes", fields, form=form)
     assert quote.status_code == 201, quote.text
     rid, pid = quote.json()["registration_intent_id"], quote.json()["payment_intent_id"]
     option = quote.json()["selected_payment_option"]
 
+    # The registration ID with its start changed: the answer names the right payment ID.
+    lookalike = "dmd_payment_intent_" + rid.removeprefix("dmd_did_intent_")
+    for wrong in (
+        send(client, PAYMENTS, {"payment_intent_id": lookalike}, form=form),
+        client.get(f"/v1/payments/{lookalike}"),
+    ):
+        assert wrong.status_code == 404
+        assert f"the payment_intent_id of that quote is {pid}" in wrong.json()["error"]["message"]
+
     # 3. Test payment: the exact quoted amount to the quoted address, once only.
-    paid = client.post(PAYMENTS, json={"payment_intent_id": pid})
+    paid = send(client, PAYMENTS, {"payment_intent_id": pid}, form=form)
     assert paid.status_code == 201, paid.text
     assert paid.json()["amount"] == option["amount"] == "25.00000000"
     assert payer.paid == [(option["recipient"], Decimal("25.00000000"), 6)]
@@ -328,13 +423,15 @@ def test_whole_registration_from_the_docs_page_endpoints(
     assert len(payer.paid) == 1
     with session_factory(engine)() as session:
         event = session.scalars(
-            select(AuditEvent).where(AuditEvent.action == "staging.test_payment_sent")
+            select(AuditEvent).where(
+                AuditEvent.action == "staging.test_payment_sent", AuditEvent.subject_id == pid
+            )
         ).one()
     assert event.subject_id == pid
-    assert event.data["transaction_reference"] == "cd" * 32
+    assert event.data["transaction_reference"] == txid
 
     # The chain sees it; the worker settles it (4.).
-    SCRIPTED.pay(pid, int(option["amount_base_units"]), txid="cd" * 32)
+    SCRIPTED.pay(pid, int(option["amount_base_units"]), txid=txid)
     SCRIPTED.confirm(pid, 6)
     tick(app)
     assert client.get(f"/v1/payments/{pid}").json()["status"] == "settled"
@@ -342,24 +439,35 @@ def test_whole_registration_from_the_docs_page_endpoints(
     assert settled.json()["error"]["code"] == "not_awaiting_payment"
 
     # 5. Challenge, 6. a signature with the wrong key, then the right one, 7. the proof.
-    challenge = client.post(f"/v1/dids/registrations/{rid}/controller-challenges").json()
-    wrong = client.post(
+    challenge = send(
+        client,
+        f"/v1/dids/registrations/{rid}/controller-challenges",
+        {"controller_type": "ed25519"},
+        form=form,
+    ).json()
+    wrong = send(
+        client,
         SIGNATURES,
-        json={
+        {
             "challenge_id": challenge["challenge_id"],
             "private_key": new_test_agent_key().private_key,
         },
+        form=form,
     )
     assert wrong.json()["matches_controller"] is False
-    signed = client.post(
+    signed = send(
+        client,
         SIGNATURES,
-        json={"challenge_id": challenge["challenge_id"], "private_key": key["private_key"]},
+        {"challenge_id": challenge["challenge_id"], "private_key": key["private_key"]},
+        form=form,
     )
     assert signed.status_code == 200, signed.text
     assert signed.json()["matches_controller"] is True
-    proof = client.post(
+    proof = send(
+        client,
         f"/v1/dids/registrations/{rid}/controller-proofs",
-        json={"challenge_id": challenge["challenge_id"], "signature": signed.json()["signature"]},
+        {"challenge_id": challenge["challenge_id"], "signature": signed.json()["signature"]},
+        form=form,
     )
     assert proof.status_code == 201, proof.text
     assert proof.json()["status"] == "verified"
@@ -370,7 +478,7 @@ def test_whole_registration_from_the_docs_page_endpoints(
     assert used.json()["error"]["code"] == "challenge_closed"
 
     # 8. The DID.
-    issued = client.post("/v1/dids/registrations", json={"registration_intent_id": rid})
+    issued = send(client, "/v1/dids/registrations", {"registration_intent_id": rid}, form=form)
     assert issued.status_code == 201, issued.text
     assert issued.json()["entitlements"] == ["dmd_did_holder"]
     assert verify_proof(issued.json()["credential"], issuer.public_key_multibase)

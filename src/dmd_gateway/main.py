@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
@@ -27,6 +28,7 @@ from dmd_gateway.api import (
     registrations,
     staging,
 )
+from dmd_gateway.api.form_bodies import FormBodyMiddleware, FormHints, add_form_bodies
 from dmd_gateway.db.session import build_engine, session_factory
 from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
@@ -35,7 +37,7 @@ from dmd_gateway.identity.issuer import IssuerKey, load_issuer_key
 from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
-from dmd_gateway.services.quotes import QuoteContext
+from dmd_gateway.services.quotes import DID_REGISTRATION, QuoteContext
 from dmd_gateway.services.registrations import IssuanceContext
 from dmd_gateway.settings import Settings, get_settings, runtime_environ
 
@@ -109,6 +111,8 @@ def create_app(
     )
 
     install_error_handlers(app)
+    if settings.staging_test_tools:
+        app.add_middleware(FormBodyMiddleware)  # docs page forms; see api/form_bodies.py
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(health.router)
     app.include_router(discovery.router)
@@ -168,20 +172,23 @@ TRY_IT_STEPS = [
         "post",
         "/v1/dids/registration-quotes",
         "/v1/dids/registration-quotes",
-        "in the body, replace `ed25519:z6Mk<your agent public key>` with your "
-        "`controller_public_key`. Keep `registration_intent_id` and `payment_intent_id`.",
+        "paste your `controller_public_key`, and pick how to pay in "
+        "`preferred_payment_option`: `dmd_pow_native` (DMD) or `x402_usdc_base` (USDC). "
+        "Keep `registration_intent_id` (starts with `dmd_did_intent_`) and "
+        "`payment_intent_id` (starts with `dmd_payment_intent_`).",
     ),
     (
         "post",
         "/v1/staging/test-payments",
         "/v1/staging/test-payments",
-        "your `payment_intent_id`. Test coins pay the quote and 6 blocks confirm it.",
+        "your `payment_intent_id`. DMD: test coins pay the quote and 6 blocks confirm "
+        "it. USDC: see below.",
     ),
     (
         "get",
         "/v1/payments/{payment_intent_id}",
         "/v1/payments/{payment_intent_id}",
-        "after about 10 seconds, `status` is `settled`.",
+        "your `payment_intent_id`. After about 10 seconds, `status` is `settled`.",
     ),
     (
         "post",
@@ -193,14 +200,14 @@ TRY_IT_STEPS = [
         "post",
         "/v1/staging/test-signatures",
         "/v1/staging/test-signatures",
-        "your `challenge_id` and `private_key`. Keep `signature`.",
+        "your `challenge_id` and `private_key`. Keep `signature` (the short one, for step 7).",
     ),
     (
         "post",
         "/v1/dids/registrations/{registration_intent_id}/controller-proofs",
         "/v1/dids/registrations/{id}/controller-proofs",
-        "your `registration_intent_id`, then `challenge_id` and `signature`. The status is "
-        "`verified`.",
+        "your `registration_intent_id`, `challenge_id` and the `signature` from step 6. "
+        "The status is `verified`.",
     ),
     (
         "post",
@@ -212,22 +219,36 @@ TRY_IT_STEPS = [
 ]
 
 
+# The staging docs page forms: the payment options to pick from are added when the page is
+# built. A wallet cannot be a DID's controller yet, so that field is left out, and the
+# public key is marked as needed.
+FORM_HINTS = FormHints(
+    defaults={"display_name": "TestAgent-01", "participant_type": "autonomous_agent"},
+    required=("controller_public_key",),
+    hidden=("controller_wallet_address",),
+)
+
+
 def _add_try_it_guide(app: FastAPI) -> None:
-    """Append the steps to run the whole registration from the docs page, each step linked
-    to its endpoint (#/<section>/<operation id>, opened by Swagger UI's deep linking)."""
+    """Staging docs page: request bodies as input fields, and the steps to run the whole
+    registration from the page, each step linked to its endpoint (#/<section>/<operation
+    id>, opened by Swagger UI's deep linking)."""
     build = app.openapi
 
     def openapi() -> dict[str, Any]:
         if app.openapi_schema is not None:
             return app.openapi_schema
         schema = build()
+        registry = app.state.registry
+        options = [rail_id for rail_id, _ in registry.enabled_rails(DID_REGISTRATION)]
+        add_form_bodies(schema, replace(FORM_HINTS, choices={"preferred_payment_option": options}))
         lines = [
             "### Try the whole registration from this page",
             "",
-            "This is the **staging** server: a private DMD test chain whose coins have no "
-            "value. Open each endpoint below, click **Execute**, and copy the values named "
-            "into the next step. The three **staging** endpoints stand in for what a real "
-            "agent does with its own key and wallet.",
+            "This is the **staging** server: test networks whose coins have no value. Open "
+            "each endpoint below, fill in the fields, click **Execute**, and copy the values "
+            "named into the next step. The three **staging** endpoints stand in for what a "
+            "real agent does with its own key and wallet.",
             "",
         ]
         for number, (method, path, label, text) in enumerate(TRY_IT_STEPS, start=1):
@@ -239,15 +260,27 @@ def _add_try_it_guide(app: FastAPI) -> None:
             f"{len(TRY_IT_STEPS) + 1}. Open the `did_document_url` from step "
             f"{len(TRY_IT_STEPS)} in your browser.",
             "",
+            "**Paying with DMD** (`dmd_pow_native`): steps **1 → 2 → 3 → 4 → 5 → 6 → 7 → 8**. "
             "Do step 3 within 15 minutes of step 2, and steps 5 to 7 within 5 minutes.",
             "",
-            "**Paying with USDC through x402 (Base Sepolia test USDC) instead:** in step 2, "
-            'pick **Pay in USDC through x402** in the Examples list (or set `"preferred_payment_'
-            'option": "x402_usdc_base"`), skip steps 3 and 4, and do steps 5 to 7 first. '
-            "Then call step 3 with your `payment_intent_id`: the test "
-            "wallet signs the payment and returns `payment_signature`. Paste it into the "
-            "`PAYMENT-SIGNATURE` field of step 8 (within 5 minutes): the payment is settled "
-            "on Base Sepolia, checked on chain, and the DID is issued in the same answer.",
+            "**Paying with USDC through x402** (`x402_usdc_base`, Base Sepolia test USDC): "
+            "steps **1 → 2 → 5 → 6 → 7 → 3 → 8**, without step 4, all within 15 minutes of "
+            "step 2. Step 3 then returns a long `payment_signature` (it starts with `eyJ`). "
+            "Paste it into the `PAYMENT-SIGNATURE` field of step 8 and click **Execute** "
+            "right away: it is valid for 5 minutes. If it has expired, run step 3 again for a "
+            "new one. The payment is settled on Base Sepolia, checked on chain, and the DID "
+            "is issued in the same answer.",
+            "",
+            "**Which value goes where:**",
+            "",
+            "- `registration_intent_id` (starts with `dmd_did_intent_`): steps 5, 7 and 8.",
+            "- `payment_intent_id` (starts with `dmd_payment_intent_`): steps 3 and 4.",
+            "- `signature` from step 6 (short): step 7.",
+            "- `payment_signature` from step 3 (long, USDC only): step 8, in the "
+            "`PAYMENT-SIGNATURE` field.",
+            "",
+            "Request bodies are shown here as fields to fill in. Agents send the same fields "
+            "as JSON: pick `application/json` above a request body to see it.",
         ]
         schema["info"]["description"] += "\n\n" + "\n".join(lines)
         return schema

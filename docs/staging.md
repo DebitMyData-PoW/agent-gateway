@@ -76,8 +76,27 @@ Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
 
 Anyone can run the whole registration from a browser at
 <https://staging-api.debitmydata.io/docs>, with nothing to install. The top of that page lists
-the nine steps, each linked to its endpoint: open it, click **Execute**, and copy the values
-named into the next step.
+the nine steps, each linked to its endpoint (it opens in a new tab): fill in the fields, click
+**Execute**, and copy the values named into the next step.
+
+On staging, each request body is shown as fields to fill in, with a list to pick from where
+the values are fixed (such as `preferred_payment_option`). The page sends them as a form, and
+the gateway turns the form into the same JSON an agent sends before checking it; `metadata`
+can only be sent as JSON. Production accepts JSON only.
+
+Which value goes where:
+
+| Value | Where it comes from | Where it goes |
+| --- | --- | --- |
+| `registration_intent_id` (`dmd_did_intent_...`) | step 2 | steps 5, 7 and 8 |
+| `payment_intent_id` (`dmd_payment_intent_...`) | step 2 | steps 3 and 4 |
+| `signature` (short, about 86 characters) | step 6 | step 7 |
+| `payment_signature` (long, starts with `eyJ`; USDC only) | step 3 | step 8, `PAYMENT-SIGNATURE` field |
+
+The two IDs of a quote start alike after their prefix, because both carry the time they were
+made. A payment ID that is really the registration ID with its start changed is answered with
+the right payment ID, and each signature sent in the other one's place is refused with a
+message saying which one it is.
 
 Three endpoints in the **staging** section stand in for what a real agent does with its own
 key and wallet:
@@ -109,19 +128,25 @@ mv /var/lib/debitmydata/regtest /var/lib/debitmydata/regtest-old
 The same page can pay with USDC instead of DMD, through x402 the way Coinbase-compatible
 agent wallets pay:
 
-1. Step 1 as before; in step 2 use `"preferred_payment_option": "x402_usdc_base"`. The quote
-   is 25.000000 USDC on Base Sepolia (`eip155:84532`).
-2. Skip steps 3 and 4: do steps 5 to 7 (challenge, signature, proof) first. On x402 the
-   payment is taken last, only once the DID can be issued.
-3. Step 8 without anything else answers **402**: its `PAYMENT-REQUIRED` header (also in the
-   error body) says what to pay.
-4. Call step 3 (`test-payments`) with your `payment_intent_id`: the staging test wallet
-   signs the payment and returns `payment_signature`. Nothing moves yet.
-5. Step 8 again, with `payment_signature` pasted into its `PAYMENT-SIGNATURE` field, within
-   5 minutes. The facilitator settles it on Base Sepolia, the gateway checks the transfer on
-   chain, and the DID comes back in the same answer, with a `PAYMENT-RESPONSE` header naming
-   the transaction (viewable on `https://sepolia.basescan.org/tx/<transaction>`). If it
-   answers 202, the payment is still confirming: call step 8 again without the header.
+The order is **1 → 2 → 5 → 6 → 7 → 3 → 8** (step 4 is not needed), all within the quote's 15
+minutes:
+
+1. Step 1 as before; in step 2 pick `x402_usdc_base`. The quote is 25.000000 USDC on Base
+   Sepolia (`eip155:84532`).
+2. Steps 5 to 7 (challenge, signature, proof). On x402 the payment is taken last, only once
+   the DID can be issued. Step 8 at this point, without a payment, answers **402**: its
+   `PAYMENT-REQUIRED` header (also in the error body) says what to pay. This call is
+   optional.
+3. Step 3 (`test-payments`) with your `payment_intent_id`: the staging test wallet signs the
+   payment and returns `payment_signature`, valid for 5 minutes (`valid_until`). Nothing
+   moves yet. Each call signs a new one; most of the value is the same each time, since it
+   spells out the same payment terms.
+4. Right away, step 8 with `payment_signature` pasted into its `PAYMENT-SIGNATURE` field. The
+   facilitator settles it on Base Sepolia, the gateway checks the transfer on chain, and the
+   DID comes back in the same answer, with a `PAYMENT-RESPONSE` header naming the transaction
+   (viewable on `https://sepolia.basescan.org/tx/<transaction>`). If it answers 202, the
+   payment is still confirming: call step 8 again without the header. If it says the
+   authorization has expired, run step 3 again for a new one.
 
 An agent with its own Base Sepolia wallet pays the same 402 itself, with any x402 client.
 

@@ -167,7 +167,13 @@ def decode_payment_header(value: str) -> dict[str, Any]:
         )
         data = json.loads(raw)
     except (binascii.Error, ValueError, UnicodeDecodeError) as exc:
-        raise ValueError("the PAYMENT-SIGNATURE header is not base64-encoded JSON") from exc
+        message = "the PAYMENT-SIGNATURE header is not base64-encoded JSON"
+        if len(text) <= 128:
+            message += (
+                " (an x402 payment is a long value starting with eyJ; this looks like the "
+                "controller-proof signature)"
+            )
+        raise ValueError(message) from exc
     if not isinstance(data, dict):
         raise ValueError("the PAYMENT-SIGNATURE header must hold a JSON object")
     return data
@@ -229,7 +235,7 @@ def mismatches(
         problems.append(
             (
                 "invalid_exact_evm_payload_authorization_valid_before",
-                "the authorization expires too soon",
+                "the authorization has expired or expires within 6 seconds; sign a new payment",
             )
         )
     elif latest_valid_before is not None and int(authorization.valid_before) > int(

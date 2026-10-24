@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.x402 import X402PaymentAdapter
 from dmd_gateway.api.payments import ID_PATTERN as PAYMENT_ID
+from dmd_gateway.api.payments import PAYMENT_ID_HELP, unknown_payment
 from dmd_gateway.api.registrations import CHALLENGE_ID
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import AuditEvent, ControllerChallenge, PaymentIntent
@@ -90,7 +91,7 @@ class StagingPaymentRequest(BaseModel):
         json_schema_extra={"examples": [{"payment_intent_id": "dmd_payment_intent_..."}]},
     )
 
-    payment_intent_id: str = Field(pattern=PAYMENT_ID)
+    payment_intent_id: str = Field(pattern=PAYMENT_ID, description=PAYMENT_ID_HELP)
 
 
 class StagingPaymentResponse(BaseModel):
@@ -104,8 +105,8 @@ class StagingPaymentResponse(BaseModel):
     # x402 quotes: a payment signed by the test wallet; nothing moves until it is used.
     payment_signature: str | None = Field(
         default=None,
-        description="x402 quotes: put this in the PAYMENT-SIGNATURE header of "
-        "POST /v1/dids/registrations.",
+        description="x402 quotes: the signed payment (long, it starts with eyJ). Put it in "
+        "the PAYMENT-SIGNATURE header of POST /v1/dids/registrations before valid_until.",
     )
     payer: str | None = None
     valid_until: datetime | None = None
@@ -142,7 +143,7 @@ def create_test_payment(body: StagingPaymentRequest, request: Request) -> Stagin
             .with_for_update()
         ).one_or_none()
         if intent is None:
-            raise ApiError(404, "not_found", "Unknown payment intent.")
+            raise unknown_payment(session, body.payment_intent_id)
         if intent.adapter == X402_ADAPTER:
             return _sign_x402_test_payment(session, request, intent, now)
         if intent.rail_id != TEST_RAIL or intent.network != TEST_NETWORK:
@@ -282,7 +283,9 @@ class StagingSignatureRequest(BaseModel):
         },
     )
 
-    challenge_id: str = Field(pattern=CHALLENGE_ID)
+    challenge_id: str = Field(
+        pattern=CHALLENGE_ID, description="`challenge_id` from the controller challenge."
+    )
     private_key: str = Field(
         min_length=40, max_length=60, description="The private_key from test-agent-keys."
     )
@@ -290,7 +293,11 @@ class StagingSignatureRequest(BaseModel):
 
 class StagingSignatureResponse(BaseModel):
     challenge_id: str
-    signature: str
+    signature: str = Field(
+        description="The controller signature (short): send it with challenge_id to "
+        "POST /v1/dids/registrations/{registration_intent_id}/controller-proofs. It is not "
+        "an x402 payment."
+    )
     matches_controller: bool = Field(
         description="Whether this key is the registration's controller key. If not, the "
         "gateway will refuse the proof (useful to see a wrong key being refused)."

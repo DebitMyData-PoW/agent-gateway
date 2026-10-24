@@ -84,15 +84,32 @@ class QuoteRequest(BaseModel):
         },
     )
 
-    display_name: str = Field(min_length=1, max_length=100, pattern=_NO_CONTROL_CHARS.pattern)
-    participant_type: ParticipantType
+    display_name: str = Field(
+        min_length=1,
+        max_length=100,
+        pattern=_NO_CONTROL_CHARS.pattern,
+        description="Name of the agent, e.g. TestAgent-01.",
+    )
+    participant_type: ParticipantType = Field(description="What kind of participant this is.")
     controller_public_key: str | None = Field(
-        default=None, max_length=256, pattern=r"^[a-z0-9-]{2,32}:[A-Za-z0-9+/=_.:-]{8,220}$"
+        default=None,
+        max_length=256,
+        pattern=r"^[a-z0-9-]{2,32}:[A-Za-z0-9+/=_.:-]{8,220}$",
+        description="The agent's public key, e.g. ed25519:z6Mk...: the DID's controller.",
     )
     controller_wallet_address: str | None = Field(
-        default=None, max_length=128, pattern=r"^[A-Za-z0-9:_.-]{8,128}$"
+        default=None,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9:_.-]{8,128}$",
+        description="Optional. A wallet cannot be the DID's controller yet (wallet-control "
+        "proofs are not available), so controller_public_key is required.",
     )
-    preferred_payment_option: str = Field(min_length=1, max_length=64)
+    preferred_payment_option: str = Field(
+        min_length=1,
+        max_length=64,
+        description="How the agent pays: an id from GET /v1/payment-options, such as "
+        "dmd_pow_native (DMD) or x402_usdc_base (USDC through x402).",
+    )
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 
     @field_validator("controller_public_key")

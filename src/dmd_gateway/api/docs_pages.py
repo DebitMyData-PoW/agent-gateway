@@ -21,38 +21,6 @@ _ICONS = {
 }
 FAVICON_URL = "/favicon.png"
 
-# Swagger UI opens every link of the page description in a new tab. Links to a section of
-# the page itself (#/<section>/<operation>, the step list at the top) open it in place
-# instead, and the browser's back button returns to where you were.
-SAME_PAGE_LINKS = """<script>
-function dmdOpenSection(hash) {
-  var parts = hash.replace(/^#\\/?/, "").split("/").map(decodeURIComponent);
-  var tag = parts[0], op = parts[1];
-  if (!tag || typeof ui === "undefined") return;
-  ui.layoutActions.show(["operations-tag", tag], true);
-  if (op) ui.layoutActions.show(["operations", tag, op], true);
-  var id = op ? "operations-" + tag + "-" + op : "operations-tag-" + tag;
-  var tries = 0;
-  (function scroll() {
-    var element = document.getElementById(id);
-    if (element) element.scrollIntoView({block: "start"});
-    else if (tries++ < 40) setTimeout(scroll, 50);
-  })();
-}
-document.addEventListener("click", function (event) {
-  var link = event.target.closest ? event.target.closest('a[href^="#/"]') : null;
-  if (!link || typeof ui === "undefined") return;
-  event.preventDefault();
-  event.stopPropagation();
-  var hash = link.getAttribute("href");
-  history.pushState(null, "", hash);
-  setTimeout(function () { dmdOpenSection(hash); }, 0);
-}, true);
-window.addEventListener("popstate", function () {
-  if (window.location.hash.indexOf("#/") === 0) dmdOpenSection(window.location.hash);
-});
-</script>"""
-
 # Swagger UI options: links to each endpoint (#/<section>/<operation>), "Try it out" already
 # on, request durations shown, and the schema list at the bottom collapsed.
 SWAGGER_UI_PARAMETERS = {
@@ -66,14 +34,12 @@ SWAGGER_UI_PARAMETERS = {
 
 @router.get("/docs")
 def swagger_ui(request: Request) -> HTMLResponse:
-    page = get_swagger_ui_html(
+    return get_swagger_ui_html(
         openapi_url=request.app.openapi_url,
         title=f"{request.app.title} - API docs",
         swagger_favicon_url=FAVICON_URL,
         swagger_ui_parameters=SWAGGER_UI_PARAMETERS,
     )
-    html = bytes(page.body).decode("utf-8")
-    return HTMLResponse(html.replace("</body>", SAME_PAGE_LINKS + "\n</body>", 1))
 
 
 @router.get("/redoc")

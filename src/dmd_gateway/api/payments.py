@@ -13,6 +13,7 @@ from fastapi import APIRouter, Path, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from dmd_gateway.db.models import PaymentEvent, PaymentIntent
 from dmd_gateway.db.session import transaction
@@ -25,6 +26,37 @@ from dmd_gateway.services.registrations import X402_PAY_ACTION
 router = APIRouter(prefix="/v1", tags=["payments"])
 
 ID_PATTERN = r"^dmd_payment_intent_[0-9A-HJKMNP-TV-Z]{26}$"
+PAYMENT_PREFIX = "dmd_payment_intent_"
+REGISTRATION_PREFIX = "dmd_did_intent_"
+PAYMENT_ID_HELP = "`payment_intent_id` from the quote (it starts with `dmd_payment_intent_`)."
+
+
+def unknown_payment(session: Session, payment_intent_id: str) -> ApiError:
+    """404 for an unknown payment ID, naming the ID that was probably meant.
+
+    Both IDs of a quote look alike, so a registration ID with its start changed is a common
+    slip. The payment ID named here is also shown by the registration's own status.
+    """
+    suffix = payment_intent_id.removeprefix(PAYMENT_PREFIX)
+    meant = session.scalars(
+        select(PaymentIntent.id).where(
+            PaymentIntent.registration_intent_id == REGISTRATION_PREFIX + suffix
+        )
+    ).first()
+    if meant is not None:
+        return ApiError(
+            404,
+            "not_found",
+            f"Unknown payment intent. {REGISTRATION_PREFIX}{suffix} is a registration ID with "
+            f"the same ending; the payment_intent_id of that quote is {meant}.",
+        )
+    return ApiError(
+        404,
+        "not_found",
+        "Unknown payment intent. Copy payment_intent_id exactly from the quote: it starts "
+        "with dmd_payment_intent_, and after that start it differs from "
+        "registration_intent_id.",
+    )
 
 
 class PaymentStatusResponse(BaseModel):
@@ -53,12 +85,12 @@ class PaymentStatusResponse(BaseModel):
 )
 def payment_status(
     request: Request,
-    payment_intent_id: str = Path(pattern=ID_PATTERN),
+    payment_intent_id: str = Path(pattern=ID_PATTERN, description=PAYMENT_ID_HELP),
 ) -> PaymentStatusResponse:
     with transaction(request.app.state.session_factory) as session:
         intent = session.get(PaymentIntent, payment_intent_id)
         if intent is None:
-            raise ApiError(404, "not_found", "Unknown payment intent.")
+            raise unknown_payment(session, payment_intent_id)
         last = session.scalars(
             select(PaymentEvent)
             .where(PaymentEvent.payment_intent_id == intent.id)
@@ -125,7 +157,7 @@ class ReferenceResponse(BaseModel):
 def submit_payment_reference(
     body: ReferenceRequest,
     request: Request,
-    payment_intent_id: str = Path(pattern=ID_PATTERN),
+    payment_intent_id: str = Path(pattern=ID_PATTERN, description=PAYMENT_ID_HELP),
 ) -> JSONResponse:
     now = datetime.now(UTC)
     with transaction(request.app.state.session_factory) as session:

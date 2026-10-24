@@ -15,7 +15,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Header, Path, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dmd_gateway.db.models import RegistrationIntent
 from dmd_gateway.db.session import transaction
@@ -45,6 +45,7 @@ router = APIRouter(prefix="/v1", tags=["registration"])
 
 REGISTRATION_ID = r"^dmd_did_intent_[0-9A-HJKMNP-TV-Z]{26}$"
 CHALLENGE_ID = r"^dmd_challenge_[0-9A-HJKMNP-TV-Z]{26}$"
+REGISTRATION_ID_HELP = "`registration_intent_id` from the quote (it starts with `dmd_did_intent_`)."
 
 
 def _ctx(request: Request) -> IssuanceContext:
@@ -88,7 +89,7 @@ class ChallengeResponse(BaseModel):
 )
 def create_challenge(
     request: Request,
-    registration_intent_id: str = Path(pattern=REGISTRATION_ID),
+    registration_intent_id: str = Path(pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP),
     body: Annotated[ChallengeRequest | None, Body()] = None,
 ) -> ChallengeResponse:
     settings = request.app.state.settings
@@ -128,12 +129,26 @@ class ProofRequest(BaseModel):
         },
     )
 
-    challenge_id: str = Field(pattern=CHALLENGE_ID)
+    challenge_id: str = Field(
+        pattern=CHALLENGE_ID, description="`challenge_id` from the controller challenge."
+    )
     signature: str = Field(
         min_length=86,
         max_length=128,
-        description="Ed25519 signature of the challenge message (UTF-8), base64url/base64/hex.",
+        description="Ed25519 signature of the challenge message (UTF-8), base64url/base64/hex: "
+        "about 86 characters. Not the x402 payment (the long value starting with eyJ).",
     )
+
+    @field_validator("signature", mode="before")
+    @classmethod
+    def _not_a_payment(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().startswith("eyJ") and len(value) > 128:
+            raise ValueError(
+                "this is an x402 payment (payment_signature), which goes in the "
+                "PAYMENT-SIGNATURE header of POST /v1/dids/registrations; here, send the "
+                "Ed25519 signature of the challenge message"
+            )
+        return value
 
 
 class ProofResponse(BaseModel):
@@ -159,7 +174,7 @@ class ProofResponse(BaseModel):
 def submit_proof(
     body: ProofRequest,
     request: Request,
-    registration_intent_id: str = Path(pattern=REGISTRATION_ID),
+    registration_intent_id: str = Path(pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP),
 ) -> Any:
     ctx = _ctx(request)
     now = datetime.now(UTC)
@@ -206,7 +221,7 @@ class RegistrationRequest(BaseModel):
         json_schema_extra={"examples": [{"registration_intent_id": "dmd_did_intent_..."}]},
     )
 
-    registration_intent_id: str = Field(pattern=REGISTRATION_ID)
+    registration_intent_id: str = Field(pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP)
 
 
 class IssuedRegistration(BaseModel):
@@ -289,7 +304,9 @@ def register(
         str | None,
         Header(
             alias=PAYMENT_SIGNATURE,
-            description="x402 only: the base64 PaymentPayload answering the 402.",
+            description="x402 only: the base64 PaymentPayload answering the 402 (a long "
+            "value starting with eyJ; on staging, payment_signature from "
+            "POST /v1/staging/test-payments). Not the controller-proof signature.",
         ),
     ] = None,
 ) -> JSONResponse:
@@ -351,7 +368,8 @@ class RegistrationStatus(BaseModel):
     responses={404: {"description": "Unknown registration intent."}},
 )
 def registration_status(
-    request: Request, registration_intent_id: str = Path(pattern=REGISTRATION_ID)
+    request: Request,
+    registration_intent_id: str = Path(pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP),
 ) -> RegistrationStatus:
     ctx = _ctx(request)
     with transaction(request.app.state.session_factory) as session:
