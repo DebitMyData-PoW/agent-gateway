@@ -21,15 +21,16 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 from starlette.applications import Starlette
 
 from dmd_gateway import __version__
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
+from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
 from dmd_gateway.settings import Settings
 
 MCP_PATH = "/mcp"
@@ -47,6 +48,9 @@ destination and the expiry. Never pay an amount that was not quoted.
 3. Pay exactly that amount to that destination from your own wallet before the quote \
 expires. Optionally report the transaction with dmd_submit_payment_reference.
 4. dmd_get_payment_status until the status is "settled".
+   x402 payment options (USDC on Base) work differently: skip 3 and 4, do step 5 first, \
+then call dmd_register_did; it answers with the x402 payment requirements, which you sign \
+and send back with dmd_register_did (x402_payment).
 5. dmd_prove_wallet_control: call it once to get a challenge, sign the challenge message \
 (its exact UTF-8 bytes) with your controller private key, then call it again with the \
 challenge_id and the signature. This can also be done before the payment settles.
@@ -87,6 +91,14 @@ PaymentId = Annotated[
 ]
 
 
+class PaymentRequired(Exception):
+    """An x402 payment is required (HTTP 402); carries the PaymentRequired object."""
+
+    def __init__(self, required: dict[str, Any]) -> None:
+        super().__init__(required.get("error") or "payment required")
+        self.required = required
+
+
 class GatewayApi:
     """In-process client for the gateway's own REST API."""
 
@@ -111,6 +123,12 @@ class GatewayApi:
             body = response.json()
         except ValueError:
             body = {"error": {"code": "unexpected_response", "message": response.text[:200]}}
+        if response.status_code == 402:
+            required = ((body.get("error") or {}) if isinstance(body, dict) else {}).get(
+                "payment_required"
+            )
+            if isinstance(required, dict):
+                raise PaymentRequired(required)
         if response.status_code >= 400:
             # Agents get the same stable error code and details as REST callers.
             raise ToolError(json.dumps({"http_status": response.status_code, **_as_dict(body)}))
@@ -123,6 +141,16 @@ def _as_dict(body: Any) -> dict[str, Any]:
             return {"error": {"code": "invalid_request", "details": body["detail"]}}
         return body
     return {"body": body}
+
+
+def _meta_payment(ctx: Context) -> dict[str, Any] | None:
+    """A payment sent the x402 MCP way, in ``_meta["x402/payment"]``."""
+    try:
+        meta = ctx.request_context.meta or {}
+    except ValueError:  # no request (direct call in tests)
+        return None
+    payment = meta.get("x402/payment")
+    return payment if isinstance(payment, dict) else None
 
 
 def build_mcp_server(app: FastAPI) -> MCPServer:
@@ -287,14 +315,46 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         )
 
     @server.tool(title="Register the DID", annotations=IDEMPOTENT)
-    async def dmd_register_did(registration_intent_id: RegistrationId) -> dict[str, Any]:
+    async def dmd_register_did(
+        registration_intent_id: RegistrationId,
+        ctx: Context,
+        x402_payment: Annotated[
+            dict[str, Any] | None,
+            Field(
+                description="x402 quotes only: your signed PaymentPayload (x402 version 2) "
+                "answering the payment requirements this tool returned. It may also be sent "
+                "in the request's _meta['x402/payment']."
+            ),
+        ] = None,
+    ) -> CallToolResult:
         """Issue the DID once the payment is settled and the controller proof is verified.
         Returns the DID, its DID document URL, the signed credential (the receipt) and the
-        entitlements. Calling it again returns the same DID."""
-        return await api.call(
-            "POST",
-            "/v1/dids/registrations",
-            json_body={"registration_intent_id": registration_intent_id},
+        entitlements. Calling it again returns the same DID.
+
+        x402 quotes (USDC on Base): prove control first, then call this tool. It fails
+        with the x402 payment requirements; sign them with your wallet and call it again
+        with x402_payment. The DID is issued once the payment is settled on chain."""
+        payment = x402_payment or _meta_payment(ctx)
+        headers = {PAYMENT_SIGNATURE: encode_header(payment)} if payment else None
+        try:
+            body = await api.call(
+                "POST",
+                "/v1/dids/registrations",
+                json_body={"registration_intent_id": registration_intent_id},
+                headers=headers,
+            )
+        except PaymentRequired as required:
+            # x402 MCP transport: an error result whose content is the PaymentRequired object.
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(required.required))],
+                structured_content=required.required,
+                is_error=True,
+            )
+        settlement = body.get("payment_response") if isinstance(body, dict) else None
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(body))],
+            structured_content=body,
+            meta={"x402/payment-response": settlement} if settlement else None,
         )
 
     @server.tool(title="Registration status", annotations=READ_ONLY)

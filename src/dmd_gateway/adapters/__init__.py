@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter
 from dmd_gateway.adapters.dmd_native import DMDNativePaymentAdapter
+from dmd_gateway.adapters.x402 import X402PaymentAdapter
 
 # adapter name (as used in config/payment_routes.yaml) -> implementation
 AVAILABLE_ADAPTERS: dict[str, type[PaymentAdapter]] = {
     DMDNativePaymentAdapter.name: DMDNativePaymentAdapter,
+    X402PaymentAdapter.name: X402PaymentAdapter,
 }
 
 __all__ = ["AVAILABLE_ADAPTERS", "AdapterUnavailable", "PaymentAdapter"]

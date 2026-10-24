@@ -1,0 +1,4 @@
+#!/bin/sh
+# debitmydata-cli for the staging node, run as its service user (cookie authentication).
+exec runuser -u dmd -- /usr/local/bin/debitmydata-cli \
+    -conf=/etc/debitmydata/debitmydata.conf -datadir=/var/lib/debitmydata "$@"

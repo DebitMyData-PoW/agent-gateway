@@ -30,6 +30,7 @@ from dmd_gateway.adapters.base import (
     ExpectedPayment,
     PaymentAdapter,
     PaymentDestination,
+    SubmittedAuthorization,
 )
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import (
@@ -37,6 +38,7 @@ from dmd_gateway.db.models import (
     PaymentEvent,
     PaymentIntent,
     RegistrationIntent,
+    X402Authorization,
 )
 from dmd_gateway.db.session import transaction
 from dmd_gateway.domain.payment_status import PaymentStatus
@@ -112,6 +114,35 @@ def _known_transactions(session: Session, payment_intent_id: str) -> tuple[str, 
     return tuple(seen)
 
 
+# Authorizations that reached the facilitator's settlement step. One refused at
+# verification never went further, so no funds can have moved for it.
+SUBMITTED_STATUSES = ("submitted", "settled", "settle_rejected")
+
+
+def submitted_authorizations(
+    session: Session, payment_intent_id: str
+) -> tuple[SubmittedAuthorization, ...]:
+    """x402 authorizations sent for settlement for this intent, oldest first."""
+    rows = session.scalars(
+        select(X402Authorization)
+        .where(
+            X402Authorization.payment_intent_id == payment_intent_id,
+            X402Authorization.status.in_(SUBMITTED_STATUSES),
+        )
+        .order_by(X402Authorization.id)
+    )
+    return tuple(
+        SubmittedAuthorization(
+            payer=row.payer,
+            nonce=row.nonce,
+            submitted_at=row.created_at,
+            transaction_hint=row.settle_transaction,
+            search_from_block=row.search_from_block,
+        )
+        for row in rows
+    )
+
+
 def _detail(
     reason: str, transactions: list[str], refund_units: int, extra: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -157,6 +188,7 @@ def process_intent(
         ),
         required_confirmations=intent.required_confirmations,
         known_transactions=_known_transactions(session, intent.id),
+        authorizations=submitted_authorizations(session, intent.id),
     )
     observation = adapter.observe(expected)  # AdapterUnavailable propagates: no change
     ctx = SettlementContext(

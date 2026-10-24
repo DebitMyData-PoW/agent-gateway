@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, Path, Request
+from fastapi import APIRouter, Body, Header, Path, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +22,7 @@ from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import ApiError, error_body
 from dmd_gateway.identity.did import did_document_url
 from dmd_gateway.services import controller_proofs
+from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.services.registrations import (
     IssuanceContext,
     IssuedIdentity,
@@ -29,6 +30,15 @@ from dmd_gateway.services.registrations import (
     credential_url,
     evaluate,
     identity_record_url,
+)
+from dmd_gateway.services.x402_payments import (
+    PAYMENT_RESPONSE,
+    PAYMENT_SIGNATURE,
+    RETRY_AFTER_SECONDS,
+    X402Context,
+    encode_header,
+    register_paid,
+    resource_info,
 )
 
 router = APIRouter(prefix="/v1", tags=["registration"])
@@ -110,7 +120,13 @@ def create_challenge(
 
 
 class ProofRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [{"challenge_id": "dmd_challenge_...", "signature": "<base64url>"}]
+        },
+    )
 
     challenge_id: str = Field(pattern=CHALLENGE_ID)
     signature: str = Field(
@@ -184,7 +200,11 @@ def submit_proof(
 
 
 class RegistrationRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={"examples": [{"registration_intent_id": "dmd_did_intent_..."}]},
+    )
 
     registration_intent_id: str = Field(pattern=REGISTRATION_ID)
 
@@ -201,9 +221,15 @@ class IssuedRegistration(BaseModel):
     credential: dict[str, Any]
     entitlements: list[str]
     issued_at: datetime
+    payment_response: dict[str, Any] | None = Field(
+        default=None,
+        description="x402 payments: the settlement (also in the PAYMENT-RESPONSE header).",
+    )
 
 
-def _issued_response(base_url: str, issued: IssuedIdentity) -> IssuedRegistration:
+def _issued_response(
+    base_url: str, issued: IssuedIdentity, payment_response: dict[str, Any] | None = None
+) -> IssuedRegistration:
     identity, credential = issued.identity, issued.credential
     return IssuedRegistration(
         registration_intent_id=identity.registration_intent_id,
@@ -217,6 +243,19 @@ def _issued_response(base_url: str, issued: IssuedIdentity) -> IssuedRegistratio
         credential=credential.payload,
         entitlements=issued.entitlements,
         issued_at=credential.issued_at,
+        payment_response=payment_response,
+    )
+
+
+def _x402_context(request: Request) -> X402Context:
+    state = request.app.state
+    service = state.registry.services[DID_REGISTRATION]
+    return X402Context(
+        factory=state.session_factory,
+        adapters=state.quote_context.adapters,
+        issuance=state.issuance,
+        resource=resource_info(state.settings.public_base_url, service.path, service.title),
+        settlement_wait=timedelta(seconds=state.settings.x402_settlement_wait_seconds),
     )
 
 
@@ -225,15 +264,49 @@ def _issued_response(base_url: str, issued: IssuedIdentity) -> IssuedRegistratio
     status_code=201,
     response_model=IssuedRegistration,
     summary="Issue the DID once the payment is settled and the controller proof is verified",
+    description=(
+        "For a quote paid in DMD, call this once the payment is settled and the controller "
+        "proof verified. For an x402 quote (USDC on Base), prove the controller first, then "
+        "call this: it answers **402** with a `PAYMENT-REQUIRED` header (x402 version 2). "
+        "Call it again with your signed payment in the `PAYMENT-SIGNATURE` header; the "
+        "payment is settled, checked on chain, and the DID is issued in the same answer "
+        "(`PAYMENT-RESPONSE` header), or 202 if confirmations take longer."
+    ),
     responses={
         200: {"description": "Already issued: the same DID and credential are returned."},
+        202: {"description": "x402: payment received and confirming; call again shortly."},
+        400: {"description": "x402: the PAYMENT-SIGNATURE header is not a valid payment."},
+        402: {"description": "x402: payment required, or the payment was refused."},
         404: {"description": "Unknown registration intent."},
         409: {"description": "Not ready: the response lists what is still missing."},
-        503: {"description": "DID issuance is not enabled on this gateway."},
+        503: {"description": "DID issuance or the payment service is not available."},
     },
 )
-def register(body: RegistrationRequest, request: Request) -> JSONResponse:
+def register(
+    body: RegistrationRequest,
+    request: Request,
+    payment_signature: Annotated[
+        str | None,
+        Header(
+            alias=PAYMENT_SIGNATURE,
+            description="x402 only: the base64 PaymentPayload answering the 402.",
+        ),
+    ] = None,
+) -> JSONResponse:
     ctx = _ctx(request)
+    paid = register_paid(_x402_context(request), body.registration_intent_id, payment_signature)
+    if paid is not None:
+        headers = {}
+        if paid.payment_response:
+            headers[PAYMENT_RESPONSE] = encode_header(paid.payment_response)
+        if paid.issued is None:
+            headers["Retry-After"] = str(RETRY_AFTER_SECONDS)
+            return JSONResponse(status_code=202, content=paid.body, headers=headers)
+        payload = _issued_response(
+            ctx.public_base_url, paid.issued, paid.payment_response
+        ).model_dump(mode="json")
+        return JSONResponse(status_code=paid.status_code, content=payload, headers=headers)
+
     now = datetime.now(UTC)
     with transaction(request.app.state.session_factory) as session:
         issued = complete_registration(session, ctx, body.registration_intent_id, now)

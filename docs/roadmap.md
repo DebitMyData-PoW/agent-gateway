@@ -14,7 +14,7 @@ place; the application logic comes with the related phase.
 - [ ] P0-02 Tag/back up the current DMD Core production release
 - [ ] P0-03 Inventory nodes, Electrum servers, explorer, wallets, pool, DNS, TLS, hosting (kept outside this public repository)
 - [ ] P0-04 Decide which hosts may reach private DMD RPC; deny all others
-- [ ] P0-05 Staging and production environments
+- [x] P0-05 Staging environment (`deploy/staging`, [staging.md](staging.md)), with staging-only test tools so the flow can be tried from its docs page; production comes after the security review
 - [ ] P0-06 Owners for DNS/TLS, DevOps, database, treasury, policy approval, incident response
 - [ ] P0-08 Secrets inventory (never in tickets, chat, source or docs)
 - [ ] P0-09 Branch/release strategy and rollback procedure
@@ -112,16 +112,41 @@ place; the application logic comes with the related phase.
   `dmd_submit_payment_reference`, `dmd_get_payment_status`, `dmd_prove_wallet_control`,
   `dmd_register_did`, `dmd_catalog`, `dmd_get_purchase_quote`, `dmd_purchase`,
   `dmd_marketplace_provider_requirements`, plus `dmd_get_registration_status`; all call the REST API in-process
-- [ ] Public MCP hostname (`agents.debitmydata.com/mcp` in the directive) with the staging/production deployment
+- [x] Public MCP address on staging: `https://staging-api.debitmydata.io/mcp`
+- [ ] Public MCP address in production: `https://api.debitmydata.io/mcp`
 - [ ] Marketplace provider requirements: publish them, then return them from the tool
 - [ ] Integration with the Agentic Superhighway MCP, if its owners share it
 
 ## Phase 7 – x402 / USDC on Base
 
-- [ ] X402-01 … X402-11 Re-verify current x402/Bazaar specifications, adapter, canonical
-  USDC contract, merchant address from configuration, HTTP 402 flow, settlement
-  verification, idempotent fulfilment, Bazaar metadata for enabled routes only, low-value
-  production validation, independent kill switch
+- [x] X402-01 Specifications re-checked: x402 protocol version 2 (`PAYMENT-REQUIRED`,
+  `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE` headers, CAIP-2 networks), scheme `exact` with
+  EIP-3009, facilitator `/verify` `/settle` `/supported`, `bazaar` extension, MCP transport
+- [x] X402-02 `X402PaymentAdapter` behind the common interface; read-only Base RPC client
+  (method allowlist) and facilitator client
+- [x] X402-03 Canonical USDC contracts from Circle: Base `0x833589fC…02913` (EIP-712
+  "USD Coin", "2"), Base Sepolia `0x036CbD53…F7e` ("USDC", "2")
+- [x] X402-04 Receiving address from configuration (`DMD_USDC_BASE_MERCHANT_ADDRESS`), stored
+  with each quote
+- [x] X402-05 HTTP 402 on `POST /v1/dids/registrations`; payment asked for only once the
+  controller is proven and issuance is possible
+- [x] X402-06 Payment checked against the quote (amount, recipient, asset, network, validity
+  window) before the facilitator; facilitator verify, then settle
+- [x] X402-07 Settlement checked on chain by the gateway itself: successful transaction, the
+  token's `AuthorizationUsed` for exactly the payer and nonce received, the `Transfer` to the
+  receiving address, block still in the chain, confirmations (DEC-16); a lost facilitator
+  answer is recovered from the chain
+- [x] X402-08 Idempotent fulfilment: one live authorization per intent, an authorization
+  never counts for two intents, a settled payment is never charged again, 202 while confirming
+- [x] X402-09 Bazaar description (`bazaar` extension and service metadata) in the 402 of the
+  enabled route only; MCP payments (`dmd_register_did` with `x402_payment` or
+  `_meta["x402/payment"]`)
+- [ ] X402-10 Low-value production validation on Base mainnet (needs DEC-08)
+- [x] X402-11 Independent kill switch (`DMD_RAIL_X402_USDC_BASE_KILL`); test networks refused
+  in production
+- [x] Staging on Base Sepolia, with a test wallet that signs x402 payments from the docs page
+- [ ] Authentication for a production facilitator that requires it (for example Coinbase
+  CDP API keys), once DEC-08 names the facilitator
 
 ## Phases 8–13
 
@@ -141,7 +166,8 @@ and can be changed later.
 - [x] DEC-05 Public identity syntax: `did:web` hosted by the gateway; `did:dmd` only once a method specification is published
 - [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody stays open (ID-15)
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
-- [ ] DEC-08 Base/USDC receiving account and x402 facilitator
+- [ ] DEC-08 Base/USDC receiving account and production x402 facilitator (staging uses the
+  public x402.org test facilitator)
 - [ ] DEC-09 Policy URLs and version owners
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds
@@ -149,3 +175,5 @@ and can be changed later.
 - [ ] DEC-13 Hosting topology and secret management
 - [ ] DEC-14 Database backup and retention policy
 - [ ] DEC-15 Which EVM/Solana assets enter the next phase
+- [x] DEC-16 x402 confirmations before a USDC payment counts: 5 Base blocks (about 10
+  seconds); 2 on Base Sepolia

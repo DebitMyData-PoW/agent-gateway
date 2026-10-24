@@ -37,6 +37,23 @@ class PaymentDestination:
 
 
 @dataclass(frozen=True, slots=True)
+class SubmittedAuthorization:
+    """A signed payment authorization the gateway submitted for settlement (x402).
+
+    On rails with one shared receiving address, a transfer is linked to an intent only
+    through the authorization the gateway itself received for that intent: the adapter
+    looks for the on-chain use of exactly this (payer, nonce), never for transfers in
+    general and never for references sent by a payer.
+    """
+
+    payer: str
+    nonce: str
+    submitted_at: datetime
+    transaction_hint: str | None = None  # transaction reported by the facilitator
+    search_from_block: int | None = None  # chain height just before submission
+
+
+@dataclass(frozen=True, slots=True)
 class ExpectedPayment:
     payment_intent_id: str
     network: str
@@ -48,6 +65,8 @@ class ExpectedPayment:
     # them (for example after a double-spend).
     known_transactions: tuple[str, ...] = ()
     payer_reference_hint: str | None = None  # e.g. a txid the payer submitted; a hint only
+    # x402 rails: the authorizations submitted for this intent.
+    authorizations: tuple[SubmittedAuthorization, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

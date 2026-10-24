@@ -1,8 +1,12 @@
 # DebitMyData payment route registry - REGTEST / DEMO VERSION.
 #
-# Identical to config/payment_routes.yaml except the native DMD rail, which points at a
-# private regtest chain and uses a fixed test price (static_test_price). The gateway refuses
-# to load a test price source in production or on a mainnet rail.
+# Identical to config/payment_routes.yaml except two rails, both on test networks whose coins
+# have no value:
+#   * the native DMD rail points at a private regtest chain and uses a fixed test price
+#     (static_test_price);
+#   * the x402 USDC rail is on Base Sepolia, with Circle's test USDC.
+# The gateway refuses a test price source on a mainnet rail, and any test network in
+# production.
 #
 # Use with: DMD_GW_ROUTE_REGISTRY_PATH=config/payment_routes.regtest.yaml
 #
@@ -18,8 +22,8 @@
 #
 # Fields left as null below are open decisions that must be filled before enabling:
 #   price_policy.*          -> DEC-01 (approved, signed, monitored DMD/USD source)
-#   canonical_id (USDC)     -> X402-03 (verify the official contract before filling in)
-#   finality (x402)         -> DEC-08 (facilitator settlement policy)
+# The x402 USDC rail also needs, in the environment: DMD_USDC_BASE_MERCHANT_ADDRESS (DEC-08),
+# DMD_X402_FACILITATOR_URL (DEC-08) and DMD_BASE_RPC_URL (a Base RPC endpoint).
 
 version: 1
 
@@ -111,7 +115,9 @@ rails:
     enable_env: DMD_RAIL_DMD_POW_NATIVE_ENABLED
     kill_env: DMD_RAIL_DMD_POW_NATIVE_KILL
 
-  # Primary interoperability rail: USDC through x402 on Base (Coinbase Agentic Wallets).
+  # Primary interoperability rail: USDC through x402 - here on BASE SEPOLIA (test USDC
+  # without value, from https://faucet.circle.com). Same rail id as in production, so agents
+  # and the skill use the same option on staging.
   x402_usdc_base:
     name: USDC via x402 on Base
     stage: initial
@@ -120,17 +126,24 @@ rails:
       symbol: USDC
       decimals: 6
       asset_type: token
-      canonical_id: null             # X402-03: eip155:8453/erc20:<official USDC contract>
+      # Circle's USDC on Base Sepolia (developers.circle.com/stablecoins/usdc-contract-addresses)
+      canonical_id: eip155:84532/erc20:0x036CbD53842c5426634e7929541eC2318f3dCF7e
       usd_denominated: true
-    network: eip155:8453
+    network: eip155:84532
     protocol: x402
     scheme: exact
+    transfer_method: eip3009
     adapter: X402PaymentAdapter
     recipient:
       source: env
       env: DMD_USDC_BASE_MERCHANT_ADDRESS
     confirmation_policy:
-      finality: null                 # DEC-08
+      required_confirmations: 2      # DEC-16 (test network)
+    x402:
+      asset_eip712_name: USDC        # the contract's EIP-712 domain on Base Sepolia
+      asset_eip712_version: "2"
+      facilitator_url_env: DMD_X402_FACILITATOR_URL
+      rpc_url_env: DMD_BASE_RPC_URL
     wallet_compatibility:
       - Coinbase Agentic Wallet
       - x402-compatible wallets

@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     # How long an agent has to sign a controller challenge.
     controller_challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
 
+    # x402: how long a paid registration request waits for its settlement to reach the
+    # required confirmations before answering 202 (the agent then simply asks again).
+    x402_settlement_wait_seconds: float = Field(default=30, ge=0, le=120)
+
+    # Staging only: test tools on the API docs page that stand in for an agent's own key and
+    # wallet (a throwaway key, signing, paying a quote with test coins). Refused in
+    # production. The DMD test payer uses DMD_RPC_URL/USER/PASSWORD with this wallet; the
+    # x402 test payer signs with DMD_STAGING_BASE_PAYER_KEY (a Base Sepolia test wallet).
+    staging_test_tools: bool = False
+    staging_payer_wallet: str = Field(default="payer-test", min_length=1, max_length=64)
+
     @field_validator("mcp_url", "issuer_key_path", mode="before")
     @classmethod
     def _empty_to_none(cls, value: object) -> object:
@@ -91,6 +102,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "production must not keep the credential signing key on the API host (ID-15)"
             )
+        if self.environment == "production" and self.staging_test_tools:
+            raise ValueError("staging test tools must never be enabled in production")
         return self
 
 

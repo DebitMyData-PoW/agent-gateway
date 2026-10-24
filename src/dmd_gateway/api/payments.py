@@ -19,7 +19,8 @@ from dmd_gateway.db.session import transaction
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
 from dmd_gateway.errors import ApiError
-from dmd_gateway.services.payment_references import submit_reference
+from dmd_gateway.services.payment_references import X402_ADAPTER, submit_reference
+from dmd_gateway.services.registrations import X402_PAY_ACTION
 
 router = APIRouter(prefix="/v1", tags=["payments"])
 
@@ -69,6 +70,9 @@ def payment_status(
         received = int(last.observed_amount_base_units or 0) if last else 0
         refund = int(detail.get("refund_due_base_units", 0))
         status = PaymentStatus(intent.status)
+        next_action = NEXT_ACTIONS[status]
+        if intent.adapter == X402_ADAPTER and status is PaymentStatus.AWAITING_PAYMENT:
+            next_action = X402_PAY_ACTION  # paid in answer to POST /v1/dids/registrations
         return PaymentStatusResponse(
             payment_intent_id=intent.id,
             registration_intent_id=intent.registration_intent_id,
@@ -84,7 +88,7 @@ def payment_status(
             refund_due=format_base_units(refund, decimals) if refund else None,
             expires_at=intent.quote_expires_at,
             updated_at=intent.updated_at,
-            next_action=NEXT_ACTIONS[status],
+            next_action=next_action,
         )
 
 

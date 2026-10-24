@@ -1,0 +1,26 @@
+[Unit]
+Description=DebitMyData Agent Gateway API
+After=network-online.target postgresql.service debitmydata.service
+Wants=network-online.target
+
+[Service]
+User=gateway
+Group=gateway
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=/etc/dmd-gateway/gateway.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@APP_DIR@/.venv/bin/uvicorn --factory dmd_gateway.main:create_app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

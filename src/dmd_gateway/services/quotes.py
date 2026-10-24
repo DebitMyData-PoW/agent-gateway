@@ -69,7 +69,20 @@ MetadataValue = str | int | bool | None
 class QuoteRequest(BaseModel):
     """Request body, as in the directive's example request."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "display_name": "TestAgent-01",
+                    "participant_type": "autonomous_agent",
+                    "controller_public_key": "ed25519:z6Mk<your agent public key>",
+                    "preferred_payment_option": "dmd_pow_native",
+                }
+            ]
+        },
+    )
 
     display_name: str = Field(min_length=1, max_length=100, pattern=_NO_CONTROL_CHARS.pattern)
     participant_type: ParticipantType
@@ -223,11 +236,14 @@ def _quote_amount(
 def _token_contract(rail: RailConfig) -> str | None:
     if rail.asset.asset_type == "native" or not rail.asset.canonical_id:
         return None
-    return rail.asset.canonical_id.rsplit(":", 1)[-1]
+    return rail.token_contract or rail.asset.canonical_id.rsplit(":", 1)[-1]
 
 
 def _next_action(rail: RailConfig) -> str:
-    return "authorize_x402_payment" if rail.protocol == "x402" else "send_payment"
+    # x402: prove control of the controller key first; the payment is then made in answer
+    # to the HTTP 402 of POST /v1/dids/registrations, so it is taken only when the DID can
+    # be issued.
+    return "prove_wallet_control" if rail.protocol == "x402" else "send_payment"
 
 
 def create_registration_quote(

@@ -22,6 +22,7 @@ from dmd_gateway.domain.settlement import ACTIVE_STATUSES
 from dmd_gateway.errors import ApiError
 
 MAX_REFERENCES = 5
+X402_ADAPTER = "X402PaymentAdapter"
 
 _FORMATS: tuple[tuple[str, re.Pattern[str], str], ...] = (
     ("dmd:", re.compile(r"^[0-9a-f]{64}$"), "a DMD transaction ID (64 hexadecimal characters)"),
@@ -56,6 +57,15 @@ def submit_reference(
     intent = session.get(PaymentIntent, payment_intent_id, with_for_update=True)
     if intent is None:
         raise ApiError(404, "not_found", "Unknown payment intent.")
+    if intent.adapter == X402_ADAPTER:
+        # x402 payments go through POST /v1/dids/registrations; with one shared receiving
+        # address, a reference from a payer could point at someone else's payment.
+        raise ApiError(
+            409,
+            "not_used_for_x402",
+            "x402 payments are made and tracked through POST /v1/dids/registrations; "
+            "transaction references are not used for them.",
+        )
     value = normalize_reference(intent.network, reference)
 
     existing = session.scalars(
