@@ -85,4 +85,4 @@ test chain and Base Sepolia. Test payments never count on the production service
 
 ## Questions
 
-Write to info@debitmydata.com with your `payment_intent_id`.
+Write to <info@debitmydata.com> with your `payment_intent_id`.

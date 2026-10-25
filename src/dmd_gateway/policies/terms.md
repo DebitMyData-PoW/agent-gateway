@@ -9,7 +9,7 @@ summary: The terms for using the DebitMyData Agent Gateway and registering a Deb
 
 These terms apply to the DebitMyData Agent Gateway (the "gateway"): its API at
 `{{ base_url }}`, its MCP server, and the DIDs, credentials and entitlements it issues. The
-gateway is operated by DebitMyData ("we", "us").
+gateway is operated by Debit My Data, Inc. ("DebitMyData", "we", "us").
 
 ## 1. Who agrees to these terms
 
@@ -100,10 +100,12 @@ Each version of these terms has a date. Every quote names the version that appli
 (`terms_version`), and that version applies to the registration made from the quote. New
 versions apply to quotes made after they are published.
 
-## 12. Governing law
+## 12. Governing law and disputes
 
-_To be confirmed by DebitMyData before these terms take effect._
+These terms are governed by the laws of the State of New York, without regard to its
+conflict-of-laws rules. Disputes are resolved as set out in DebitMyData's website
+[terms of service](https://app.debitmydata.com/terms-of-services).
 
 ## 13. Contact
 
-info@debitmydata.com
+<info@debitmydata.com>

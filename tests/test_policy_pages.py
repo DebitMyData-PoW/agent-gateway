@@ -57,6 +57,10 @@ def test_every_page_is_complete() -> None:
         # Links to other pages point to pages that exist.
         for linked in re.findall(rf"{BASE}/policies/([a-z-]+)", page.markdown):
             assert linked in PAGES, (page.name, linked)
+        # Email addresses are mailto links, never bare text.
+        for match in re.finditer(r"[\w.+-]+@[\w-]+\.[\w.]+", page.markdown):
+            assert page.markdown[match.start() - 1] == "<", (page.name, match.group())
+        assert 'href="mailto:info@debitmydata.com"' in page.html
 
 
 def test_pages_are_filled_in_for_their_server() -> None:
@@ -125,6 +129,7 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
     assert index.status_code == 200
     for name in PAGES:
         assert f'href="/policies/{name}"' in index.text
+    assert 'href="https://app.debitmydata.com/privacy-policy"' in index.text
 
     page = client.get("/policies/refunds")
     assert page.status_code == 200
@@ -134,6 +139,9 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
     csp = page.headers["content-security-policy"]
     assert "default-src 'none'" in csp and "script-src" not in csp
     assert page.headers["x-content-type-options"] == "nosniff"
+    # no-transform: Cloudflare must not swap email addresses for a script these pages
+    # cannot run (it would show "[email protected]" instead).
+    assert "no-transform" in page.headers["cache-control"]
     # The style the page carries is the one its policy allows.
     style = re.search(r"<style>(.*?)</style>", page.text, re.DOTALL)
     assert style is not None

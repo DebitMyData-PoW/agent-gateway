@@ -24,7 +24,9 @@ from dmd_gateway.services.policy_pages import PolicyPage
 
 router = APIRouter()
 
-CACHE = "public, max-age=300"
+# no-transform: proxies must serve the pages as they are. It also keeps Cloudflare from
+# hiding email addresses behind a script, which these pages (no scripts allowed) cannot run.
+CACHE = "public, max-age=300, no-transform"
 
 _STYLE = """
 :root{--bg:#fff;--fg:#1d2330;--muted:#5b6475;--line:#e3e6ec;--accent:#0b5cad;--note:#fff5d6;
@@ -130,7 +132,16 @@ def policy_index(request: Request) -> HTMLResponse:
         f"<br>{escape(page.summary)}{_version_line(page)}</li>"
         for page in _pages(request).values()
     )
-    body = f"{_notices(request, None)}<h1>Policies</h1><ul class=pages>{items}</ul>"
+    website = (
+        "<p class=meta>DebitMyData's websites and apps have their own "
+        '<a href="https://app.debitmydata.com/terms-of-services">terms of service</a> and '
+        '<a href="https://app.debitmydata.com/privacy-policy">privacy policy</a>.</p>'
+    )
+    body = (
+        f"{_notices(request, None)}<h1>Policies</h1>"
+        "<p>These policies apply to the DebitMyData Agent Gateway and the DIDs it issues.</p>"
+        f"<ul class=pages>{items}</ul>{website}"
+    )
     return HTMLResponse(_document(request, "Policies", None, body), headers=HTML_HEADERS)
 
 

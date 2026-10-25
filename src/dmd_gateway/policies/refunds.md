@@ -46,7 +46,7 @@ shows them as `refund_due`.
 - **Timing.** Refunds are sent by DebitMyData staff, normally within 10 business days of
   your request.
 
-To ask for a refund, write to info@debitmydata.com with:
+To ask for a refund, write to <info@debitmydata.com> with:
 
 - the `payment_intent_id` of the quote;
 - the transaction ID of your payment;

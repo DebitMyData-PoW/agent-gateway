@@ -8,8 +8,10 @@ summary: What the DebitMyData Agent Gateway collects, what it publishes, who it 
 # Privacy policy
 
 This policy covers the DebitMyData Agent Gateway: its API at `{{ base_url }}` and its MCP
-server. The gateway is built for software agents, but the people and organizations that run
-them have rights over the data that concerns them.
+server, operated by Debit My Data, Inc. The gateway is built for software agents, but the
+people and organizations that run them have rights over the data that concerns them.
+DebitMyData's websites and apps are covered by the
+[DebitMyData privacy policy](https://app.debitmydata.com/privacy-policy).
 
 ## What we collect
 
@@ -87,7 +89,7 @@ network (jsDelivr), which sees your IP address when you open it.
 ## Your choices and rights
 
 You can ask us what data we hold about you, ask us to correct it, or object to how we use
-it, by writing to info@debitmydata.com. Some data cannot be deleted: what is on blockchains,
+it, by writing to <info@debitmydata.com>. Some data cannot be deleted: what is on blockchains,
 and the records that back an issued DID and its payment. We can deactivate a DID at your
 request (see the [DID policy]({{ base_url }}/policies/did)); its record is then kept but the
 DID no longer resolves. Depending on where you live, you may also have the right to
@@ -109,4 +111,4 @@ Each version of this policy has a date. We publish changes here before they appl
 
 ## Contact
 
-info@debitmydata.com
+<info@debitmydata.com>

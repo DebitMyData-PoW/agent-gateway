@@ -42,7 +42,7 @@ Please report vulnerabilities privately, never in public issues:
 
 - on GitHub, with **Report a vulnerability** in the **Security** tab of
   [DebitMyData-PoW/agent-gateway](https://github.com/DebitMyData-PoW/agent-gateway); or
-- by email to info@debitmydata.com, with the subject `Security: DebitMyData Agent Gateway`.
+- by email to <info@debitmydata.com>, with the subject `Security: DebitMyData Agent Gateway`.
 
 Include what you found, its possible impact, how to reproduce it, and how you would like to
 be credited. We will acknowledge your report, keep you informed, and agree a disclosure date
@@ -57,4 +57,4 @@ these rules.
 
 ## Contact
 
-info@debitmydata.com
+<info@debitmydata.com>

@@ -337,7 +337,10 @@ quote:
 * In `policy_urls`, a path is a page of this gateway and becomes a full URL in quotes and
   discovery; any other link must be an https URL.
 * The pages run no scripts: their Content-Security-Policy only allows their own style and
-  the gateway's icon, and HTML inside a text is shown, never run.
+  the gateway's icon, and HTML inside a text is shown, never run. They are sent with
+  `Cache-Control: no-transform`, so Cloudflare serves them unchanged; otherwise its email
+  obfuscation would replace each address with "[email protected]" and a decoding script
+  that the policy blocks.
 
 ## Identifier wording
 

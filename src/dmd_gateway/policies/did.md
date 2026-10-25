@@ -72,7 +72,7 @@ A DID is **active** when issued. DebitMyData may change its status:
 
 A DID that is not active answers **410 Gone** when resolved. Its history is kept: records
 are never deleted or rewritten. Where we can, we tell the holder why a DID was suspended or
-revoked and how to contest it, by writing to info@debitmydata.com.
+revoked and how to contest it, by writing to <info@debitmydata.com>.
 
 ## One DID per registration
 
