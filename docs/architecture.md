@@ -102,14 +102,16 @@ market price.
    Non-USD amounts are rounded up to the next base unit and computed only from a price that
    passes the rail's price policy; otherwise the quote is refused. An `Idempotency-Key`
    header makes retries return the original quote instead of creating a new one.
-   A controller key may hold at most 5 open quotes at a time.
+   A controller key may hold at most 5 open quotes at a time (wallets are not counted: a
+   wallet address is public, so anyone could use up a wallet's quotes).
 3. The agent pays. It may report the transaction with
    `POST /v1/payments/{id}/references` (at most 5 per payment, stored append-only); this is
    only a hint for where to look, and the adapter always verifies on chain itself.
 4. The worker moves the payment through `detected → confirming → verified → settled`.
-5. The agent proves control of its controller key (before or after settlement):
-   `POST /v1/dids/registrations/{id}/controller-challenges` returns a one-time message,
-   and the agent sends its signature to `POST /v1/dids/registrations/{id}/controller-proofs`.
+5. The agent proves control of each controller it named, its key and/or its wallet (before
+   or after settlement): `POST /v1/dids/registrations/{id}/controller-challenges` returns a
+   one-time message, and the agent sends its signature to
+   `POST /v1/dids/registrations/{id}/controller-proofs`.
 6. `POST /v1/dids/registrations` issues the identity once the issuance rule passes: the
    gateway creates the DID, signs the credential, grants entitlements and writes the audit
    trail in one transaction. `GET /v1/dids/registrations/{id}` shows what is still missing.
@@ -188,20 +190,47 @@ on this rail.
 
 ## Controller proof
 
-The quote names the DID controller: an Ed25519 public key (`ed25519:` followed by a
-Multikey `z6Mk...`, 64 hex characters or base64). Keys are checked at quote time, including
-that they are valid curve points of large order, and stored in Multikey form.
+The quote names the DID's controller: an Ed25519 public key, an EVM wallet, or both. Each
+one named must prove control before the DID is issued.
 
-* A challenge is a short text containing the gateway, the registration, the controller key,
-  a random nonce and its validity window (5 minutes). The agent signs the exact UTF-8 bytes.
+* **Ed25519 key:** `ed25519:` followed by a Multikey `z6Mk...`, 64 hex characters or
+  base64. Keys are checked at quote time, including that they are valid curve points of
+  large order, and stored in Multikey form. The agent signs the exact UTF-8 bytes of the
+  challenge.
+* **EVM wallet (ID-06):** `0x...` (EIP-55 checksummed or all one case; a wrong checksum and
+  the zero address are refused) or a CAIP-10 account `eip155:<chain id>:0x...`, on one of
+  the networks of the approved EVM rails (Base, `eip155:8453`; Base Sepolia on staging);
+  `controller_network` picks one, by default the x402 rail's. It is stored checksummed,
+  with its network. The wallet signs the challenge the way wallets sign text (EIP-191,
+  `personal_sign` / `signMessage`) and the agent sends the signature as hex:
+  * an ordinary wallet (EOA): the address recovered from the signature must be the
+    wallet's. Checked by the gateway itself, without asking the chain;
+  * a smart-contract wallet such as Coinbase Smart Wallet (ERC-1271): the wallet contract
+    says whether the signature is valid;
+  * a smart wallet that is not deployed yet (ERC-6492): the signature carries the call that
+    would deploy it, and the check simulates that deployment.
+
+  Smart wallets are checked with one read-only `eth_call` on the wallet's network (the
+  x402 rail's RPC), which runs ERC-6492's reference validator without deploying anything
+  (`contracts/UniversalSigValidator.sol`, CC0, compiled into
+  `identity/erc6492.py`). If that network cannot be asked right now, the answer is `503`
+  with `Retry-After` and the challenge stays open; on a network without an RPC the answer
+  is `422 smart_wallet_not_supported`, also leaving the challenge open.
+
+Challenges and proofs work the same for both:
+
+* A challenge is for one controller: by default the next one still to prove, or the one
+  named in `controller_type` (`ed25519` or `eip155`). It is a short text containing the
+  gateway, the registration, the controller, a random nonce and its validity window
+  (5 minutes).
 * A challenge can be answered once. A wrong signature uses it up, so it cannot be replayed
-  or guessed; a malformed one (not 64 bytes of base64url/base64/hex) does not.
+  or guessed; a malformed one (not base64url/base64/hex for a key, not hex for a wallet)
+  does not.
 * At most 5 unanswered challenges can be open per registration.
-* Every answer is stored in `controller_proofs`, which is append-only, and audited.
-* A controller given only as a wallet address is refused at quote time for now: no wallet
-  proof method exists yet (DEC-07), and a paid registration that can never be completed
-  would only lead to a refund. The wallet address, when given with a key, is recorded but
-  not bound to the identity, since it was not proven.
+* Every answer is stored in `controller_proofs` with how it was checked
+  (`ed25519_signature`, `eip191_signature`, `erc1271_signature`, `erc6492_signature`),
+  which is append-only, and audited.
+* `GET /v1/dids/registrations/{id}` lists the controllers in `still_to_prove`.
 
 ## MCP server
 
@@ -235,7 +264,8 @@ sign challenges themselves: no tool takes or returns a private key.
 An identity is issued only when **all** of these hold:
 
 * payment status is `settled`;
-* controller proof is `verified` for the registration's controller key;
+* controller proof is `verified` for each controller the registration names (its key and/or
+  its wallet);
 * policy checks passed: the payment rail is still enabled (a killed rail also stops
   issuance), the settled outputs are credited to this payment, and the registration is not
   held for review. A controller key may hold at most 5 open quotes at a time (quotes refuse
@@ -247,7 +277,9 @@ An identity is issued only when **all** of these hold:
 Issuance is idempotent: repeating `POST /v1/dids/registrations` returns the identity that
 was already issued; one registration intent produces at most one identity
 (`identities.registration_intent_id` is unique), each identity is bound to the proof that
-verified its controller (`identities.controller_proof_id`), and one payment output can be
+verified its controller (`identities.controller_proof_id`: the key's, or the wallet's when
+there is no key; with both, the wallet's proof is in the `identity.issued` audit event),
+and one payment output can be
 credited to at most one intent (`credited_outputs` primary key). If a payment behind an
 issued identity is later reorganized away, the worker records the alert
 `alert.issued_identity_payment_reorged` for an operator.
@@ -256,15 +288,16 @@ issued identity is later reorganized away, the worker records the alert
 
 * **DID (DEC-05):** `did:web:<gateway host>:agents:<id>`. `did:web` is an existing DID
   method, so standard resolvers fetch `https://<gateway host>/agents/<id>/did.json`, which
-  lists the controller key (`Multikey`) for authentication and assertions. A deactivated
-  identity answers 410.
+  lists the controller key (`Multikey`) and/or the wallet
+  (`EcdsaSecp256k1RecoveryMethod2020` with its `blockchainAccountId`, as `did:pkh` does)
+  for authentication and assertions. A deactivated identity answers 410.
 * **Issuer:** `did:web:<gateway host>`, whose document at `/.well-known/did.json` lists the
   Ed25519 key that signs credentials.
 * **Credential (DEC-06):** a W3C Verifiable Credential (data model 2.0) of type
   `DebitMyDataRegistrationCredential`, signed with a Data Integrity proof using the
   `eddsa-jcs-2022` cryptosuite (RFC 8785 canonical JSON, SHA-256, Ed25519). It is also the
-  signed registration receipt: subject DID, display name, participant type, controller key
-  and when it was verified, registration and payment intent, rail, asset, network, amount,
+  signed registration receipt: subject DID, display name, participant type, the
+  controllers (key and/or wallet), how and when each was verified, registration and payment intent, rail, asset, network, amount,
   settled outputs, commercial price, terms version and entitlements.
   `scripts/demo_agent.py verify-credential` checks one using only public information.
 * **Entitlements:** `dmd_did_holder` is granted with the identity; product and marketplace

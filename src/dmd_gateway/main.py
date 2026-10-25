@@ -35,6 +35,7 @@ from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import IssuerKey, load_issuer_key
+from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
@@ -110,6 +111,7 @@ def create_app(
         quote_ttl=timedelta(seconds=settings.quote_ttl_seconds),
         max_open_quotes=settings.max_open_quotes_per_controller,
     )
+    app.state.wallet_verifier = WalletVerifier.from_registry(registry, env)
     app.state.issuance = IssuanceContext(
         registry=registry, issuer=issuer_key, public_base_url=settings.public_base_url
     )
@@ -171,7 +173,8 @@ TRY_IT_STEPS = [
         "post",
         "/v1/staging/test-agent-keys",
         "/v1/staging/test-agent-keys",
-        "a test agent key. Keep `controller_public_key` and `private_key`.",
+        "a test agent key and wallet. Keep `controller_public_key` and `private_key` (and "
+        "`controller_wallet_address` and `wallet_private_key` to try a wallet, see below).",
     ),
     (
         "post",
@@ -199,7 +202,7 @@ TRY_IT_STEPS = [
         "post",
         "/v1/dids/registrations/{registration_intent_id}/controller-challenges",
         "/v1/dids/registrations/{id}/controller-challenges",
-        "your `registration_intent_id`. Keep `challenge_id`.",
+        "your `registration_intent_id` (leave `controller_type` empty). Keep `challenge_id`.",
     ),
     (
         "post",
@@ -225,12 +228,9 @@ TRY_IT_STEPS = [
 
 
 # The staging docs page forms: the payment options to pick from are added when the page is
-# built. A wallet cannot be a DID's controller yet, so that field is left out, and the
-# public key is marked as needed.
+# built.
 FORM_HINTS = FormHints(
     defaults={"display_name": "TestAgent-01", "participant_type": "autonomous_agent"},
-    required=("controller_public_key",),
-    hidden=("controller_wallet_address",),
 )
 
 
@@ -246,7 +246,13 @@ def _add_try_it_guide(app: FastAPI) -> None:
         schema = build()
         registry = app.state.registry
         options = [rail_id for rail_id, _ in registry.enabled_rails(DID_REGISTRATION)]
-        add_form_bodies(schema, replace(FORM_HINTS, choices={"preferred_payment_option": options}))
+        networks, default_network = controller_networks(registry)
+        choices = {
+            "preferred_payment_option": options,
+            "controller_network": networks,
+            "controller_type": ["ed25519", "eip155"],
+        }
+        add_form_bodies(schema, replace(FORM_HINTS, choices=choices))
         lines = [
             "### Try the whole registration from this page",
             "",
@@ -283,6 +289,17 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "- `signature` from step 6 (short): step 7.",
             "- `payment_signature` from step 3 (long, USDC only): step 8, in the "
             "`PAYMENT-SIGNATURE` field.",
+            "",
+            "**A wallet as the controller** (with the key, or instead of it): in step 2, paste "
+            "the `controller_wallet_address` from step 1 as well, or alone with "
+            f"`controller_public_key` left empty (its network is `{default_network}` unless "
+            "you pick another in `controller_network`). Then do steps 5 to 7 once for each "
+            "controller. Step 5 gives the next one still to prove (or pick it in "
+            "`controller_type`). In step 6, use `private_key` when the challenge's "
+            "`controller` starts with `ed25519:`, and `wallet_private_key` when it starts "
+            "with `eip155:`; the wallet's `signature` starts with `0x`. Step 8 then issues a "
+            "DID that lists the wallet. `GET /v1/dids/registrations/{id}` shows in "
+            "`still_to_prove` what is left.",
             "",
             "Request bodies are shown here as fields to fill in. Agents send the same fields "
             "as JSON: pick `application/json` above a request body to see it.",

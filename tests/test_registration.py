@@ -142,8 +142,10 @@ def test_paid_and_proven_registration_gets_its_did(client: TestClient, engine: E
     assert status["next_action"] == "send_payment"
     assert status["controller"] == {
         "public_key": AGENT_CONTROLLER,
-        "wallet_address": EXAMPLE_REQUEST["controller_wallet_address"],
+        "wallet_address": None,
+        "wallet_network": None,
         "proof_status": "pending",
+        "still_to_prove": ["ed25519"],
     }
     assert status["blockers"] == [
         "payment is awaiting_payment, not settled",

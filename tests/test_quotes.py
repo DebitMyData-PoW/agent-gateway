@@ -50,7 +50,8 @@ EXAMPLE_REQUEST: dict[str, Any] = {
     "display_name": "ResearchClaw-01",
     "participant_type": "autonomous_agent",
     "controller_public_key": f"ed25519:{AGENT_PUBLIC_HEX}",
-    "controller_wallet_address": "0x0000000000000000000000000000000000000000",
+    # The directive's example also names a wallet (0x000...0, a placeholder); a wallet is a
+    # controller that must prove control too, so wallet tests name a real one.
     "preferred_payment_option": "x402_usdc_base",
     "metadata": {"service_category": "research-agent"},
 }
@@ -138,9 +139,11 @@ def test_unknown_payment_option(client: TestClient) -> None:
         {"controller_public_key": "secp256k1:" + "02" + "11" * 32},
         {"controller_public_key": "ed25519:01" + "00" * 31},  # weak key (the identity point)
         {"controller_public_key": "ed25519:" + "zz" * 32},
-        # No wallet-control proof exists yet, so a wallet alone cannot control a DID.
-        {"controller_public_key": None},
         {"controller_wallet_address": "short"},
+        {"controller_wallet_address": "0x" + "00" * 20},  # the zero address: no one's
+        # A mistyped capital letter breaks the checksum (EIP-55).
+        {"controller_wallet_address": "0x52908400098527886E0F7030069857D2E4169eE7"},
+        {"controller_network": "eip155:8453"},  # a network without a wallet
         {"metadata": {f"k{i}": i for i in range(21)}},
         {"metadata": {"nested": {"not": "allowed"}}},
         {"metadata": {"long": "x" * 300}},
@@ -287,7 +290,7 @@ def test_quote_is_stored_with_events_and_audit(db_client: TestClient, engine: En
         ).one()
     # Stored in its canonical (Multikey) form whatever encoding the agent used.
     assert registration.controller_public_key == AGENT_CONTROLLER
-    assert registration.controller_wallet_address == EXAMPLE_REQUEST["controller_wallet_address"]
+    assert registration.controller_wallet_address is None
     assert registration.agent_metadata == {"service_category": "research-agent"}
     assert registration.status == "awaiting_payment"
     assert payment.status == "awaiting_payment"

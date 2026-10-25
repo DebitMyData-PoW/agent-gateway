@@ -90,7 +90,7 @@ Which value goes where:
 | --- | --- | --- |
 | `registration_intent_id` (`dmd_did_intent_...`) | step 2 | steps 5, 7 and 8 |
 | `payment_intent_id` (`dmd_payment_intent_...`) | step 2 | steps 3 and 4 |
-| `signature` (short, about 86 characters) | step 6 | step 7 |
+| `signature` (short: about 86 characters, or `0x` + 130 for a wallet) | step 6 | step 7 |
 | `payment_signature` (long, starts with `eyJ`; USDC only) | step 3 | step 8, `PAYMENT-SIGNATURE` field |
 
 The two IDs of a quote start alike after their prefix, because both carry the time they were
@@ -103,9 +103,9 @@ key and wallet:
 
 | Endpoint | Stands in for |
 | --- | --- |
-| `POST /v1/staging/test-agent-keys` | the agent creating its own Ed25519 key |
+| `POST /v1/staging/test-agent-keys` | the agent creating its own Ed25519 key, and its own EVM wallet (one that holds nothing: it only signs) |
 | `POST /v1/staging/test-payments` | the agent paying the quote: from its DMD wallet (6 blocks are mined to confirm it), or for an x402 quote, the agent's wallet signing the USDC payment |
-| `POST /v1/staging/test-signatures` | the agent signing the controller challenge with its key |
+| `POST /v1/staging/test-signatures` | the agent signing the controller challenge with its key, or with its wallet (`personal_sign`) |
 
 Everything else is the real API, and the gateway checks the payment on chain exactly as it
 will in production. The tools only exist when `DMD_GW_STAGING_TEST_TOOLS=true` (set by
@@ -122,6 +122,26 @@ systemctl stop dmd-gateway-worker dmd-gateway-api debitmydata
 mv /var/lib/debitmydata/regtest /var/lib/debitmydata/regtest-old
 /opt/agent-gateway/deploy/staging/setup.sh
 ```
+
+### A wallet as the controller
+
+A DID can be controlled by an EVM wallet, instead of the Ed25519 key or as well as it. Step 1
+also returns a throwaway wallet: `controller_wallet_address` and `wallet_private_key`.
+
+1. In step 2, paste `controller_wallet_address` as well as `controller_public_key` (or alone,
+   with `controller_public_key` left empty). Leave `controller_network` on `--`: the wallet is
+   then on Base Sepolia, `eip155:84532`.
+2. Do steps 5 to 7 once for each controller. Step 5 gives the next one still to prove (or pick
+   it in `controller_type`). In step 6, put `private_key` in the `private_key` field when the
+   challenge's `controller` starts with `ed25519:`, and `wallet_private_key` when it starts
+   with `eip155:`. The wallet's `signature` starts with `0x`.
+3. `GET /v1/dids/registrations/{id}` lists in `still_to_prove` what is left. Once it is
+   empty, step 8 issues a DID whose document lists the wallet, and whose credential names it.
+
+Real agents sign with their own wallet, the way wallets sign text (`personal_sign`). Smart
+wallets work too: Coinbase Smart Wallet and other ERC-1271 wallets, even before they are
+deployed (ERC-6492). The gateway checks those on the wallet's network through
+`DMD_BASE_RPC_URL`, so on staging only Base Sepolia smart wallets can be checked.
 
 ### Paying with USDC through x402 (Base Sepolia)
 

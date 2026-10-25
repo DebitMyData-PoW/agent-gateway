@@ -58,10 +58,11 @@ def _ctx(request: Request) -> IssuanceContext:
 class ChallengeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    controller_type: str = Field(
-        default="ed25519",
-        pattern=r"^ed25519$",
-        description="Kind of controller to prove. Only ed25519 public keys for now.",
+    controller_type: str | None = Field(
+        default=None,
+        pattern=r"^(ed25519|eip155)$",
+        description="Which controller to prove: ed25519 (the public key) or eip155 (the "
+        "wallet). Optional: by default the only controller, or the next one still to prove.",
     )
 
 
@@ -80,7 +81,7 @@ class ChallengeResponse(BaseModel):
     "/dids/registrations/{registration_intent_id}/controller-challenges",
     status_code=201,
     response_model=ChallengeResponse,
-    summary="Get a one-time message to sign with the controller key",
+    summary="Get a one-time message to sign with the controller key or wallet",
     responses={
         404: {"description": "Unknown registration intent."},
         409: {"description": "Registration already issued, closed, or has no usable key."},
@@ -98,6 +99,7 @@ def create_challenge(
         challenge = controller_proofs.create_challenge(
             session,
             registration_intent_id,
+            controller_type=body.controller_type if body else None,
             audience=settings.public_base_url,
             ttl=timedelta(seconds=settings.controller_challenge_ttl_seconds),
             now=now,
@@ -107,14 +109,26 @@ def create_challenge(
             registration_intent_id=registration_intent_id,
             controller=challenge.controller_value,
             message=challenge.message,
-            signature_algorithm="ed25519",
-            signature_encoding="base64url (base64 and hex are also accepted)",
+            **SIGNING[challenge.controller_type],
             expires_at=challenge.expires_at,
             proof_url=(
                 f"{settings.public_base_url}/v1/dids/registrations/"
                 f"{registration_intent_id}/controller-proofs"
             ),
         )
+
+
+# How each kind of controller signs its challenge.
+SIGNING = {
+    "ed25519": {
+        "signature_algorithm": "ed25519",
+        "signature_encoding": "base64url (base64 and hex are also accepted)",
+    },
+    "eip155": {
+        "signature_algorithm": "eip191 (personal_sign; smart wallets: ERC-1271 or ERC-6492)",
+        "signature_encoding": "hex, 0x..., as the wallet returns it",
+    },
+}
 
 
 # --------------------------------------------------------------------------- proofs
@@ -134,9 +148,12 @@ class ProofRequest(BaseModel):
     )
     signature: str = Field(
         min_length=86,
-        max_length=128,
-        description="Ed25519 signature of the challenge message (UTF-8), base64url/base64/hex: "
-        "about 86 characters. Not the x402 payment (the long value starting with eyJ).",
+        max_length=16_400,
+        description="Signature of the challenge message. A public key: Ed25519 signature of "
+        "the message (UTF-8), base64url/base64/hex, about 86 characters. A wallet: what the "
+        "wallet's personal_sign / signMessage returns, 0x... (132 characters for an ordinary "
+        "wallet, longer for a smart wallet). Not the x402 payment (the long value starting "
+        "with eyJ).",
     )
 
     @field_validator("signature", mode="before")
@@ -146,7 +163,7 @@ class ProofRequest(BaseModel):
             raise ValueError(
                 "this is an x402 payment (payment_signature), which goes in the "
                 "PAYMENT-SIGNATURE header of POST /v1/dids/registrations; here, send the "
-                "Ed25519 signature of the challenge message"
+                "signature of the challenge message"
             )
         return value
 
@@ -163,12 +180,16 @@ class ProofResponse(BaseModel):
     "/dids/registrations/{registration_intent_id}/controller-proofs",
     status_code=201,
     response_model=ProofResponse,
-    summary="Prove control of the controller key by returning the signed challenge",
+    summary="Prove control of the controller key or wallet by returning the signed challenge",
     responses={
         404: {"description": "Unknown registration or challenge."},
         409: {"description": "Challenge already answered, or registration closed."},
         410: {"description": "Challenge expired."},
-        422: {"description": "Wrong or malformed signature (a wrong one uses up the challenge)."},
+        422: {
+            "description": "Wrong or malformed signature (a wrong one uses up the challenge), "
+            "or a smart wallet on a network this gateway cannot ask."
+        },
+        503: {"description": "A smart wallet's network cannot be asked right now (try again)."},
     },
 )
 def submit_proof(
@@ -185,6 +206,7 @@ def submit_proof(
             challenge_id=body.challenge_id,
             signature=body.signature,
             now=now,
+            wallets=request.app.state.wallet_verifier,
         )
         session.flush()
         registration = session.get(RegistrationIntent, registration_intent_id)
@@ -203,8 +225,8 @@ def submit_proof(
             status_code=422,
             content=error_body(
                 "invalid_signature",
-                "The signature does not match the controller public key. This challenge is "
-                "used up; request a new one.",
+                "The signature does not match the controller. This challenge is used up; "
+                "request a new one.",
                 {"proof_id": response.proof_id, "next_action": "request_new_challenge"},
             ),
         )
@@ -338,7 +360,12 @@ def register(
 class ControllerStatus(BaseModel):
     public_key: str | None
     wallet_address: str | None
+    wallet_network: str | None = None
     proof_status: str
+    still_to_prove: list[str] = Field(
+        default_factory=list,
+        description="Controllers without a verified proof yet: ed25519 and/or eip155.",
+    )
 
 
 class PaymentSummary(BaseModel):
@@ -388,7 +415,9 @@ def registration_status(
             controller=ControllerStatus(
                 public_key=registration.controller_public_key,
                 wallet_address=registration.controller_wallet_address,
+                wallet_network=registration.controller_network,
                 proof_status=state.proof_status.value,
+                still_to_prove=state.unproven,
             ),
             payment=(
                 PaymentSummary(

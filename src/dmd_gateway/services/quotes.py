@@ -40,6 +40,13 @@ from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
+from dmd_gateway.identity.wallets import (
+    Wallet,
+    WalletError,
+    controller_networks,
+    parse_wallet,
+    split_account,
+)
 from dmd_gateway.pricing import PriceObservation, PriceSource, PriceUnavailable, select_price
 
 log = logging.getLogger(__name__)
@@ -97,14 +104,22 @@ class QuoteRequest(BaseModel):
         default=None,
         max_length=256,
         pattern=r"^[a-z0-9-]{2,32}:[A-Za-z0-9+/=_.:-]{8,220}$",
-        description="The agent's public key, e.g. ed25519:z6Mk...: the DID's controller.",
+        description="The agent's public key, e.g. ed25519:z6Mk...: the DID's controller "
+        "(with a wallet, or alone).",
     )
     controller_wallet_address: str | None = Field(
         default=None,
         max_length=128,
         pattern=r"^[A-Za-z0-9:_.-]{8,128}$",
-        description="Optional. A wallet cannot be the DID's controller yet (wallet-control "
-        "proofs are not available), so controller_public_key is required.",
+        description="An EVM wallet that controls the DID: `0x...` or `eip155:8453:0x...`. "
+        "Ordinary wallets and smart-contract wallets (such as Coinbase Smart Wallet) both "
+        "work. Give a public key, a wallet, or both; each one given must prove control.",
+    )
+    controller_network: str | None = Field(
+        default=None,
+        pattern=r"^eip155:[1-9][0-9]{0,11}$",
+        description="The wallet's network, e.g. eip155:8453 for Base. Optional: by default, "
+        "the network of the gateway's USDC payments.",
     )
     preferred_payment_option: str = Field(
         min_length=1,
@@ -124,6 +139,17 @@ class QuoteRequest(BaseModel):
         except ControllerKeyError as exc:
             raise ValueError(str(exc)) from exc
 
+    @field_validator("controller_wallet_address")
+    @classmethod
+    def _valid_wallet(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            network, address = split_account(value)
+        except WalletError as exc:
+            raise ValueError(str(exc)) from exc
+        return f"{network}:{address}" if network else address
+
     @model_validator(mode="after")
     def _controller_required(self) -> QuoteRequest:
         if not self.controller_public_key and not self.controller_wallet_address:
@@ -131,13 +157,8 @@ class QuoteRequest(BaseModel):
                 "controller_public_key or controller_wallet_address is required "
                 "(the controller of the DID)"
             )
-        if not self.controller_public_key:
-            # Paying for a registration that can never be completed would only lead to a
-            # refund, so a controller that cannot prove control yet is refused up front.
-            raise ValueError(
-                "controller_public_key is required: wallet-control proofs are not available "
-                "yet, so the DID controller must be an ed25519 public key"
-            )
+        if self.controller_network and not self.controller_wallet_address:
+            raise ValueError("controller_network goes with controller_wallet_address")
         return self
 
     @field_validator("metadata")
@@ -253,11 +274,30 @@ def _quote_amount(
     return usd_to_base_units(usd_price, observation.usd_per_unit, decimals), observation
 
 
+def _quote_wallet(ctx: QuoteContext, request: QuoteRequest) -> Wallet | None:
+    if not request.controller_wallet_address:
+        return None
+    networks, default = controller_networks(ctx.registry)
+    try:
+        return parse_wallet(
+            request.controller_wallet_address,
+            request.controller_network,
+            allowed_networks=networks,
+            default_network=default,
+        )
+    except WalletError as exc:
+        raise ApiError(422, "invalid_controller_wallet", str(exc)) from exc
+
+
 def _check_open_quotes(session: Session, ctx: QuoteContext, controller: str, now: datetime) -> None:
     """Refuse a new quote while the controller key already has the maximum of open quotes.
 
     The count is taken under a lock on that controller key (held until the transaction
     ends), so requests sent in parallel cannot all slip under the limit.
+
+    Wallets are not counted: a wallet address is public, so a limit per wallet would let
+    anyone block a wallet's registration by requesting quotes for it. Quotes naming only a
+    wallet are still bounded by the request limits per address and by their expiry.
     """
     session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(controller, 0))))
     open_until = session.scalars(
@@ -309,6 +349,7 @@ def create_registration_quote(
     service = ctx.registry.services[service_id]
     rail_id = request.preferred_payment_option
     rail = resolve_payment_option(ctx, service_id, rail_id)
+    wallet = _quote_wallet(ctx, request)
     if request.controller_public_key:
         _check_open_quotes(session, ctx, request.controller_public_key, now)
     usd_price = service.commercial_price.amount
@@ -327,7 +368,8 @@ def create_registration_quote(
             display_name=request.display_name,
             participant_type=request.participant_type.value,
             controller_public_key=request.controller_public_key,
-            controller_wallet_address=request.controller_wallet_address,
+            controller_wallet_address=wallet.address if wallet else None,
+            controller_network=wallet.network if wallet else None,
             commercial_price_currency=service.commercial_price.currency,
             commercial_price_amount=usd_price,
             terms_version=service.terms_version,

@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Path, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from dmd_gateway.db.models import AgentIdentity, Credential, Entitlement
@@ -26,6 +26,7 @@ from dmd_gateway.identity.did import (
     did_document_url,
     issuer_did_document,
 )
+from dmd_gateway.identity.wallets import Wallet
 from dmd_gateway.services.registrations import (
     IssuanceContext,
     active_entitlements,
@@ -52,6 +53,9 @@ class IdentityRecord(BaseModel):
     display_name: str
     participant_type: str
     controller_public_key: str | None
+    controller_wallet: str | None = Field(
+        default=None, description="The controller wallet, as `eip155:<chain id>:0x...`"
+    )
     did_document_url: str
     registration_intent_id: str
     credentials: list[str]
@@ -83,6 +87,11 @@ def identity(request: Request, identity_id: str = Path(pattern=IDENTITY_ID)) -> 
             display_name=record.display_name,
             participant_type=record.participant_type,
             controller_public_key=record.controller_public_key,
+            controller_wallet=(
+                f"{record.controller_network}:{record.controller_wallet_address}"
+                if record.controller_wallet_address
+                else None
+            ),
             did_document_url=did_document_url(base, record.id),
             registration_intent_id=record.registration_intent_id,
             credentials=[credential_url(base, cid) for cid in credentials],
@@ -180,11 +189,21 @@ def agent_document(request: Request, suffix: str = Path(pattern=rf"^{ULID}$")) -
             raise ApiError(404, "not_found", "Unknown DID.")
         if record.status != "active":
             raise ApiError(410, "deactivated", f"This DID is {record.status}.")
-        controller = parse_controller_key(record.controller_public_key or "")
+        controller = (
+            parse_controller_key(record.controller_public_key)
+            if record.controller_public_key
+            else None
+        )
+        wallet = (
+            Wallet(record.controller_network or "", record.controller_wallet_address)
+            if record.controller_wallet_address
+            else None
+        )
         document = agent_did_document(
             record.public_identifier,
             controller,
             record_url=identity_record_url(base, record.id),
+            wallet=wallet,
         )
     return JSONResponse(content=document, media_type=DID_JSON)
 

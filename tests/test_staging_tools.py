@@ -21,6 +21,7 @@ import pytest
 import yaml
 from alembic import command
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from eth_utils import to_checksum_address
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -31,6 +32,7 @@ from dmd_gateway.db.session import session_factory
 from dmd_gateway.identity.crypto import parse_controller_key, verify_proof
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import IssuerKey
+from dmd_gateway.identity.wallets import recovered_signer
 from dmd_gateway.main import create_app
 from dmd_gateway.services.settlement import run_pass
 from dmd_gateway.services.staging_tools import (
@@ -38,8 +40,10 @@ from dmd_gateway.services.staging_tools import (
     StagingPayment,
     StagingToolError,
     load_test_agent_key,
+    load_test_wallet,
     new_test_agent_key,
     public_key_of,
+    sign_with_test_wallet,
 )
 from dmd_gateway.settings import Settings
 
@@ -135,7 +139,8 @@ def test_quote_offers_one_example_per_way_to_pay(staging_client: TestClient) -> 
     body = schema["paths"]["/v1/dids/registration-quotes"]["post"]["requestBody"]
     examples = body["content"]["application/json"]["examples"]
     options = [example["value"]["preferred_payment_option"] for example in examples.values()]
-    assert options == ["dmd_pow_native", "x402_usdc_base"]
+    assert options == ["dmd_pow_native", "x402_usdc_base", "x402_usdc_base"]
+    assert "controller_public_key" not in examples["wallet"]["value"]
 
 
 FORM = "application/x-www-form-urlencoded"
@@ -157,20 +162,24 @@ def test_docs_page_shows_request_bodies_as_fields(staging_client: TestClient) ->
         "display_name",
         "participant_type",
         "controller_public_key",
+        "controller_wallet_address",
+        "controller_network",
         "preferred_payment_option",
     }
-    assert fields["required"] == [
-        "display_name",
-        "participant_type",
-        "controller_public_key",
-        "preferred_payment_option",
-    ]
+    # A public key, a wallet or both: neither field is required on its own.
+    assert fields["required"] == ["display_name", "participant_type", "preferred_payment_option"]
     assert fields["properties"]["display_name"]["default"] == "TestAgent-01"
     # Fields to paste into start empty, never with a made-up value matching their pattern.
     assert fields["properties"]["controller_public_key"]["example"] == ""
     assert fields["properties"]["participant_type"]["description"].startswith("What kind")
     assert "autonomous_agent" in fields["properties"]["participant_type"]["enum"]
+    # The wallet's network and the controller to prove are picked from a list.
+    assert fields["properties"]["controller_network"]["enum"] == ["eip155:8453"]
     assert "examples" in body["application/json"]
+    path = "/v1/dids/registrations/{registration_intent_id}/controller-challenges"
+    challenge = schema["paths"][path]["post"]["requestBody"]["content"][FORM]["schema"]
+    assert challenge["properties"]["controller_type"]["enum"] == ["ed25519", "eip155"]
+    assert "required" not in challenge
 
 
 def test_forms_are_turned_into_the_same_json(staging_client: TestClient) -> None:
@@ -220,7 +229,25 @@ def test_throwaway_keys_round_trip(staging_client: TestClient) -> None:
     )
     key = load_test_agent_key(body["private_key"])
     assert public_key_of(key) == body["controller_public_key"]
-    assert staging_client.post(KEYS).json()["private_key"] != body["private_key"]
+    # A throwaway wallet too, written as wallets write their address (EIP-55).
+    wallet = load_test_wallet(body["wallet_private_key"])
+    assert wallet.address == body["controller_wallet_address"]
+    assert to_checksum_address(body["controller_wallet_address"]) == wallet.address
+    assert re.fullmatch(r"0x[0-9a-f]{64}", body["wallet_private_key"])
+    other = staging_client.post(KEYS).json()
+    assert other["private_key"] != body["private_key"]
+    assert other["wallet_private_key"] != body["wallet_private_key"]
+
+
+def test_test_wallets_sign_as_wallets_do() -> None:
+    wallet = load_test_wallet(new_test_agent_key().wallet_private_key)
+    signature = sign_with_test_wallet(wallet, "DebitMyData controller proof")
+    assert re.fullmatch(r"0x[0-9a-f]{130}", signature)
+    assert recovered_signer("DebitMyData controller proof", bytes.fromhex(signature[2:])) == (
+        wallet.address
+    )
+    with pytest.raises(StagingToolError, match="wallet_private_key"):
+        load_test_wallet("z3u2" + "1" * 40)
 
 
 @pytest.mark.parametrize(
@@ -515,3 +542,86 @@ def test_only_unpaid_test_chain_quotes_can_be_test_paid(
     response = client.post(PAYMENTS, json={"payment_intent_id": quote.json()["payment_intent_id"]})
     assert (response.status_code, response.json()["error"]["code"]) == (409, "not_a_test_payment")
     assert payer.paid == []
+
+
+@needs_db
+def test_a_wallet_controller_from_the_docs_page_endpoints(
+    regtest_registry: Path, engine: Engine
+) -> None:
+    """The docs-page guide's wallet path: a key and a wallet, each proven with the throwaway
+    keys, through the same forms the page sends."""
+    SCRIPTED.reset()
+    issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did("http://localhost:8000"))
+    app = create_app(
+        staging_settings(route_registry_path=regtest_registry),
+        environ={"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"},
+        engine=engine,
+        adapters=ADAPTERS,
+        price_sources={PRICE_SOURCE: fixed_price_factory(PRICE_SOURCE, "1.00")},
+        issuer_key=issuer,
+    )
+    txid = "cf" * 32
+    app.state.staging_payer = ScriptedPayer(txid)
+    client = TestClient(app)
+
+    keys = client.post(KEYS).json()
+    quote = client.post(
+        "/v1/dids/registration-quotes",
+        data={
+            "display_name": "DocsPageWallet-01",
+            "participant_type": "autonomous_agent",
+            "controller_public_key": keys["controller_public_key"],
+            "controller_wallet_address": keys["controller_wallet_address"],
+            "controller_network": "",  # left on "--": the default network
+            "preferred_payment_option": "dmd_pow_native",
+        },
+    )
+    assert quote.status_code == 201, quote.text
+    rid, pid = quote.json()["registration_intent_id"], quote.json()["payment_intent_id"]
+    wallet = f"eip155:8453:{keys['controller_wallet_address']}"
+
+    proven = []
+    for _ in range(2):
+        challenge = client.post(
+            f"/v1/dids/registrations/{rid}/controller-challenges", data={"controller_type": ""}
+        ).json()
+        is_wallet = challenge["controller"].startswith("eip155:")
+        right = keys["wallet_private_key"] if is_wallet else keys["private_key"]
+        wrong_kind = keys["private_key"] if is_wallet else keys["wallet_private_key"]
+        refused = client.post(
+            SIGNATURES, data={"challenge_id": challenge["challenge_id"], "private_key": wrong_kind}
+        )
+        assert refused.status_code == 422
+        assert challenge["controller"] in refused.json()["error"]["message"]
+        if is_wallet:
+            stranger = new_test_agent_key().wallet_private_key
+            other = client.post(
+                SIGNATURES,
+                data={"challenge_id": challenge["challenge_id"], "private_key": stranger},
+            )
+            assert other.json()["matches_controller"] is False
+        signed = client.post(
+            SIGNATURES, data={"challenge_id": challenge["challenge_id"], "private_key": right}
+        ).json()
+        assert signed["matches_controller"] is True
+        assert signed["signature"].startswith("0x") == is_wallet
+        proof = client.post(
+            f"/v1/dids/registrations/{rid}/controller-proofs",
+            data={"challenge_id": challenge["challenge_id"], "signature": signed["signature"]},
+        )
+        assert proof.status_code == 201, proof.text
+        proven.append(challenge["controller"])
+    assert proven == [keys["controller_public_key"], wallet]
+    assert client.get(f"/v1/dids/registrations/{rid}").json()["controller"]["still_to_prove"] == []
+
+    paid = client.post(PAYMENTS, data={"payment_intent_id": pid})
+    assert paid.status_code == 201, paid.text
+    option = quote.json()["selected_payment_option"]
+    SCRIPTED.pay(pid, int(option["amount_base_units"]), txid=txid)
+    SCRIPTED.confirm(pid, 6)
+    tick(app)
+    issued = client.post("/v1/dids/registrations", data={"registration_intent_id": rid})
+    assert issued.status_code == 201, issued.text
+    subject = issued.json()["credential"]["credentialSubject"]
+    assert subject["wallet"]["blockchainAccountId"] == wallet
+    assert verify_proof(issued.json()["credential"], issuer.public_key_multibase)

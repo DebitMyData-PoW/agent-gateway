@@ -95,7 +95,7 @@ place; the application logic comes with the related phase.
 - [x] ID-03 One-time challenges with a short expiry (5 minutes), limited per registration
 - [x] ID-04 Controller proof per key family: Ed25519 keys first
 - [ ] ID-05 Native DMD wallet proof supported by official DMD wallets (DEC-07)
-- [ ] ID-06 EVM controller proof, with the x402/EVM rail
+- [x] ID-06 EVM controller proof, with the x402/EVM rail: ordinary wallets (EIP-191), smart wallets (ERC-1271) and undeployed smart wallets (ERC-6492), alone or with a key
 - [ ] ID-07 Solana controller proof, only when that rail is enabled
 - [x] ID-08 Verified proof bound to the registration and the identity
 - [x] ID-09 Identity issued only after settlement, verified proof and policy checks; idempotent

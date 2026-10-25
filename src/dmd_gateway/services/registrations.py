@@ -4,7 +4,8 @@
 ``domain/issuance.py`` passes:
 
 * the payment for the registration is ``settled``;
-* a controller proof for the registration's controller key is ``verified``;
+* a controller proof is ``verified`` for each controller named in the quote (its Ed25519
+  public key and/or its EVM wallet);
 * policy checks pass: the payment rail is still enabled (a killed rail also stops issuance),
   the settled outputs are credited to this payment and to nothing else, and the
   registration is not held for review;
@@ -17,6 +18,7 @@ Repeating the call returns the identity that was already issued, so retries are 
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -48,7 +50,13 @@ from dmd_gateway.identity.credentials import (
 from dmd_gateway.identity.crypto import parse_controller_key
 from dmd_gateway.identity.did import agent_did
 from dmd_gateway.identity.issuer import IssuerKey
-from dmd_gateway.services.controller_proofs import verified_proof
+from dmd_gateway.identity.wallets import Wallet
+from dmd_gateway.services.controller_proofs import (
+    ED25519,
+    EIP155,
+    declared_controllers,
+    verified_proofs,
+)
 
 DID_HOLDER = "dmd_did_holder"
 INVALID_REGISTRATION_STATUSES = frozenset({"expired", "rejected", "cancelled"})
@@ -72,7 +80,8 @@ class IssuanceContext:
 class RegistrationState:
     registration: RegistrationIntent
     payment: PaymentIntent | None
-    proof: ControllerProof | None
+    proofs: Mapping[str, ControllerProof]  # controller type -> verified proof
+    controllers: tuple[str, ...]  # controller types that must prove control
     identity: AgentIdentity | None
     outputs: list[CreditedOutput]
     blockers: list[str] = field(default_factory=list)
@@ -83,8 +92,23 @@ class RegistrationState:
         return PaymentStatus(self.payment.status) if self.payment else PaymentStatus.CREATED
 
     @property
+    def proven(self) -> bool:
+        return bool(self.controllers) and all(kind in self.proofs for kind in self.controllers)
+
+    @property
     def proof_status(self) -> ControllerProofStatus:
-        return ControllerProofStatus.VERIFIED if self.proof else ControllerProofStatus.PENDING
+        return ControllerProofStatus.VERIFIED if self.proven else ControllerProofStatus.PENDING
+
+    @property
+    def unproven(self) -> list[str]:
+        return [kind for kind in self.controllers if kind not in self.proofs]
+
+    @property
+    def proof(self) -> ControllerProof | None:
+        """The proof that binds the identity: the public key's, or else the wallet's."""
+        if not self.proven:
+            return None
+        return self.proofs.get(ED25519) or self.proofs.get(EIP155)
 
 
 def payment_for(
@@ -120,7 +144,8 @@ def evaluate(
     state = RegistrationState(
         registration=registration,
         payment=payment,
-        proof=verified_proof(session, registration),
+        proofs=verified_proofs(session, registration),
+        controllers=tuple(declared_controllers(registration)),
         identity=identity,
         outputs=outputs,
     )
@@ -149,11 +174,20 @@ def evaluate(
     # exists nothing is blocking any more: asking again returns it.
     if identity is None:
         state.blockers = [
-            b for b in blockers if not b.startswith("policy, risk or compliance")
+            _with_unproven(state, b)
+            for b in blockers
+            if not b.startswith("policy, risk or compliance")
         ] + policy_failures
     x402 = payment is not None and is_x402_rail(ctx.registry, payment.rail_id)
     state.next_action = _next_action(state, policy_failures, x402=x402)
     return state
+
+
+def _with_unproven(state: RegistrationState, blocker: str) -> str:
+    """With a key and a wallet, one of them proven: say which one is left."""
+    if blocker.startswith("controller proof") and state.proofs and state.unproven:
+        return f"{blocker} (still to prove: {', '.join(state.unproven)})"
+    return blocker
 
 
 def is_x402_rail(registry: PaymentRouteRegistry, rail_id: str) -> bool:
@@ -228,7 +262,17 @@ def _issue(
     if payment is None or proof is None or proof.verified_at is None:  # excluded by the blockers
         raise RuntimeError("issuance reached without a settled payment and a verified proof")
     service = ctx.registry.services[registration.service_id]
-    controller = parse_controller_key(registration.controller_public_key or "")
+    key_proof, wallet_proof = state.proofs.get(ED25519), state.proofs.get(EIP155)
+    controller = (
+        parse_controller_key(registration.controller_public_key)
+        if registration.controller_public_key
+        else None
+    )
+    wallet = (
+        Wallet(registration.controller_network or "", registration.controller_wallet_address)
+        if registration.controller_wallet_address
+        else None
+    )
 
     identity_id = new_id(IDENTITY)
     credential_id = new_id(CREDENTIAL)
@@ -241,9 +285,10 @@ def _issue(
         public_identifier=did,
         display_name=registration.display_name,
         participant_type=registration.participant_type,
-        # Only the controller that proved control is bound; a wallet address given in the
-        # quote is not, because no wallet proof was made.
-        controller_public_key=controller.canonical,
+        # Every controller here proved control (the issuance rule requires it).
+        controller_public_key=controller.canonical if controller else None,
+        controller_wallet_address=wallet.address if wallet else None,
+        controller_network=wallet.network if wallet else None,
         registration_intent_id=registration.id,
         controller_proof_id=proof.id,
         status="active",
@@ -260,7 +305,10 @@ def _issue(
             display_name=registration.display_name,
             participant_type=registration.participant_type,
             controller=controller,
-            controller_verified_at=proof.verified_at,
+            controller_verified_at=key_proof.verified_at if key_proof else None,
+            wallet=wallet,
+            wallet_verified_at=wallet_proof.verified_at if wallet_proof else None,
+            wallet_proof_method=wallet_proof.method if wallet_proof else None,
             registration_intent_id=registration.id,
             payment_intent_id=payment.id,
             service_title=service.title,
@@ -318,6 +366,7 @@ def _issue(
             "payment_intent_id": payment.id,
             "payment_option": payment.rail_id,
             "controller_proof_id": proof.id,
+            **({"wallet_proof_id": wallet_proof.id} if wallet_proof and controller else {}),
             "credential_id": credential_id,
             "terms_version": registration.terms_version,
         },

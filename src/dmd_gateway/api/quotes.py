@@ -24,7 +24,8 @@ router = APIRouter(prefix="/v1", tags=["registration"])
 IDEMPOTENCY_SCOPE = "dids.registration_quotes"
 
 _KEY = "ed25519:z6Mk<your agent public key>"
-# The two ways to pay, offered as ready-made bodies in the docs page's "Examples" list.
+# The two ways to pay, and a wallet as the controller, offered as ready-made bodies in the
+# docs page's "Examples" list.
 EXAMPLES = {
     "dmd": {
         "summary": "Pay in DMD (native DebitMyData PoW)",
@@ -39,6 +40,15 @@ EXAMPLES = {
         "summary": "Pay in USDC through x402 (Base)",
         "value": {
             "controller_public_key": _KEY,
+            "display_name": "TestAgent-01",
+            "participant_type": "autonomous_agent",
+            "preferred_payment_option": "x402_usdc_base",
+        },
+    },
+    "wallet": {
+        "summary": "A wallet as the controller, paying in USDC through x402 (Base)",
+        "value": {
+            "controller_wallet_address": "0x<your wallet address>",
             "display_name": "TestAgent-01",
             "participant_type": "autonomous_agent",
             "preferred_payment_option": "x402_usdc_base",

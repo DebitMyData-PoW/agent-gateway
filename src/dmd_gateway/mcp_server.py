@@ -16,7 +16,7 @@ names to block DNS-rebinding attacks.
 from __future__ import annotations
 
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -42,9 +42,10 @@ fixed at 25.00 USD and is paid in an approved asset of the agent's choice.
 
 1. dmd_get_did_registration_offer (or dmd_list_supported_payment_options): the fee and the \
 payment options that are enabled right now.
-2. dmd_create_did_payment_quote: send your Ed25519 controller public key \
-(ed25519:z6Mk...) and the payment option you chose. The quote gives the exact amount, the \
-destination and the expiry. Never pay an amount that was not quoted.
+2. dmd_create_did_payment_quote: send the controller of your DID, your Ed25519 public key \
+(ed25519:z6Mk...) and/or your EVM wallet address (0x..., on Base by default), and the \
+payment option you chose. The quote gives the exact amount, the destination and the expiry. \
+Never pay an amount that was not quoted.
 3. Pay exactly that amount to that destination from your own wallet before the quote \
 expires. Optionally report the transaction with dmd_submit_payment_reference.
 4. dmd_get_payment_status until the status is "settled".
@@ -52,8 +53,10 @@ expires. Optionally report the transaction with dmd_submit_payment_reference.
 then call dmd_register_did; it answers with the x402 payment requirements, which you sign \
 and send back with dmd_register_did (x402_payment).
 5. dmd_prove_wallet_control: call it once to get a challenge, sign the challenge message \
-(its exact UTF-8 bytes) with your controller private key, then call it again with the \
-challenge_id and the signature. This can also be done before the payment settles.
+with the controller it names (Ed25519 key: its exact UTF-8 bytes; wallet: personal_sign / \
+signMessage, smart wallets included), then call it again with the challenge_id and the \
+signature. With both a key and a wallet, prove each one. This can also be done before the \
+payment settles.
 6. dmd_register_did: receive your DID, a signed credential (also your receipt) and your \
 entitlements. dmd_get_registration_status shows what is still missing at any time.
 
@@ -207,18 +210,31 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
     async def dmd_create_did_payment_quote(
         display_name: Annotated[str, Field(description="Public name of the agent", max_length=100)],
         participant_type: Annotated[ParticipantType, Field(description="What kind of participant")],
-        controller_public_key: Annotated[
-            str,
-            Field(
-                description="Ed25519 public key that will control the DID: ed25519:z6Mk..., "
-                "or ed25519: followed by 64 hex characters or base64"
-            ),
-        ],
         preferred_payment_option: Annotated[
             str, Field(description="Payment option ID from the offer, e.g. dmd_pow_native")
         ],
+        controller_public_key: Annotated[
+            str | None,
+            Field(
+                description="Ed25519 public key that will control the DID: ed25519:z6Mk..., "
+                "or ed25519: followed by 64 hex characters or base64. Give this, a wallet, "
+                "or both."
+            ),
+        ] = None,
         controller_wallet_address: Annotated[
-            str | None, Field(description="Optional wallet address to record (not proven)")
+            str | None,
+            Field(
+                description="EVM wallet that will control the DID: 0x... (checksummed or all "
+                "lower case) or eip155:<chain id>:0x.... Its control is proven like the key's, "
+                "by signing a challenge (smart wallets included)."
+            ),
+        ] = None,
+        controller_network: Annotated[
+            str | None,
+            Field(
+                description="The wallet's network, e.g. eip155:8453 for Base (the default)",
+                pattern=r"^eip155:[1-9][0-9]{0,11}$",
+            ),
         ] = None,
         metadata: Annotated[
             dict[str, str | int | bool | None] | None,
@@ -238,11 +254,14 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         body: dict[str, Any] = {
             "display_name": display_name,
             "participant_type": participant_type.value,
-            "controller_public_key": controller_public_key,
             "preferred_payment_option": preferred_payment_option,
         }
+        if controller_public_key:
+            body["controller_public_key"] = controller_public_key
         if controller_wallet_address:
             body["controller_wallet_address"] = controller_wallet_address
+        if controller_network:
+            body["controller_network"] = controller_network
         if metadata:
             body["metadata"] = metadata
         return await create_quote(body, idempotency_key)
@@ -270,7 +289,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
     # ------------------------------------------------------------------ identity
 
-    @server.tool(title="Prove control of the controller key", annotations=CREATES)
+    @server.tool(title="Prove control of the controller key or wallet", annotations=CREATES)
     async def dmd_prove_wallet_control(
         registration_intent_id: RegistrationId,
         challenge_id: Annotated[
@@ -278,24 +297,44 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         ] = None,
         signature: Annotated[
             str | None,
-            Field(description="Ed25519 signature of the challenge message (base64url)"),
+            Field(
+                description="Signature of the challenge message: Ed25519 (base64url) for a "
+                "key, or the wallet's personal_sign / signMessage result (0x...) for a wallet"
+            ),
+        ] = None,
+        controller_type: Annotated[
+            Literal["ed25519", "eip155"] | None,
+            Field(
+                description="When getting a challenge: which controller to prove, ed25519 "
+                "(the key) or eip155 (the wallet). By default the next one still to prove."
+            ),
         ] = None,
     ) -> dict[str, Any]:
-        """Two calls. Without challenge_id and signature: returns a one-time challenge.
-        Sign its `message` (exact UTF-8 bytes) with the controller private key, then call
-        again with challenge_id and signature. A wrong signature uses up the challenge."""
+        """Two calls. Without challenge_id and signature: returns a one-time challenge for one
+        controller. Sign its `message` with that controller, then call again with challenge_id
+        and signature. A wrong signature uses up the challenge. With both a key and a wallet,
+        prove each (registration status lists what is still to prove)."""
         base = f"/v1/dids/registrations/{registration_intent_id}"
         if challenge_id is None and signature is None:
-            challenge = await api.call("POST", f"{base}/controller-challenges")
-            return {
-                "step": "sign_challenge",
-                **challenge,
-                "how_to_answer": (
+            challenge = await api.call(
+                "POST",
+                f"{base}/controller-challenges",
+                json_body={"controller_type": controller_type} if controller_type else None,
+            )
+            if str(challenge.get("controller", "")).startswith("eip155:"):
+                how = (
+                    "Sign `message` exactly as given with the wallet named in `controller`, "
+                    "the way wallets sign text (personal_sign / signMessage, EIP-191; smart "
+                    "wallets sign as usual), then call dmd_prove_wallet_control again with "
+                    "this challenge_id and the signature (0x...) before expires_at."
+                )
+            else:
+                how = (
                     "Sign `message` exactly as given (UTF-8) with the Ed25519 private key of "
                     "`controller`, then call dmd_prove_wallet_control again with this "
                     "challenge_id and the signature (base64url) before expires_at."
-                ),
-            }
+                )
+            return {"step": "sign_challenge", **challenge, "how_to_answer": how}
         if not challenge_id or not signature:
             raise ToolError(
                 json.dumps(
@@ -405,8 +444,8 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             dict[str, Any],
             Field(
                 description="Product-specific fields. For did_registration: display_name, "
-                "participant_type, controller_public_key and optionally "
-                "controller_wallet_address and metadata"
+                "participant_type, controller_public_key and/or controller_wallet_address "
+                "(with optional controller_network), and optionally metadata"
             ),
         ],
         idempotency_key: Annotated[

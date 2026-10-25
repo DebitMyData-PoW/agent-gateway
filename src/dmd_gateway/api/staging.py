@@ -1,9 +1,11 @@
 """Staging-only test tools, so the whole registration can be tried from the API docs page.
 
-    POST /v1/staging/test-agent-keys    a throwaway agent key (the agent's own key in production)
+    POST /v1/staging/test-agent-keys    a throwaway agent key and wallet (the agent's own in
+                                        production)
     POST /v1/staging/test-payments      pay a quote with test coins (DMD: send and mine the
                                         confirmations; x402: sign the payment)
-    POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key
+    POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key or
+                                        wallet
 
 Only mounted when ``staging_test_tools`` is on, which settings refuse in production. See
 ``dmd_gateway.services.staging_tools`` for the other safeguards.
@@ -14,6 +16,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from eth_account.signers.local import LocalAccount
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -30,6 +34,8 @@ from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import encode_signature
+from dmd_gateway.identity.wallets import WalletError, wallet_from_account_id
+from dmd_gateway.services.controller_proofs import EIP155
 from dmd_gateway.services.payment_references import X402_ADAPTER
 from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.services.staging_tools import (
@@ -37,9 +43,12 @@ from dmd_gateway.services.staging_tools import (
     BaseSepoliaTestPayer,
     RegtestPayer,
     StagingToolError,
+    is_wallet_key,
     load_test_agent_key,
+    load_test_wallet,
     new_test_agent_key,
     public_key_of,
+    sign_with_test_wallet,
 )
 from dmd_gateway.services.x402_payments import encode_header, payment_terms, resource_info
 
@@ -59,6 +68,13 @@ class ThrowawayKeyResponse(BaseModel):
         description="Put this in controller_public_key when you request a quote."
     )
     private_key: str = Field(description="Keep it for POST /v1/staging/test-signatures.")
+    controller_wallet_address: str = Field(
+        description="A throwaway EVM wallet: put it in controller_wallet_address when you "
+        "request a quote, to try the wallet proof (with or instead of the key)."
+    )
+    wallet_private_key: str = Field(
+        description="The wallet's private key: keep it for POST /v1/staging/test-signatures."
+    )
     note: str
 
 
@@ -66,10 +82,11 @@ class ThrowawayKeyResponse(BaseModel):
     "/test-agent-keys",
     status_code=201,
     response_model=ThrowawayKeyResponse,
-    summary="Staging only: create a throwaway agent key",
+    summary="Staging only: create a throwaway agent key and wallet",
     description=(
-        "Stands in for the agent's own key so the flow can be tried from this page. A real "
-        "agent creates its key itself and never shares the private key. Nothing is stored."
+        "Stands in for the agent's own Ed25519 key and EVM wallet so the flow can be tried "
+        "from this page. A real agent creates them itself and never shares the private keys. "
+        "The wallet holds nothing: it only signs. Nothing is stored."
     ),
 )
 def create_test_agent_key() -> ThrowawayKeyResponse:
@@ -77,7 +94,9 @@ def create_test_agent_key() -> ThrowawayKeyResponse:
     return ThrowawayKeyResponse(
         controller_public_key=key.controller_public_key,
         private_key=key.private_key,
-        note="Test key for the staging server only; it is not kept by the gateway.",
+        controller_wallet_address=key.wallet_address,
+        wallet_private_key=key.wallet_private_key,
+        note="Test key and wallet for the staging server only; the gateway does not keep them.",
     )
 
 
@@ -287,19 +306,22 @@ class StagingSignatureRequest(BaseModel):
         pattern=CHALLENGE_ID, description="`challenge_id` from the controller challenge."
     )
     private_key: str = Field(
-        min_length=40, max_length=60, description="The private_key from test-agent-keys."
+        min_length=40,
+        max_length=66,
+        description="From test-agent-keys: private_key (z3u2...) for a key challenge, or "
+        "wallet_private_key (0x...) for a wallet challenge.",
     )
 
 
 class StagingSignatureResponse(BaseModel):
     challenge_id: str
     signature: str = Field(
-        description="The controller signature (short): send it with challenge_id to "
-        "POST /v1/dids/registrations/{registration_intent_id}/controller-proofs. It is not "
-        "an x402 payment."
+        description="The controller signature (short; 0x... for a wallet): send it with "
+        "challenge_id to POST /v1/dids/registrations/{registration_intent_id}/"
+        "controller-proofs. It is not an x402 payment."
     )
     matches_controller: bool = Field(
-        description="Whether this key is the registration's controller key. If not, the "
+        description="Whether this key or wallet is the challenge's controller. If not, the "
         "gateway will refuse the proof (useful to see a wrong key being refused)."
     )
     next_step: str
@@ -308,22 +330,32 @@ class StagingSignatureResponse(BaseModel):
 @router.post(
     "/test-signatures",
     response_model=StagingSignatureResponse,
-    summary="Staging only: sign a controller challenge with the throwaway key",
+    summary="Staging only: sign a controller challenge with the throwaway key or wallet",
     description=(
-        "Stands in for the agent signing the challenge message with its own key. Send the "
-        "signature to POST /v1/dids/registrations/{registration_intent_id}/controller-proofs."
+        "Stands in for the agent signing the challenge message with its own key, or with its "
+        "wallet (personal_sign, as wallets sign text). Use private_key for a challenge whose "
+        "controller is ed25519:..., wallet_private_key for one whose controller is "
+        "eip155:.... Send the signature to "
+        "POST /v1/dids/registrations/{registration_intent_id}/controller-proofs."
     ),
     responses={
         404: {"description": "Unknown challenge."},
         409: {"description": "The challenge was already used or has expired."},
-        422: {"description": "The private key is not one from test-agent-keys."},
+        422: {
+            "description": "The private key is not one from test-agent-keys, or not the kind "
+            "this challenge needs."
+        },
     },
 )
 def create_test_signature(
     body: StagingSignatureRequest, request: Request
 ) -> StagingSignatureResponse:
     try:
-        key = load_test_agent_key(body.private_key)
+        signer = (
+            load_test_wallet(body.private_key)
+            if is_wallet_key(body.private_key)
+            else load_test_agent_key(body.private_key)
+        )
     except StagingToolError as exc:
         raise ApiError(422, "invalid_private_key", str(exc)) from exc
     with transaction(request.app.state.session_factory) as session:
@@ -334,14 +366,37 @@ def create_test_signature(
             raise ApiError(
                 409, "challenge_closed", "This challenge was used or has expired; get a new one."
             )
-        signature = encode_signature(key.sign(challenge.message.encode("utf-8")))
+        signature, matches = _sign(challenge, signer)
         return StagingSignatureResponse(
             challenge_id=challenge.id,
             signature=signature,
-            matches_controller=public_key_of(key) == challenge.controller_value,
+            matches_controller=matches,
             next_step=(
                 "POST /v1/dids/registrations/"
                 f"{challenge.registration_intent_id}/controller-proofs with this challenge_id "
                 "and signature."
             ),
         )
+
+
+def _sign(
+    challenge: ControllerChallenge, signer: LocalAccount | Ed25519PrivateKey
+) -> tuple[str, bool]:
+    """(signature, whether the signer is the challenge's controller)."""
+    wallet_challenge = challenge.controller_type == EIP155
+    if wallet_challenge != isinstance(signer, LocalAccount):
+        needed = "wallet_private_key (0x...)" if wallet_challenge else "private_key (z3u2...)"
+        raise ApiError(
+            422,
+            "invalid_private_key",
+            f"This challenge is for {challenge.controller_value}; sign it with the {needed} "
+            "from test-agent-keys.",
+        )
+    if isinstance(signer, LocalAccount):
+        try:
+            controller: str | None = wallet_from_account_id(challenge.controller_value).address
+        except WalletError:
+            controller = None
+        return sign_with_test_wallet(signer, challenge.message), signer.address == controller
+    signature = encode_signature(signer.sign(challenge.message.encode("utf-8")))
+    return signature, public_key_of(signer) == challenge.controller_value

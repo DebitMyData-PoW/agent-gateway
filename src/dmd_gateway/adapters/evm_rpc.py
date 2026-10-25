@@ -27,6 +27,8 @@ ALLOWED_METHODS = frozenset(
         "eth_getTransactionReceipt",
         "eth_getLogs",
         "eth_getCode",
+        # Read-only simulation: checks smart-wallet signatures (identity/wallets.py).
+        "eth_call",
     }
 )
 

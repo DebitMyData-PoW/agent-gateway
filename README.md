@@ -31,7 +31,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.7.5`). The whole registration flow (quote,
+This is an early development release (`0.8.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -47,14 +47,14 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Quote endpoint (`POST /v1/dids/registration-quotes`), price-source rules, `Idempotency-Key` retries | done (answers only for enabled rails) |
 | Native DMD payment adapter: per-quote address, independent verification, confirmations, reorg and double-spend handling | done (regtest) |
 | Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
-| Controller proof: one-time challenges signed with the agent's Ed25519 key | done |
+| Controller proof: one-time challenges signed with the agent's Ed25519 key and/or its EVM wallet (ordinary wallets, and smart wallets through ERC-1271 and ERC-6492) | done |
 | DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
 | Staging server behind Cloudflare; the whole flow can be tried from its `/docs` page (staging-only test tools) | done |
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia; mainnet needs the receiving address and a production facilitator) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
-| Wallet-control proofs (EVM, smart wallets), controller rotation and revocation | next |
+| Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it is
@@ -127,7 +127,7 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Discover the offer and enabled payment options | `GET /v1/discovery`, `GET /v1/payment-options` |
 | Get a quote (fixed 25.00 USD, exact amount in the chosen asset) | `POST /v1/dids/registration-quotes` |
 | Pay (DMD), then follow the payment | `GET /v1/payments/{payment_intent_id}` |
-| Get a one-time message to sign with the controller key | `POST /v1/dids/registrations/{registration_intent_id}/controller-challenges` |
+| Get a one-time message to sign with the controller key or wallet | `POST /v1/dids/registrations/{registration_intent_id}/controller-challenges` |
 | Send the signature | `POST /v1/dids/registrations/{registration_intent_id}/controller-proofs` |
 | See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
 | Receive the DID, signed credential and entitlements (x402: pay here, see below) | `POST /v1/dids/registrations` |

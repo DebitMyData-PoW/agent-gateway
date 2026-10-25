@@ -15,8 +15,12 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 from dmd_gateway.identity.crypto import ControllerKey
+from dmd_gateway.identity.wallets import Wallet
 
 DID_CONTEXT = ["https://www.w3.org/ns/did/v1", "https://w3id.org/security/multikey/v1"]
+# Verification method for an EVM account, as used by did:pkh and other DID methods.
+WALLET_CONTEXT = "https://w3id.org/security/suites/secp256k1recovery-2020/v2"
+WALLET_METHOD = "EcdsaSecp256k1RecoveryMethod2020"
 AGENTS_SEGMENT = "agents"
 
 
@@ -49,21 +53,41 @@ def did_document_url(public_base_url: str, identity_id: str) -> str:
     return f"{base}/{AGENTS_SEGMENT}/{quote(did_suffix(identity_id))}/did.json"
 
 
-def agent_did_document(did: str, controller: ControllerKey, *, record_url: str) -> dict[str, Any]:
-    key_id = f"{did}#{controller.multibase}"
-    return {
-        "@context": DID_CONTEXT,
-        "id": did,
-        "verificationMethod": [
+def agent_did_document(
+    did: str,
+    controller: ControllerKey | None,
+    *,
+    record_url: str,
+    wallet: Wallet | None = None,
+) -> dict[str, Any]:
+    """The agent's DID document: its Ed25519 key and/or its EVM wallet, whichever proved
+    control at registration."""
+    methods: list[dict[str, Any]] = []
+    if controller is not None:
+        methods.append(
             {
-                "id": key_id,
+                "id": f"{did}#{controller.multibase}",
                 "type": "Multikey",
                 "controller": did,
                 "publicKeyMultibase": controller.multibase,
             }
-        ],
-        "authentication": [key_id],
-        "assertionMethod": [key_id],
+        )
+    if wallet is not None:
+        methods.append(
+            {
+                "id": f"{did}#wallet",
+                "type": WALLET_METHOD,
+                "controller": did,
+                "blockchainAccountId": wallet.account_id,
+            }
+        )
+    ids = [method["id"] for method in methods]
+    return {
+        "@context": DID_CONTEXT + ([WALLET_CONTEXT] if wallet is not None else []),
+        "id": did,
+        "verificationMethod": methods,
+        "authentication": ids,
+        "assertionMethod": ids,
         "service": [
             {
                 "id": f"{did}#debitmydata",

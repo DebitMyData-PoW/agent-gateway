@@ -336,7 +336,12 @@ def test_header_round_trip_and_limits() -> None:
 
 def test_rpc_client_only_calls_read_methods() -> None:
     client = EvmRpcClient("https://rpc.test", transport=httpx.MockTransport(lambda r: None))
-    for method in ("eth_sendRawTransaction", "eth_sign", "personal_unlockAccount", "eth_call"):
+    for method in (
+        "eth_sendRawTransaction",
+        "eth_sign",
+        "personal_unlockAccount",
+        "eth_sendTransaction",
+    ):
         with pytest.raises(MethodNotAllowed):
             client.call(method, [])
 

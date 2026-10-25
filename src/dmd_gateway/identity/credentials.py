@@ -1,9 +1,13 @@
 """The signed registration credential (ID-10, DEC-06).
 
 One W3C Verifiable Credential (data model 2.0) per issued identity. It is also the signed
-registration receipt: it names the payment, the controller key that proved control, the
-issuance time, the policy version and the credential ID, and it is signed with the issuer key
-using the ``eddsa-jcs-2022`` Data Integrity cryptosuite.
+registration receipt: it names the payment, the controllers that proved control (Ed25519 key
+and/or EVM wallet), the issuance time, the policy version and the credential ID, and it is
+signed with the issuer key using the ``eddsa-jcs-2022`` Data Integrity cryptosuite.
+
+``credentialSubject.controller`` is the controller that binds the identity: the public key
+when there is one, otherwise the wallet. A wallet proven next to a key is in
+``credentialSubject.wallet``.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from typing import Any
 
 from dmd_gateway.identity.crypto import ControllerKey, add_proof, xml_datetime
 from dmd_gateway.identity.issuer import IssuerKey
+from dmd_gateway.identity.wallets import Wallet
 
 VC_CONTEXT = ["https://www.w3.org/ns/credentials/v2"]
 CREDENTIAL_TYPE = "DebitMyDataRegistrationCredential"
@@ -27,8 +32,8 @@ class RegistrationFacts:
     subject_did: str
     display_name: str
     participant_type: str
-    controller: ControllerKey
-    controller_verified_at: datetime
+    controller: ControllerKey | None
+    controller_verified_at: datetime | None
     registration_intent_id: str
     payment_intent_id: str
     service_title: str
@@ -42,9 +47,41 @@ class RegistrationFacts:
     terms_version: str
     entitlements: Sequence[str]
     issued_at: datetime
+    wallet: Wallet | None = None
+    wallet_verified_at: datetime | None = None
+    wallet_proof_method: str | None = None
+
+
+def _key(facts: RegistrationFacts) -> dict[str, Any] | None:
+    if facts.controller is None or facts.controller_verified_at is None:
+        return None
+    return {
+        "type": "Multikey",
+        "publicKeyMultibase": facts.controller.multibase,
+        "proofOfControl": "ed25519_challenge_signature",
+        "verifiedAt": xml_datetime(facts.controller_verified_at),
+    }
+
+
+def _wallet(facts: RegistrationFacts) -> dict[str, Any] | None:
+    if facts.wallet is None or facts.wallet_verified_at is None:
+        return None
+    return {
+        "type": "BlockchainAccount",
+        "blockchainAccountId": facts.wallet.account_id,
+        # eip191_challenge_signature, erc1271_challenge_signature or erc6492_...
+        "proofOfControl": (facts.wallet_proof_method or "eip191_signature").replace(
+            "_signature", "_challenge_signature"
+        ),
+        "verifiedAt": xml_datetime(facts.wallet_verified_at),
+    }
 
 
 def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict[str, Any]:
+    key, wallet = _key(facts), _wallet(facts)
+    controller = key or wallet
+    if controller is None:
+        raise ValueError("a registration credential needs a proven controller")
     document: dict[str, Any] = {
         "@context": VC_CONTEXT,
         "id": facts.credential_url,
@@ -55,12 +92,7 @@ def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict
             "id": facts.subject_did,
             "displayName": facts.display_name,
             "participantType": facts.participant_type,
-            "controller": {
-                "type": "Multikey",
-                "publicKeyMultibase": facts.controller.multibase,
-                "proofOfControl": "ed25519_challenge_signature",
-                "verifiedAt": xml_datetime(facts.controller_verified_at),
-            },
+            "controller": controller,
             "registration": {
                 "service": facts.service_title,
                 "registrationIntentId": facts.registration_intent_id,
@@ -82,6 +114,8 @@ def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict
             "entitlements": list(facts.entitlements),
         },
     }
+    if key and wallet:
+        document["credentialSubject"]["wallet"] = wallet
     return add_proof(
         document,
         issuer.private_key,

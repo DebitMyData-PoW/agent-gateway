@@ -18,6 +18,8 @@ import httpx2
 import pytest
 from alembic import command
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from eth_account import Account
+from eth_account.messages import encode_defunct
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mcp import Client
@@ -98,7 +100,12 @@ async def test_tools_cover_the_directive(app: FastAPI) -> None:
     assert tools["dmd_discover"].annotations.read_only_hint is True
     assert tools["dmd_register_did"].annotations.idempotent_hint is True
     schema = tools["dmd_create_did_payment_quote"].input_schema
-    assert {"display_name", "participant_type", "controller_public_key"} <= set(schema["required"])
+    assert set(schema["required"]) == {
+        "display_name",
+        "participant_type",
+        "preferred_payment_option",
+    }
+    assert {"controller_public_key", "controller_wallet_address"} <= set(schema["properties"])
     for tool in tools.values():
         assert tool.description, tool.name
 
@@ -259,3 +266,44 @@ async def test_registration_through_mcp_only(
     assert again["did"] == issued["did"]
     assert status["status"] == "issued"
     assert verify_proof(issued["credential"], issuer.public_key_multibase)
+
+
+@needs_db
+async def test_a_wallet_proves_control_through_mcp(
+    ready_registry: Path,  # noqa: F811
+    engine: Engine,
+) -> None:
+    owner = Account.create()
+    app = _app_client(ready_registry, engine).app
+    async with mcp_client(app) as mcp:
+        quote = await call(
+            mcp,
+            "dmd_create_did_payment_quote",
+            display_name="McpWallet-01",
+            participant_type="ai_agent",
+            controller_public_key=AGENT_CONTROLLER,
+            controller_wallet_address=owner.address,
+            controller_network="eip155:8453",
+            preferred_payment_option="dmd_pow_native",
+        )
+        rid = quote["registration_intent_id"]
+        challenge = await call(
+            mcp, "dmd_prove_wallet_control", registration_intent_id=rid, controller_type="eip155"
+        )
+        assert challenge["controller"] == f"eip155:8453:{owner.address}"
+        assert "personal_sign" in challenge["how_to_answer"]
+        signed = owner.sign_message(encode_defunct(text=challenge["message"]))
+        proof = await call(
+            mcp,
+            "dmd_prove_wallet_control",
+            registration_intent_id=rid,
+            challenge_id=challenge["challenge_id"],
+            signature="0x" + bytes(signed.signature).hex(),
+        )
+        assert proof["status"] == "verified"
+        status = await call(mcp, "dmd_get_registration_status", registration_intent_id=rid)
+        assert status["controller"]["still_to_prove"] == ["ed25519"]
+        # The next challenge, by default, is for the key still to prove.
+        nxt = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
+        assert nxt["controller"] == AGENT_CONTROLLER
+        assert "Ed25519" in nxt["how_to_answer"]

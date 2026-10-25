@@ -3,9 +3,10 @@
 They let anyone try the whole DID registration from the API docs page of the STAGING server,
 where every chain is a test chain whose coins have no value:
 
-* a throwaway agent key (in production an agent creates its key itself and never shares the
-  private part);
-* a signature over a controller challenge with that key (in production the agent signs);
+* a throwaway agent key and wallet (in production an agent creates its own and never shares
+  the private keys);
+* a signature over a controller challenge with that key or wallet (in production the agent
+  signs);
 * a payment of a DMD quote from the staging test wallet, followed by the blocks that confirm
   it (in production the agent pays from its own wallet and the chain confirms it);
 * for an x402 quote, a payment signed by the staging test wallet on Base Sepolia (in
@@ -35,6 +36,8 @@ import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from eth_account import Account
+from eth_account.messages import encode_defunct
+from eth_account.signers.local import LocalAccount
 
 from dmd_gateway.adapters.dmd_rpc import _require_private_endpoint
 from dmd_gateway.identity.crypto import (
@@ -54,6 +57,7 @@ PAYER_METHODS = frozenset(
 # Coinbase coins mature after 250 blocks on DMD; mining a little more makes some spendable.
 TOP_UP_BLOCKS = 260
 FEE_MARGIN = Decimal("0.01")  # room for the transaction fee
+_PRIVATE_KEY = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")  # an EVM private key
 
 
 class StagingToolError(RuntimeError):
@@ -67,11 +71,34 @@ class StagingToolError(RuntimeError):
 class ThrowawayAgentKey:
     controller_public_key: str  # ed25519:z6Mk...
     private_key: str  # Multikey secret key, z3u2...
+    wallet_address: str  # EVM address, 0x... (checksummed)
+    wallet_private_key: str  # 0x + 64 hexadecimal characters
 
 
 def new_test_agent_key() -> ThrowawayAgentKey:
     key = Ed25519PrivateKey.generate()
-    return ThrowawayAgentKey(_public(key), _encode_private(key))
+    wallet = Account.create()
+    return ThrowawayAgentKey(
+        _public(key), _encode_private(key), str(wallet.address), "0x" + bytes(wallet.key).hex()
+    )
+
+
+def is_wallet_key(text: str) -> bool:
+    """A wallet private key (0x + 64 hex) rather than an Ed25519 one (z3u2...)."""
+    return bool(_PRIVATE_KEY.match(text.strip()))
+
+
+def load_test_wallet(text: str) -> LocalAccount:
+    if not is_wallet_key(text):
+        raise StagingToolError("wallet_private_key must be the 0x... value from test-agent-keys")
+    value = text.strip()
+    return Account.from_key(value if value.startswith("0x") else "0x" + value)
+
+
+def sign_with_test_wallet(wallet: LocalAccount, message: str) -> str:
+    """The EIP-191 (personal_sign) signature a wallet returns for a text message."""
+    signature = wallet.sign_message(encode_defunct(text=message)).signature.hex()
+    return signature if signature.startswith("0x") else "0x" + signature
 
 
 def load_test_agent_key(text: str) -> Ed25519PrivateKey:
@@ -203,7 +230,6 @@ class RegtestPayer:
 BASE_SEPOLIA = "eip155:84532"
 BASE_SEPOLIA_CHAIN_ID = 84532
 STAGING_BASE_PAYER_KEY = "DMD_STAGING_BASE_PAYER_KEY"
-_PRIVATE_KEY = re.compile(r"^(0x)?[0-9a-fA-F]{64}$")
 
 # EIP-3009 TransferWithAuthorization, the message an x402 "exact" EVM payment signs.
 TRANSFER_WITH_AUTHORIZATION = {
