@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Collection, Mapping
+from datetime import date
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -195,11 +196,36 @@ class ServiceConfig(_Strict):
     policy_urls: dict[str, str] = {}
 
 
+class MiningCostParameters(_Strict):
+    """Approved inputs of the DMD mining-cost price (DEC-01), reviewed every quarter.
+
+    The electricity price is what miners typically pay (industrial rates where mining takes
+    place), not an average of household prices; the efficiency is the energy a typical
+    SHA-256 machine uses per terahash, a mix of current and older machines.
+    """
+
+    electricity_usd_per_kwh: Decimal
+    efficiency_joules_per_terahash: Decimal
+    reviewed_on: date
+    review_every_days: int = Field(default=92, ge=1, le=366)
+
+    @field_validator("electricity_usd_per_kwh", "efficiency_joules_per_terahash", mode="before")
+    @classmethod
+    def _quoted_positive(cls, value: object) -> Decimal:
+        if not isinstance(value, str):
+            raise ValueError('must be a quoted decimal string, e.g. "0.06"')
+        amount = parse_amount(value)
+        if amount <= 0:
+            raise ValueError("must be greater than zero")
+        return amount
+
+
 class RegistryFile(_Strict):
     version: Literal[1]
     discovery_terms: tuple[str, ...] = ()
     services: dict[str, ServiceConfig]
     rails: dict[str, RailConfig]
+    dmd_mining_cost: MiningCostParameters | None = None
 
     @model_validator(mode="after")
     def _cross_references(self) -> RegistryFile:
@@ -290,6 +316,10 @@ class PaymentRouteRegistry:
     def discovery_terms(self) -> tuple[str, ...]:
         return self._data.discovery_terms
 
+    @property
+    def dmd_mining_cost(self) -> MiningCostParameters | None:
+        return self._data.dmd_mining_cost
+
     def rail_state(self, rail_id: str) -> RailState:
         return self._states[rail_id]
 
@@ -328,6 +358,10 @@ def load_registry(
             problems = readiness_problems(
                 rail, environ, available_adapters, available_price_sources
             )
+            mining_cost = "dmd_mining_cost"
+            uses = {rail.price_policy.source, rail.price_policy.secondary_source}
+            if mining_cost in uses and data.dmd_mining_cost is None:
+                problems.append("dmd_mining_cost parameters are not set in the registry")
             if problems:
                 raise RegistryError(
                     f"rail {rail_id!r} is switched on but not ready: " + "; ".join(problems)

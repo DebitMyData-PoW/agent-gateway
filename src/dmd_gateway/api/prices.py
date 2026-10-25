@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -19,9 +19,9 @@ router = APIRouter(prefix="/v1", tags=["discovery"])
 DMD_RAIL = "dmd_pow_native"
 DEFAULT_MAX_AGE_SECONDS = 900
 NOTE = (
-    "Reference price from the cost of mining DMD: Bitcoin's hashprice (what SHA-256 mining "
-    "earns on Bitcoin per day) times the DMD network hashrate, divided by the DMD mined per "
-    "day. It is not a market price."
+    "Reference price from the cost of mining DMD: the electricity it takes to mine a block "
+    "(the block's work at the approved machine efficiency and electricity price) divided by "
+    "the DMD the block creates. It is not a market price."
 )
 
 
@@ -35,6 +35,10 @@ class DmdPrice(BaseModel):
     age_seconds: int
     fresh: bool = Field(description="Recent enough to be used in a quote.")
     used_for_quotes: bool = Field(description="Whether DMD quotes on this server use it.")
+    parameters_review_overdue: bool = Field(
+        description="The approved electricity price and machine efficiency are past their "
+        "quarterly review."
+    )
     note: str
     inputs: dict[str, Any]
 
@@ -80,6 +84,15 @@ def dmd_price(request: Request, response: Response) -> DmdPrice:
         age_seconds=age,
         fresh=age <= max_age,
         used_for_quotes=used,
+        parameters_review_overdue=_overdue(inputs),
         note=NOTE,
         inputs=inputs,
     )
+
+
+def _overdue(inputs: dict[str, Any]) -> bool:
+    due = inputs.get("parameters_review_due_on")
+    try:
+        return due is not None and datetime.now(UTC).date() > date.fromisoformat(str(due))
+    except ValueError:
+        return False

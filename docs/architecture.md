@@ -62,31 +62,32 @@ hold keys that can move funds.
 ## DMD/USD price
 
 Until DMD has a market price, DMD is priced at the cost of mining it (DEC-01, approved as
-the interim method). DMD is mined with SHA-256 like Bitcoin, so a miner pointing its
-machines at DMD gives up what they would earn on Bitcoin, Bitcoin's "hashprice":
+the interim method): the electricity it takes to mine a block, divided by the DMD the block
+creates. Mining a block takes `difficulty × 2^32` hashes on average, so:
 
 ```text
-USD per DMD = hashprice × DMD network hashrate ÷ DMD mined per day
-hashprice   = BTC price × BTC block subsidy × 86,400 ÷ (BTC difficulty × 2^32)
+USD per DMD = hashes per block × joules per hash × USD per joule ÷ DMD per block
 ```
 
 The payment worker computes it every 5 minutes (`pricing/mining_cost.py`) and stores it,
 append-only, with every input:
 
-* the DMD network hashrate, averaged over a week (4,032 blocks) by the gateway's own DMD
-  mainnet node and cross-checked against the public explorer; servers without a mainnet
-  node (staging) read the explorer instead (`DMD_GW_DMD_PRICE_HASHRATE_FROM`);
-* the DMD block subsidy at the current height, from the chain's rule (35 DMD, halving
-  every 300,000 blocks), and one block every 150 seconds;
-* the BTC price: the median of Coinbase, Kraken and Bitstamp; at least two must answer, within
-  2 % of each other;
-* the BTC difficulty and height: mempool.space and blockchain.info (Bitcoin fees, about
-  1-2 % of miner income, are left out).
+* **hashes per block**: from the gateway's own DMD mainnet node, averaged over the last week
+  (4,032 blocks) from the chain's total work, so a short burst of extra hashing power barely
+  moves it, and cross-checked against the public explorer. Servers without a mainnet node
+  (staging) use the explorer's current difficulty instead (`DMD_GW_DMD_PRICE_CHAIN_DATA_FROM`);
+* **DMD per block**: the chain's rule at the current height (35 DMD, halving every 300,000
+  blocks);
+* **machine efficiency and electricity price**: approved values in
+  `config/payment_routes.yaml` (`dmd_mining_cost`: 20 J/TH and 0.06 USD/kWh, reviewed every
+  quarter). The electricity price is what miners typically pay (industrial rates where
+  mining takes place), not a world average of household prices. An overdue review is logged
+  and shown with the price.
 
-Quotes use the latest stored price and refuse when it is older than 15 minutes; no quote
-waits for an outside service. `GET /v1/prices/dmd-usd` shows the price, its inputs and its
-age. The week-long average keeps a short burst of rented hashing power from moving the price
-much; the price still follows the network's hashrate, so it is a reference price, not a
+Nothing comes from another blockchain or from an outside price service. Quotes use the
+latest stored price and refuse when it is older than 15 minutes; no quote waits for a node
+or a website. `GET /v1/prices/dmd-usd` shows the price, its inputs and its age. The price
+follows the network's work: more miners, a higher price. It is a reference price, not a
 market price.
 
 ## Registration flow

@@ -54,10 +54,11 @@ class Settings(BaseSettings):
     max_open_quotes_per_controller: int = Field(default=5, ge=1, le=100)
 
     # DMD/USD mining-cost price (pricing/mining_cost.py), computed by the payment worker every
-    # dmd_price_refresh_seconds. Where the DMD hashrate comes from: "node" (the gateway's own
-    # DMD mainnet node, cross-checked against the explorer), "explorer" (the public explorer,
-    # for servers without a mainnet node, such as staging), or "off".
-    dmd_price_hashrate_from: Literal["off", "node", "explorer"] = "off"
+    # dmd_price_refresh_seconds. Where the DMD chain figures (difficulty, height) come from:
+    # "node" (the gateway's own DMD mainnet node, cross-checked against the explorer),
+    # "explorer" (the public explorer, for servers without a mainnet node, such as staging),
+    # or "off".
+    dmd_price_chain_data_from: Literal["off", "node", "explorer"] = "off"
     dmd_price_refresh_seconds: int = Field(default=300, ge=60, le=3600)
     dmd_explorer_url: str = "https://explorer.debitmydata.io"
 

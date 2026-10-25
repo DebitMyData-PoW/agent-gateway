@@ -37,7 +37,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     configure_logging(settings.log_level)
     environ = runtime_environ()
     runtime = build_runtime(settings, environ)
-    prices = PriceRefresher.from_settings(settings, environ)
+    prices = PriceRefresher.from_settings(settings, environ, runtime.registry)
     if not runtime.adapters and prices is None:
         log.warning("no payment rail is enabled and no price to compute; nothing to do")
         return 0

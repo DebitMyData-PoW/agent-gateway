@@ -194,3 +194,15 @@ rails:
       - Solana-compatible wallets
     enable_env: DMD_SOLANA_PAYMENTS_ENABLED
     kill_env: DMD_SOLANA_PAYMENTS_KILL
+
+# DMD mining-cost price inputs (DEC-01): approved values, reviewed every quarter.
+#   electricity: what miners typically pay, industrial rates where mining takes place (the
+#     Cambridge Bitcoin Electricity Consumption Index assumes 0.05 USD/kWh), not household
+#     prices or a world average;
+#   efficiency: energy per terahash of a typical SHA-256 machine, a mix of current machines
+#     (about 13-18 J/TH) and older ones still running.
+dmd_mining_cost:
+  electricity_usd_per_kwh: "0.06"
+  efficiency_joules_per_terahash: "20"
+  reviewed_on: 2026-10-24
+  review_every_days: 92

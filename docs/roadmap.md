@@ -161,7 +161,7 @@ deployment and cutover (DEP-*).
 Decisions marked done were made by the development team from the directive's examples
 and can be changed later.
 
-- [x] DEC-01 DMD/USD price: the mining-cost reference price (approved interim method until a market price exists); quotes refused when it is older than 15 minutes. Open: whether a minimum price applies
+- [x] DEC-01 DMD/USD price: the mining-cost reference price, the electricity cost of a block's work (approved interim method until a market price exists; 20 J/TH and 0.06 USD/kWh, reviewed quarterly); quotes refused when it is older than 15 minutes. Open: whether a minimum price applies
 - [x] DEC-02 Native DMD confirmation requirement: 6 (from the directive's example)
 - [x] DEC-03 Quote lifetime: 15 minutes (from the directive's example)
 - [x] DEC-04 Underpayment: top-up allowed until expiry, then refund; overpayment: accepted, excess refunded; late payment: refunded, never credited

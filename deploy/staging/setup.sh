@@ -89,7 +89,7 @@ add_setting() { grep -qE "^$1=" "$ENV_FILE" || printf '%s=%s\n' "$1" "$2" >>"$EN
 add_setting DMD_GW_STAGING_TEST_TOOLS true  # test tools on the docs page (never in production)
 add_setting DMD_GW_STAGING_PAYER_WALLET payer-test
 # DMD mainnet reference price, from the public explorer (this server's node is regtest).
-add_setting DMD_GW_DMD_PRICE_HASHRATE_FROM explorer
+add_setting DMD_GW_DMD_PRICE_CHAIN_DATA_FROM explorer
 chmod 600 "$ENV_FILE"
 
 # ------------------------------------------------------------------ DMD node
