@@ -20,6 +20,7 @@ from types import FrameType
 from dmd_gateway.adapters import AdapterUnavailable
 from dmd_gateway.db.session import build_engine, session_factory
 from dmd_gateway.observability import configure_logging
+from dmd_gateway.pricing.mining_cost import PriceRefresher
 from dmd_gateway.runtime import build_runtime
 from dmd_gateway.services.settlement import run_pass
 from dmd_gateway.settings import get_settings, runtime_environ
@@ -34,9 +35,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     settings = get_settings()
     configure_logging(settings.log_level)
-    runtime = build_runtime(settings, runtime_environ())
-    if not runtime.adapters:
-        log.warning("no payment rail is enabled; nothing to watch")
+    environ = runtime_environ()
+    runtime = build_runtime(settings, environ)
+    prices = PriceRefresher.from_settings(settings, environ)
+    if not runtime.adapters and prices is None:
+        log.warning("no payment rail is enabled and no price to compute; nothing to do")
         return 0
 
     for rail_id, adapter in runtime.adapters.items():
@@ -62,9 +65,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         while not stopping:
-            result = run_pass(factory, runtime.adapters, datetime.now(UTC))
-            if result.processed or result.unavailable or result.errors:
-                log.info("worker pass", extra={"event": result.__dict__})
+            now = datetime.now(UTC)
+            if prices is not None and prices.due(now):
+                prices.run(factory, now)
+            if runtime.adapters:
+                result = run_pass(factory, runtime.adapters, now)
+                if result.processed or result.unavailable or result.errors:
+                    log.info("worker pass", extra={"event": result.__dict__})
             if args.once:
                 break
             for _ in range(int(settings.worker_interval_seconds * 10)):

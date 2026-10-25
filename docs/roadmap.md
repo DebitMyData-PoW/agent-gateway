@@ -57,14 +57,14 @@ place; the application logic comes with the related phase.
 ## Phase 3 – Route registry and quote engine
 
 - [x] QUOTE-01 Payment-options route registry
-- [x] QUOTE-02 `dmd_pow_native` configured (disabled on mainnet pending DEC-01; enabled on regtest for demos)
+- [x] QUOTE-02 `dmd_pow_native` configured (priced by the mining cost on mainnet, still switched off there; enabled on regtest for demos)
 - [x] QUOTE-03 `x402_usdc_base` configured (disabled pending X402-03, DEC-08)
 - [x] QUOTE-04 Future EVM/Solana/wrapped-DMD rails unapproved and disabled
 - [x] QUOTE-05 `POST /v1/dids/registration-quotes`
 - [x] QUOTE-06 Globally unique intent IDs
 - [x] QUOTE-07 Fixed 25.00 USD commercial price in every quote
 - [x] QUOTE-08 Asset/network/protocol/recipient/finality/expiry/policy version in every quote
-- [x] QUOTE-09 DMD/USD price source behind an abstraction (the actual source waits on DEC-01)
+- [x] QUOTE-09 DMD/USD price source behind an abstraction: `dmd_mining_cost`, computed every 5 minutes with its inputs stored, public at `GET /v1/prices/dmd-usd`
 - [x] QUOTE-10 Quote TTL (`DMD_GW_QUOTE_TTL_SECONDS`); payments first seen after expiry are never credited
 - [x] QUOTE-11 Store price inputs for audit/reconciliation
 - [x] QUOTE-12 Stale-price/price-outage (quote refused); underpayment, overpayment and late payment recorded as refund due (DEC-04)
@@ -161,7 +161,7 @@ deployment and cutover (DEP-*).
 Decisions marked done were made by the development team from the directive's examples
 and can be changed later.
 
-- [ ] DEC-01 DMD/USD price source(s), fallback, maximum age, deviation tolerance
+- [x] DEC-01 DMD/USD price: the mining-cost reference price (approved interim method until a market price exists); quotes refused when it is older than 15 minutes. Open: whether a minimum price applies
 - [x] DEC-02 Native DMD confirmation requirement: 6 (from the directive's example)
 - [x] DEC-03 Quote lifetime: 15 minutes (from the directive's example)
 - [x] DEC-04 Underpayment: top-up allowed until expiry, then refund; overpayment: accepted, excess refunded; late payment: refunded, never credited

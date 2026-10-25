@@ -59,6 +59,36 @@ callers:
 DMD payments are tracked with a watch-only / descriptor wallet so that gateway hosts never
 hold keys that can move funds.
 
+## DMD/USD price
+
+Until DMD has a market price, DMD is priced at the cost of mining it (DEC-01, approved as
+the interim method). DMD is mined with SHA-256 like Bitcoin, so a miner pointing its
+machines at DMD gives up what they would earn on Bitcoin, Bitcoin's "hashprice":
+
+```text
+USD per DMD = hashprice × DMD network hashrate ÷ DMD mined per day
+hashprice   = BTC price × BTC block subsidy × 86,400 ÷ (BTC difficulty × 2^32)
+```
+
+The payment worker computes it every 5 minutes (`pricing/mining_cost.py`) and stores it,
+append-only, with every input:
+
+* the DMD network hashrate, averaged over a week (4,032 blocks) by the gateway's own DMD
+  mainnet node and cross-checked against the public explorer; servers without a mainnet
+  node (staging) read the explorer instead (`DMD_GW_DMD_PRICE_HASHRATE_FROM`);
+* the DMD block subsidy at the current height, from the chain's rule (35 DMD, halving
+  every 300,000 blocks), and one block every 150 seconds;
+* the BTC price: the median of Coinbase, Kraken and Bitstamp; at least two must answer, within
+  2 % of each other;
+* the BTC difficulty and height: mempool.space and blockchain.info (Bitcoin fees, about
+  1-2 % of miner income, are left out).
+
+Quotes use the latest stored price and refuse when it is older than 15 minutes; no quote
+waits for an outside service. `GET /v1/prices/dmd-usd` shows the price, its inputs and its
+age. The week-long average keeps a short burst of rented hashing power from moving the price
+much; the price still follows the network's hashrate, so it is a reference price, not a
+market price.
+
 ## Registration flow
 
 1. `GET /v1/discovery` and `GET /v1/payment-options` describe the offer and the rails
@@ -71,6 +101,7 @@ hold keys that can move funds.
    Non-USD amounts are rounded up to the next base unit and computed only from a price that
    passes the rail's price policy; otherwise the quote is refused. An `Idempotency-Key`
    header makes retries return the original quote instead of creating a new one.
+   A controller key may hold at most 5 open quotes at a time.
 3. The agent pays. It may report the transaction with
    `POST /v1/payments/{id}/references` (at most 5 per payment, stored append-only); this is
    only a hint for where to look, and the adapter always verifies on chain itself.

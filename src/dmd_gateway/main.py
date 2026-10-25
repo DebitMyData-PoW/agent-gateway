@@ -24,6 +24,7 @@ from dmd_gateway.api import (
     health,
     identities,
     payments,
+    prices,
     quotes,
     registrations,
     staging,
@@ -100,6 +101,8 @@ def create_app(
     app.state.registry = registry
     app.state.engine = engine
     app.state.session_factory = session_factory(engine)
+    for source in runtime.price_sources.values():
+        source.bind(app.state.session_factory)
     app.state.quote_context = QuoteContext(
         registry=registry,
         adapters=runtime.adapters,
@@ -117,6 +120,7 @@ def create_app(
     app.add_middleware(CorrelationIdMiddleware)
     app.include_router(health.router)
     app.include_router(discovery.router)
+    app.include_router(prices.router)
     app.include_router(quotes.router)
     app.include_router(payments.router)
     app.include_router(registrations.router)

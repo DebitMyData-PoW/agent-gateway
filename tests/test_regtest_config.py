@@ -101,9 +101,10 @@ def test_test_price_source_is_refused_on_mainnet(tmp_path: Path) -> None:
         build_runtime(_settings(path), ENABLE_DMD)
 
 
-def test_mainnet_dmd_rail_still_waits_for_a_real_price_source() -> None:
-    with pytest.raises(RegistryError, match="price_policy is incomplete"):
-        build_runtime(_settings(REGISTRY_PATH), ENABLE_DMD)
+def test_mainnet_dmd_rail_uses_the_mining_cost_price() -> None:
+    runtime = build_runtime(_settings(REGISTRY_PATH), ENABLE_DMD)
+    assert runtime.registry.rails["dmd_pow_native"].price_policy.source == "dmd_mining_cost"
+    assert "dmd_mining_cost" in runtime.price_sources
 
 
 def test_static_price_needs_a_value() -> None:

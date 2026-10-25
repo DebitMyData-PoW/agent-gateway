@@ -470,10 +470,33 @@ class AuditEvent(Base):
     )
 
 
+class PriceRecord(Base):
+    """A computed price with every input it came from (append-only).
+
+    Quotes use the latest fresh one; the public price endpoint shows it with its inputs.
+    """
+
+    __tablename__ = "price_records"
+    __table_args__ = (
+        CheckConstraint("usd_per_unit > 0", name="price_positive"),
+        Index("ix_price_records_latest", "source", "asset_symbol", "observed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_symbol: Mapped[str] = mapped_column(Text, nullable=False)
+    network: Mapped[str] = mapped_column(Text, nullable=False)
+    usd_per_unit: Mapped[Decimal] = mapped_column(Numeric(38, 18), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = created_at()
+
+
 APPEND_ONLY_TABLES = (
     "audit_events",
     "payment_events",
     "credited_outputs",
     "controller_proofs",
     "payment_references",
+    "price_records",
 )

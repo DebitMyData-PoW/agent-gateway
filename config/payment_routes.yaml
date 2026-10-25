@@ -10,8 +10,9 @@
 # support, asset contract, receiving address, price source, settlement verifier, security
 # review, and operations procedures are complete."
 #
-# Fields left as null below are open decisions that must be filled before enabling:
-#   price_policy.*          -> DEC-01 (approved, signed, monitored DMD/USD source)
+# The native DMD rail prices DMD with the mining-cost reference price (DEC-01), which the
+# payment worker computes when DMD_GW_DMD_PRICE_HASHRATE_FROM is set. On mainnet it also
+# needs the gateway's own DMD node with the watch-only receiving wallet.
 # The x402 USDC rail also needs, in the environment: DMD_USDC_BASE_MERCHANT_ADDRESS (DEC-08),
 # DMD_X402_FACILITATOR_URL (DEC-08) and DMD_BASE_RPC_URL (a Base RPC endpoint).
 
@@ -94,11 +95,11 @@ rails:
       source: per_intent_address     # unique DMD payment address per intent
     confirmation_policy:
       required_confirmations: 6      # DEC-02: as in the directive's example quote
-    price_policy:                    # DEC-01
-      source: null
-      max_price_age_seconds: null
-      max_deviation_bps: null
-      fallback: null                 # refuse_quote | secondary_source
+    price_policy:                    # DEC-01: mining-cost reference price (approved interim
+      source: dmd_mining_cost        # method until DMD has a market price; computed by the
+      max_price_age_seconds: 900     # worker every 5 minutes, see pricing/mining_cost.py)
+      max_deviation_bps: 500         # only used with a secondary source
+      fallback: refuse_quote
     wallet_compatibility:
       - DebitMyData wallets
       - approved DMD wallets

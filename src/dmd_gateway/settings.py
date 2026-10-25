@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # are limited in front of the gateway (nginx on staging).
     max_open_quotes_per_controller: int = Field(default=5, ge=1, le=100)
 
+    # DMD/USD mining-cost price (pricing/mining_cost.py), computed by the payment worker every
+    # dmd_price_refresh_seconds. Where the DMD hashrate comes from: "node" (the gateway's own
+    # DMD mainnet node, cross-checked against the explorer), "explorer" (the public explorer,
+    # for servers without a mainnet node, such as staging), or "off".
+    dmd_price_hashrate_from: Literal["off", "node", "explorer"] = "off"
+    dmd_price_refresh_seconds: int = Field(default=300, ge=60, le=3600)
+    dmd_explorer_url: str = "https://explorer.debitmydata.io"
+
     # How often the payment worker checks open payments.
     worker_interval_seconds: float = Field(default=10, ge=1, le=600)
 
@@ -80,6 +88,14 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("dmd_explorer_url")
+    @classmethod
+    def _https_explorer(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if parts.scheme != "https" or not parts.hostname:
+            raise ValueError("dmd_explorer_url must be an https URL")
+        return value.rstrip("/")
 
     @field_validator("public_base_url")
     @classmethod

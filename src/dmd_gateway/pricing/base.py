@@ -22,6 +22,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from dmd_gateway.domain.routes import PricePolicy
 
@@ -51,6 +52,9 @@ class PriceSource(ABC):
     @abstractmethod
     def get_usd_price(self, asset_symbol: str) -> PriceObservation:
         """Return the current USD price of one unit of ``asset_symbol``, or raise."""
+
+    def bind(self, session_factory: Any) -> None:  # noqa: B027 (optional hook)
+        """Called once the database is available, for sources that read stored prices."""
 
 
 def _usable(

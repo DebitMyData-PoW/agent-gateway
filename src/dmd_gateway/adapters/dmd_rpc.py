@@ -32,6 +32,9 @@ ALLOWED_METHODS = frozenset(
         "gettransaction",
         "getblockheader",
         "decoderawtransaction",
+        # For the DMD mining-cost price (pricing/mining_cost.py).
+        "getnetworkhashps",
+        "getblockcount",
     }
 )
 

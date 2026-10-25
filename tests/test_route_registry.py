@@ -57,19 +57,26 @@ def test_commercial_price_is_fixed_usd() -> None:
     assert price.quote_required
 
 
-def test_shipped_rail_cannot_be_enabled_while_decisions_are_open() -> None:
+def test_shipped_dmd_rail_is_priced_by_the_mining_cost() -> None:
     environ = {"DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true"}
-    with pytest.raises(RegistryError) as err:
+    registry = load_registry(
+        REGISTRY_PATH,
+        environ=environ,
+        available_adapters=ALL_ADAPTERS,
+        available_price_sources=ALL_SOURCES | {"dmd_mining_cost"},
+    )
+    policy = registry.rails["dmd_pow_native"].price_policy
+    assert policy.source == "dmd_mining_cost"
+    assert policy.fallback == "refuse_quote"
+    assert policy.max_price_age_seconds == 900  # three missed refreshes refuse quotes
+    # Without that price source, the rail cannot be switched on.
+    with pytest.raises(RegistryError, match="price source dmd_mining_cost is not implemented"):
         load_registry(
             REGISTRY_PATH,
             environ=environ,
             available_adapters=ALL_ADAPTERS,
-            available_price_sources=ALL_SOURCES,
+            available_price_sources=ALL_SOURCES - {"dmd_mining_cost"},
         )
-    message = str(err.value)
-    # Confirmations are decided (6); the DMD/USD price source is still open (DEC-01).
-    assert "confirmation_policy is not set" not in message
-    assert "price_policy is incomplete" in message
 
 
 def test_rail_cannot_be_enabled_without_an_adapter(tmp_path: Path) -> None:
