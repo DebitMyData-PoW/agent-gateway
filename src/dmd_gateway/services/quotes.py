@@ -13,6 +13,7 @@ refused rather than computed from a price that fails the rail's price policy.
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter
@@ -205,6 +207,7 @@ class QuoteContext:
     adapters: Mapping[str, PaymentAdapter]  # rail id -> adapter, enabled rails only
     price_sources: Mapping[str, PriceSource]
     quote_ttl: timedelta
+    max_open_quotes: int = 5  # per controller key
 
 
 def enabled_option_ids(ctx: QuoteContext, service_id: str) -> list[str]:
@@ -250,6 +253,33 @@ def _quote_amount(
     return usd_to_base_units(usd_price, observation.usd_per_unit, decimals), observation
 
 
+def _check_open_quotes(session: Session, ctx: QuoteContext, controller: str, now: datetime) -> None:
+    """Refuse a new quote while the controller key already has the maximum of open quotes.
+
+    The count is taken under a lock on that controller key (held until the transaction
+    ends), so requests sent in parallel cannot all slip under the limit.
+    """
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(controller, 0))))
+    open_until = session.scalars(
+        select(RegistrationIntent.expires_at)
+        .where(
+            RegistrationIntent.controller_public_key == controller,
+            RegistrationIntent.status == "awaiting_payment",
+            RegistrationIntent.expires_at > now,
+        )
+        .order_by(RegistrationIntent.expires_at)
+    ).all()
+    if len(open_until) >= ctx.max_open_quotes:
+        wait = max(1, math.ceil((open_until[0] - now).total_seconds()))
+        raise ApiError(
+            429,
+            "too_many_open_quotes",
+            f"This controller key already has {len(open_until)} open quotes. Pay one of them, "
+            f"or wait until the oldest expires (in {wait} seconds).",
+            headers={"Retry-After": str(wait)},
+        )
+
+
 def _token_contract(rail: RailConfig) -> str | None:
     if rail.asset.asset_type == "native" or not rail.asset.canonical_id:
         return None
@@ -279,6 +309,8 @@ def create_registration_quote(
     service = ctx.registry.services[service_id]
     rail_id = request.preferred_payment_option
     rail = resolve_payment_option(ctx, service_id, rail_id)
+    if request.controller_public_key:
+        _check_open_quotes(session, ctx, request.controller_public_key, now)
     usd_price = service.commercial_price.amount
     amount_units, observation = _quote_amount(ctx, rail, usd_price, now)
     if amount_units <= 0:

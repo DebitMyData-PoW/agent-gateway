@@ -49,6 +49,7 @@ EXAMPLES = {
 _ERRORS = {
     409: {"description": "The chosen payment option is not currently available."},
     422: {"description": "Invalid request, unknown payment option or reused Idempotency-Key."},
+    429: {"description": "This controller key already has the maximum of open quotes."},
     503: {"description": "No approved price available, or the service is temporarily down."},
 }
 

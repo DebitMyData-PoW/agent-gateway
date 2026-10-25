@@ -105,6 +105,7 @@ def create_app(
         adapters=runtime.adapters,
         price_sources=runtime.price_sources,
         quote_ttl=timedelta(seconds=settings.quote_ttl_seconds),
+        max_open_quotes=settings.max_open_quotes_per_controller,
     )
     app.state.issuance = IssuanceContext(
         registry=registry, issuer=issuer_key, public_base_url=settings.public_base_url

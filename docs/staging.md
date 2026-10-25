@@ -238,6 +238,61 @@ It pulls the latest commit and runs `setup.sh` again: packages, database schema 
 are updated; secrets, keys, wallets and data are kept. When Cloudflare changes its address
 ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 
+## 6. Request limits and load testing
+
+**Limits.** nginx counts requests per visitor address (the real one, passed on by
+Cloudflare) and in total. A visitor going faster than its share gets HTTP **429** with a JSON
+error (`rate_limited`) and `Retry-After`; the docs page and an agent registering stay far
+below the limits.
+
+| Requests | Per address | In total |
+| --- | --- | --- |
+| Reading (`GET`) | 20 a second, after a first burst of 60 | |
+| Writing: quotes, challenges, proofs, registrations | 60 a minute, after a first burst of 30 | 50 a second; up to 100 more wait their turn |
+| MCP (`/mcp`, every tool call) | 5 a second, after a first burst of 30 | 100 a second |
+| Staging test tools (`/v1/staging/...`) | 10 a minute, after a first burst of 10 | counted with the writes |
+| Open connections | 30 | |
+
+The gateway itself allows each controller key at most **5 open quotes** (unpaid and not
+expired); a sixth is refused with 429 `too_many_open_quotes` until one is paid or expires
+(`DMD_GW_MAX_OPEN_QUOTES_PER_CONTROLLER`). The limits are set in
+`deploy/staging/files/nginx-site.conf`; `update.sh` applies changes.
+
+`/v1/discovery` and `/v1/payment-options` may be kept a minute by caches
+(`Cache-Control: public, max-age=60`). A Cloudflare cache rule for those two paths serves
+most reads without reaching the server at all.
+
+The API runs one process per CPU core (between 2 and 4).
+
+**Load test.** `scripts/load_test.py` measures how many requests per second the gateway
+answers and how fast. Run it on the server, against the API directly (past nginx and its
+limits), to measure the gateway itself:
+
+```bash
+cd /opt/agent-gateway
+.venv/bin/python scripts/load_test.py --scenario mixed --concurrency 50 --duration 30
+.venv/bin/python scripts/load_test.py --scenario quotes --concurrency 20 --duration 30
+```
+
+`reads` is discovery, payment options and payment status; `quotes` creates DMD quotes (one
+database transaction and one new DMD address each; `--payment-option x402_usdc_base` skips
+the DMD node); `mixed` is 9 reads for every quote. It prints, per kind of request, how many
+were answered, refused for going too fast (429) or failed, the requests per second, and the
+response times (median, 95th and 99th percentile, slowest).
+
+For reference, on a 2-core test machine running the API, PostgreSQL, the DMD node and the
+load test together, one API process answered about **130 quotes** or **430 reads** a
+second, limited by the processors. The total of 50 writes a second is set well below that;
+if the server measures fewer than about 80 quotes a second, lower `dmd_writes_total` in
+the nginx site to match.
+
+To see the limits at work, run a short test through Cloudflare from another computer:
+`--base-url https://staging-api.debitmydata.io --allow-remote --duration 10 --concurrency 5`
+shows 429 answers once the burst is used up. Keep such runs short: Cloudflare may take a
+long, heavy run for an attack. The script refuses to run against production. Quotes it
+creates are real, unpaid quotes that expire after 15 minutes; their DMD addresses stay in the
+watch-only wallet, which is harmless.
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |
@@ -248,4 +303,5 @@ ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 | Credential signing key | file on the server | separate signing service (ID-15) |
 | DMD/USD price | fixed test price (1.00 USD) | approved price source (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
+| Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |
 | Server | `staging-api.debitmydata.io` | separate server at `api.debitmydata.io` |

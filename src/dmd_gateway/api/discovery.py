@@ -6,7 +6,7 @@ enabled, and the MCP endpoint appears only once it is configured.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from dmd_gateway import __version__
@@ -15,6 +15,10 @@ from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailStat
 router = APIRouter(prefix="/v1", tags=["discovery"])
 
 QUOTE_PATHS = {"did_registration": "/v1/dids/registration-quotes"}
+
+# What these endpoints say only changes when the gateway restarts with a new configuration,
+# so agents and caches in front of the gateway (such as Cloudflare) may keep it a minute.
+CACHE_FOR_A_MINUTE = "public, max-age=60"
 
 # Wording as specified in the directive's payment-options response.
 AVAILABILITY_NOTICE = (
@@ -96,7 +100,8 @@ def _registry(request: Request) -> PaymentRouteRegistry:
 
 
 @router.get("/discovery", response_model=Discovery, summary="Describe DebitMyData services")
-def discovery(request: Request) -> Discovery:
+def discovery(request: Request, response: Response) -> Discovery:
+    response.headers["Cache-Control"] = CACHE_FOR_A_MINUTE
     registry = _registry(request)
     settings = request.app.state.settings
     base = settings.public_base_url.rstrip("/")
@@ -174,8 +179,11 @@ def discovery(request: Request) -> Discovery:
     summary="Payment options currently enabled for a service",
 )
 def payment_options(
-    request: Request, service: str = Query(default="did_registration", max_length=64)
+    request: Request,
+    response: Response,
+    service: str = Query(default="did_registration", max_length=64),
 ) -> PaymentOptions:
+    response.headers["Cache-Control"] = CACHE_FOR_A_MINUTE
     registry = _registry(request)
     if service not in registry.services:
         raise HTTPException(status_code=404, detail="unknown service")

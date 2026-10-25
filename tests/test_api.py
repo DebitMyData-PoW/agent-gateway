@@ -20,6 +20,11 @@ def test_readyz_reports_unavailable_database_without_details(client: TestClient)
     assert "nobody" not in response.text  # no connection details leak
 
 
+def test_discovery_may_be_cached_for_a_minute(client: TestClient) -> None:
+    for path in ("/v1/discovery", "/v1/payment-options"):
+        assert client.get(path).headers["Cache-Control"] == "public, max-age=60"
+
+
 def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     body = client.get("/v1/discovery").json()
     assert body["service"] == "DebitMyData Agent Gateway"

@@ -117,6 +117,13 @@ class RegistrationIntent(Base):
         CheckConstraint(one_of("status", REGISTRATION_STATUSES), name="status"),
         CheckConstraint("commercial_price_amount > 0", name="price_positive"),
         CheckConstraint(CONTROLLER_PRESENT, name="controller_present"),
+        # Counting a controller's open quotes (quote limit per controller key).
+        Index(
+            "ix_registration_intents_open_by_controller",
+            "controller_public_key",
+            "expires_at",
+            postgresql_where=text("status = 'awaiting_payment'"),
+        ),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)

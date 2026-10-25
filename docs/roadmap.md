@@ -51,6 +51,8 @@ place; the application logic comes with the related phase.
 - [x] GW-10 OpenAPI documentation for public routes
 - [x] GW-11 Background worker for polling and finality (`dmd-gateway-worker`); full reconciliation is DMD-13
 - [x] GW-12 Per-rail feature flags and kill switches (environment-based; runtime toggle later with OPS-09)
+- [x] GW-13 Request rate limits per address and in total (nginx on staging), open-quote limit per controller key, cacheable discovery
+- [ ] GW-14 Production capacity: load test on the production servers, edge rate limits (Cloudflare or AWS WAF), several API servers behind a load balancer, managed PostgreSQL (`scripts/load_test.py` is ready)
 
 ## Phase 3 – Route registry and quote engine
 

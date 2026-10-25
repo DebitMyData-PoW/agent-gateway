@@ -206,8 +206,9 @@ An identity is issued only when **all** of these hold:
 * controller proof is `verified` for the registration's controller key;
 * policy checks passed: the payment rail is still enabled (a killed rail also stops
   issuance), the settled outputs are credited to this payment, and the registration is not
-  held for review. Registration quotas, anomaly detection and compliance screening are
-  still to come (POL-*, DEC-10, DEC-11);
+  held for review. A controller key may hold at most 5 open quotes at a time (quotes refuse
+  more); review thresholds, anomaly detection and compliance screening are still to come
+  (POL-*, DEC-10, DEC-11);
 * the registration intent is valid (not expired, rejected or cancelled) and has not been
   used before.
 

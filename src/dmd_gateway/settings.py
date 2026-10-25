@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # How long a payment quote stays valid: 15 minutes, as in the directive's example (DEC-03).
     quote_ttl_seconds: int = Field(default=900, ge=60, le=3600)
 
+    # Open (unpaid, unexpired) quotes one controller key may have at a time. Stops a single
+    # agent from piling up quotes, each with its own DMD address; per-address request rates
+    # are limited in front of the gateway (nginx on staging).
+    max_open_quotes_per_controller: int = Field(default=5, ge=1, le=100)
+
     # How often the payment worker checks open payments.
     worker_interval_seconds: float = Field(default=10, ge=1, le=600)
 

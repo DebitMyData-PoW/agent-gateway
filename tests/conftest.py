@@ -20,6 +20,13 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 UNREACHABLE_DB = "postgresql+psycopg://nobody:nothing@127.0.0.1:9/none"
 
 
+@pytest.fixture(autouse=True)
+def many_open_quotes_per_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most tests use one agent key for many quotes. The limit on open quotes per controller
+    key has its own test (test_quotes.py), which sets the limit itself."""
+    monkeypatch.setenv("DMD_GW_MAX_OPEN_QUOTES_PER_CONTROLLER", "100")
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(

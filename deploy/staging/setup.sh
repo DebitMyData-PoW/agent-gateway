@@ -171,7 +171,12 @@ step "Updating the database schema"
 run_as_gateway "$APP_DIR/.venv/bin/alembic" upgrade head
 
 step "Starting the gateway API and payment worker"
-sed "s#@APP_DIR@#$APP_DIR#g" "$FILES/dmd-gateway-api.service" >/etc/systemd/system/dmd-gateway-api.service
+# One API process per CPU core, between 2 and 4 (each one keeps up to 15 database connections).
+API_WORKERS="$(nproc)"
+if [ "$API_WORKERS" -lt 2 ]; then API_WORKERS=2; fi
+if [ "$API_WORKERS" -gt 4 ]; then API_WORKERS=4; fi
+sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@API_WORKERS@#$API_WORKERS#g" \
+    "$FILES/dmd-gateway-api.service" >/etc/systemd/system/dmd-gateway-api.service
 sed "s#@APP_DIR@#$APP_DIR#g" "$FILES/dmd-gateway-worker.service" >/etc/systemd/system/dmd-gateway-worker.service
 $SYSTEMCTL daemon-reload
 $SYSTEMCTL enable dmd-gateway-api dmd-gateway-worker >/dev/null
@@ -179,6 +184,7 @@ $SYSTEMCTL restart dmd-gateway-api dmd-gateway-worker
 
 # ------------------------------------------------------------------ nginx + firewall
 step "Configuring nginx and the firewall (port 443 open to Cloudflare only)"
+install -m 644 "$FILES/nginx-proxy.conf" /etc/nginx/snippets/dmd-gateway-proxy.conf
 sed "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" "$FILES/nginx-site.conf" >/etc/nginx/sites-available/dmd-gateway
 if [ ! -e /proc/net/if_inet6 ]; then  # no IPv6 on this server: listen on IPv4 only
     sed -i '/listen \[::\]/d' /etc/nginx/sites-available/dmd-gateway

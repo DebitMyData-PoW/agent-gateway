@@ -19,6 +19,7 @@ from sqlalchemy import Engine, create_engine, text
 
 from dmd_gateway.identity.issuer import IssuerKey
 from dmd_gateway.main import create_app
+from dmd_gateway.services.staging_tools import new_test_agent_key
 from dmd_gateway.settings import Settings
 
 from .conftest import REGISTRY_PATH, TEST_DATABASE_URL, UNREACHABLE_DB, alembic_config
@@ -88,12 +89,14 @@ def _app_client(
     environ: dict[str, str] | None = None,
     price: str = "0.2",
     issuer_key: IssuerKey | None = None,
+    settings_overrides: dict[str, Any] | None = None,
     **price_kwargs: object,
 ) -> TestClient:
     settings = Settings(
         _env_file=None,
         database_url=TEST_DATABASE_URL or UNREACHABLE_DB,
         route_registry_path=registry_path,
+        **(settings_overrides or {}),
     )
     app = create_app(
         settings,
@@ -362,3 +365,28 @@ def test_every_quote_gets_its_own_dmd_address(db_client: TestClient) -> None:
         for _ in range(5)
     }
     assert len(addresses) == 5
+
+
+@needs_db
+def test_open_quotes_are_limited_per_controller_key(ready_registry: Path, engine: Engine) -> None:
+    limit = {"max_open_quotes_per_controller": 2}
+    key = new_test_agent_key().controller_public_key
+    with _app_client(ready_registry, engine, settings_overrides=limit) as client:
+        first, second = (client.post(URL, json=_request(controller_public_key=key)) for _ in "12")
+        assert first.status_code == second.status_code == 201
+        refused = client.post(URL, json=_request(controller_public_key=key))
+        assert refused.status_code == 429
+        assert refused.json()["error"]["code"] == "too_many_open_quotes"
+        assert 0 < int(refused.headers["Retry-After"]) <= 900
+        # Other keys are not affected, and a quote that has expired no longer counts.
+        other = new_test_agent_key().controller_public_key
+        assert client.post(URL, json=_request(controller_public_key=other)).status_code == 201
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE registration_intents SET expires_at = now() - interval '1 second' "
+                    "WHERE id = :id"
+                ),
+                {"id": first.json()["registration_intent_id"]},
+            )
+        assert client.post(URL, json=_request(controller_public_key=key)).status_code == 201
