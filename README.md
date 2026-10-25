@@ -31,7 +31,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.8.0`). The whole registration flow (quote,
+This is an early development release (`0.8.1`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -54,6 +54,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia; mainnet needs the receiving address and a production facilitator) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
+| Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -134,6 +135,7 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Optionally report the payment transaction (a hint only) | `POST /v1/payments/{payment_intent_id}/references` |
 | Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` |
 | Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
+| Read the terms, privacy, payment, refund, DID and security policies | `/policies`, `GET /v1/policies` |
 
 The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_discover`,
 `dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,

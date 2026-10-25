@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from dmd_gateway import __version__
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
+from dmd_gateway.services.policy_pages import policy_links
 
 router = APIRouter(prefix="/v1", tags=["discovery"])
 
@@ -154,7 +155,7 @@ def discovery(request: Request, response: Response) -> Discovery:
                 },
             )
         )
-        policy_urls.update(service.policy_urls)
+        policy_urls.update(policy_links(service.policy_urls, base))
     return Discovery(
         service="DebitMyData Agent Gateway",
         version=__version__,

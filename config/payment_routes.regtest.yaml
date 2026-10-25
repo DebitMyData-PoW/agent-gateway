@@ -74,16 +74,19 @@ services:
       - x402_usdc_base
       - x402_dmd_wrapped_base
       - solana_usdc
-    # Version of the terms an agent accepts with each quote. The directive's example uses
-    # 2026-09-18; confirm once the published policy pages exist (DEC-09).
-    terms_version: "2026-09-18"
+    # Version of the terms an agent accepts with each quote: the version of the terms page
+    # served at /policies/terms (DEC-09), which the tests keep equal.
+    terms_version: "2026-10-25"
+    # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
+    # a full https URL points elsewhere.
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
-      terms: https://agenticssocialspaces.debitmydata.com/terms
-      privacy: https://agenticssocialspaces.debitmydata.com/privacy
-      security: https://agenticssocialspaces.debitmydata.com/security
-      payment_policy: https://agenticssocialspaces.debitmydata.com/payment-methods
-      refund_policy: https://agenticssocialspaces.debitmydata.com/refunds
+      terms: /policies/terms
+      privacy: /policies/privacy
+      security: /policies/security
+      payment_policy: /policies/payment-methods
+      refund_policy: /policies/refunds
+      did_policy: /policies/did
 
 rails:
   # Primary native rail: direct DMD payment on the DebitMyData PoW chain.

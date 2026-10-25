@@ -48,6 +48,7 @@ from dmd_gateway.identity.wallets import (
     split_account,
 )
 from dmd_gateway.pricing import PriceObservation, PriceSource, PriceUnavailable, select_price
+from dmd_gateway.services.policy_pages import policy_links
 
 log = logging.getLogger(__name__)
 
@@ -229,6 +230,7 @@ class QuoteContext:
     price_sources: Mapping[str, PriceSource]
     quote_ttl: timedelta
     max_open_quotes: int = 5  # per controller key
+    public_base_url: str = ""  # for the links to policy pages on this server
 
 
 def enabled_option_ids(ctx: QuoteContext, service_id: str) -> list[str]:
@@ -495,5 +497,5 @@ def create_registration_quote(
         expires_at=expires_at,
         controller_proof_required=True,
         terms_version=service.terms_version,
-        policy_urls=dict(service.policy_urls),
+        policy_urls=policy_links(service.policy_urls, ctx.public_base_url),
     )

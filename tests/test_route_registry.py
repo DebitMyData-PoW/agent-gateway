@@ -321,4 +321,4 @@ def test_price_source_must_be_implemented(tmp_path: Path) -> None:
 
 def test_terms_version_is_set() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
-    assert registry.services["did_registration"].terms_version == "2026-09-18"
+    assert registry.services["did_registration"].terms_version == "2026-10-25"

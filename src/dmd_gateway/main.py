@@ -24,6 +24,7 @@ from dmd_gateway.api import (
     health,
     identities,
     payments,
+    policies,
     prices,
     quotes,
     registrations,
@@ -39,6 +40,7 @@ from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
+from dmd_gateway.services.policy_pages import load_policy_pages
 from dmd_gateway.services.quotes import DID_REGISTRATION, QuoteContext
 from dmd_gateway.services.registrations import IssuanceContext
 from dmd_gateway.settings import Settings, get_settings, runtime_environ
@@ -110,6 +112,13 @@ def create_app(
         price_sources=runtime.price_sources,
         quote_ttl=timedelta(seconds=settings.quote_ttl_seconds),
         max_open_quotes=settings.max_open_quotes_per_controller,
+        public_base_url=settings.public_base_url,
+    )
+    app.state.policy_pages = load_policy_pages(
+        public_base_url=settings.public_base_url,
+        registry=registry,
+        quote_minutes=settings.quote_ttl_seconds // 60,
+        challenge_minutes=settings.controller_challenge_ttl_seconds // 60,
     )
     app.state.wallet_verifier = WalletVerifier.from_registry(registry, env)
     app.state.issuance = IssuanceContext(
@@ -127,6 +136,7 @@ def create_app(
     app.include_router(payments.router)
     app.include_router(registrations.router)
     app.include_router(identities.router)
+    app.include_router(policies.router)
     app.include_router(docs_pages.router)
     if settings.staging_test_tools:
         app.include_router(staging.router)
@@ -139,7 +149,8 @@ DESCRIPTION = (
     "Public integration surface for agents: discovery, payment options, quotes, payment "
     "verification, controller proofs and DebitMyData DID issuance with signed credentials. "
     "Payment options appear only once their payment rail is enabled. AI agents can use the "
-    "same steps through the MCP server at /mcp."
+    "same steps through the MCP server at /mcp. Terms, privacy, payment, refund, DID and "
+    "security policies: [/policies](/policies)."
 )
 
 

@@ -45,7 +45,7 @@ def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     challenge = offer["endpoints"]["controller_challenge"]["url"]
     assert challenge.endswith("/registrations/{registration_intent_id}/controller-challenges")
     assert body["credential_issuer"] is None  # no issuer key configured
-    assert "terms" in body["policy_urls"]
+    assert body["policy_urls"]["terms"] == "http://localhost:8000/policies/terms"
 
 
 def test_payment_options_lists_only_enabled_rails(client: TestClient) -> None:

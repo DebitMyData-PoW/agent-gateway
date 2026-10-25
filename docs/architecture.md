@@ -307,6 +307,38 @@ issued identity is later reorganized away, the worker records the alert
   Production refuses a key file: it needs a separate signer so the key never sits on a
   public API host.
 
+## Policy pages
+
+Every quote names the terms version it is made under and links to the policies (the
+directive's terms, privacy, refund, payment and DID policies, plus security). The gateway
+serves these pages itself, so the links always work and match the server that made the
+quote:
+
+| Page | Address | Linked as |
+| --- | --- | --- |
+| Terms of service | `/policies/terms` | `terms` |
+| Privacy policy | `/policies/privacy` | `privacy` |
+| Security | `/policies/security` | `security` |
+| Payment methods | `/policies/payment-methods` | `payment_policy` |
+| Refund policy | `/policies/refunds` | `refund_policy` |
+| DID policy | `/policies/did` | `did_policy` |
+
+* The texts are Markdown files in `src/dmd_gateway/policies`, so changes are reviewed like
+  code. Each has a version (its date) and a status: `draft` until DebitMyData approves it,
+  shown on the page.
+* Placeholders fill in what differs between servers: the gateway's address, the DID host,
+  the issuer DID, the quote and challenge lifetimes, and the table of approved payment
+  methods, which is built from the payment route registry.
+* `/policies/<name>.md` returns the text as Markdown for agents, and `GET /v1/policies` lists
+  each page with its version, status and SHA-256.
+* `terms_version` in the route registry is the version of the terms page (the tests keep
+  them equal), and every registration and credential records it. Earlier versions stay in
+  the repository's history.
+* In `policy_urls`, a path is a page of this gateway and becomes a full URL in quotes and
+  discovery; any other link must be an https URL.
+* The pages run no scripts: their Content-Security-Policy only allows their own style and
+  the gateway's icon, and HTML inside a text is shown, never run.
+
 ## Identifier wording
 
 The product is "DebitMyData Agentic DID Registration", and public descriptions use the

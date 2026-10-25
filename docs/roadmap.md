@@ -170,7 +170,7 @@ and can be changed later.
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
 - [ ] DEC-08 Base/USDC receiving account and production x402 facilitator (staging uses the
   public x402.org test facilitator)
-- [ ] DEC-09 Policy URLs and version owners
+- [ ] DEC-09 Policy URLs and version owners: the pages are drafted and served by the gateway at `/policies` (terms, privacy, security, payment methods, refunds, DID policy); open: DebitMyData's approval of the texts, the governing law, and who owns each policy
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds
 - [ ] DEC-12 Refund signing/approval thresholds

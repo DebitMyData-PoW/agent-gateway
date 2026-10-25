@@ -193,7 +193,18 @@ class ServiceConfig(_Strict):
     commercial_price: CommercialPrice
     payment_options: tuple[str, ...]
     terms_version: str = Field(min_length=1, max_length=64)
+    # A path ("/policies/terms") is a page served by the gateway itself; anything else is a
+    # full https URL.
     policy_urls: dict[str, str] = {}
+
+    @field_validator("policy_urls")
+    @classmethod
+    def _policy_urls(cls, value: dict[str, str]) -> dict[str, str]:
+        for key, url in value.items():
+            local = url.startswith("/") and not url.startswith("//")
+            if not (local or url.startswith("https://")):
+                raise ValueError(f"policy_urls.{key} must be a path (/...) or an https URL")
+        return value
 
 
 class MiningCostParameters(_Strict):
