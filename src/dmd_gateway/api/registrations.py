@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Header, Path, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -245,7 +246,11 @@ class RegistrationRequest(BaseModel):
         json_schema_extra={"examples": [{"registration_intent_id": "dmd_did_intent_..."}]},
     )
 
-    registration_intent_id: str = Field(pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP)
+    # Optional only so that x402 tools probing the route without a quote get the 402 with the
+    # payment terms (see example_payment_required); every real call names its quote.
+    registration_intent_id: str | None = Field(
+        default=None, pattern=REGISTRATION_ID, description=REGISTRATION_ID_HELP
+    )
 
 
 class IssuedRegistration(BaseModel):
@@ -309,7 +314,9 @@ def _x402_context(request: Request) -> X402Context:
         "call this: it answers **402** with a `PAYMENT-REQUIRED` header (x402 version 2). "
         "Call it again with your signed payment in the `PAYMENT-SIGNATURE` header; the "
         "payment is settled, checked on chain, and the DID is issued in the same answer "
-        "(`PAYMENT-RESPONSE` header), or 202 if confirmations take longer."
+        "(`PAYMENT-RESPONSE` header), or 202 if confirmations take longer. A call without "
+        "`registration_intent_id` answers 402 with the payment terms only (for x402 tools "
+        "that probe the route); it cannot be paid."
     ),
     responses={
         200: {"description": "Already issued: the same DID and credential are returned."},
@@ -322,8 +329,8 @@ def _x402_context(request: Request) -> X402Context:
     },
 )
 def register(
-    body: RegistrationRequest,
     request: Request,
+    body: RegistrationRequest | None = None,
     payment_signature: Annotated[
         str | None,
         Header(
@@ -335,10 +342,25 @@ def register(
     ] = None,
 ) -> JSONResponse:
     ctx = _ctx(request)
-    if body.registration_intent_id == EXAMPLE_REGISTRATION_INTENT_ID:
+    rid = body.registration_intent_id if body else None
+    if rid is None or rid == EXAMPLE_REGISTRATION_INTENT_ID:
         service = request.app.state.registry.services[DID_REGISTRATION]
-        raise example_payment_required(_x402_context(request), service)
-    paid = register_paid(_x402_context(request), body.registration_intent_id, payment_signature)
+        terms = example_payment_required(_x402_context(request), service)
+        if terms is not None:
+            raise terms
+        if rid is None:  # no x402 rail: the field is simply required
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "missing",
+                        "loc": ("body", "registration_intent_id"),
+                        "msg": "Field required",
+                        "input": body.model_dump(exclude_none=True) if body else None,
+                    }
+                ]
+            )
+        raise ApiError(404, "not_found", "Unknown registration intent.")
+    paid = register_paid(_x402_context(request), rid, payment_signature)
     if paid is not None:
         headers = {}
         if paid.payment_response:
@@ -353,7 +375,7 @@ def register(
 
     now = datetime.now(UTC)
     with transaction(request.app.state.session_factory) as session:
-        issued = complete_registration(session, ctx, body.registration_intent_id, now)
+        issued = complete_registration(session, ctx, rid, now)
         session.flush()
         payload = _issued_response(ctx.public_base_url, issued).model_dump(mode="json")
     return JSONResponse(status_code=201 if issued.created else 200, content=payload)

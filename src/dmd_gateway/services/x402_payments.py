@@ -368,26 +368,27 @@ def payment_required(
 
 EXAMPLE_TIMEOUT_SECONDS = 300
 EXAMPLE_ERROR = (
-    "example registration_intent_id: it cannot be paid. Real ones come from "
-    "POST /v1/dids/registration-quotes."
+    "This request names no payable registration quote. registration_intent_id values come "
+    "from POST /v1/dids/registration-quotes."
 )
 
 
-def example_payment_required(ctx: X402Context, service: ServiceConfig) -> ApiError:
-    """The 402 answer to the reserved example ``registration_intent_id``.
+def example_payment_required(ctx: X402Context, service: ServiceConfig) -> ApiError | None:
+    """The 402 answer to a request without a quote, or with the reserved example ID.
 
-    The x402 Bazaar checks and indexes the endpoint by calling it with the example request
-    it advertises (``extensions.bazaar.info.input``); that call must get a 402 with the
-    real terms: the fixed price in USDC, the network and DebitMyData's receiving address.
-    The example is never a quote, so a payment sent with it is refused here, before any
-    facilitator call, and nothing is charged.
+    x402 tools probe a paid endpoint before knowing its input: Coinbase's validator posts
+    an empty body first, then the example request the gateway advertises
+    (``extensions.bazaar.info.input``). Both must get a 402 with the real terms: the fixed
+    price in USDC, the network and DebitMyData's receiving address. Neither names a quote,
+    so a payment sent with them is refused here, before any facilitator call, and nothing
+    is charged. None when no x402 rail is enabled.
     """
     for rail_id in service.payment_options:
         adapter = ctx.adapters.get(rail_id)
         if isinstance(adapter, X402PaymentAdapter) and adapter.rail.asset.usd_denominated:
             break
     else:
-        return ApiError(404, "not_found", "Unknown registration intent.")
+        return None
     amount = service.commercial_price.amount.scaleb(adapter.rail.asset.decimals)
     if amount != amount.to_integral_value():
         raise ValueError("the commercial price does not fit the asset's decimals")
@@ -400,7 +401,7 @@ def example_payment_required(ctx: X402Context, service: ServiceConfig) -> ApiErr
     required = payment_required(
         ctx.resource, requirements, EXAMPLE_ERROR, ctx.issuance.public_base_url
     )
-    return _payment_required_error(required, EXAMPLE_ERROR, code="example_registration_intent")
+    return _payment_required_error(required, EXAMPLE_ERROR, code="registration_quote_required")
 
 
 def payment_terms(
@@ -490,6 +491,11 @@ def _adapter(ctx: X402Context, rail_id: str) -> X402PaymentAdapter:
     return adapter
 
 
+# PaymentRequired fields also put at the top of a 402 body, for x402 clients that read the
+# body instead of the PAYMENT-REQUIRED header ("error" stays the gateway's error object).
+PAYMENT_REQUIRED_BODY_FIELDS = ("x402Version", "resource", "accepts", "extensions")
+
+
 def _payment_required_error(
     required: Mapping[str, Any], message: str, *, code: str, status: int = 402, **details: Any
 ) -> ApiError:
@@ -501,6 +507,11 @@ def _payment_required_error(
         message,
         details={"payment_required": body, **details},
         headers={PAYMENT_REQUIRED: encode_header(body)},
+        body_extra=(
+            {k: body[k] for k in PAYMENT_REQUIRED_BODY_FIELDS if k in body}
+            if status == 402
+            else None
+        ),
     )
 
 

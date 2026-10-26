@@ -195,11 +195,15 @@ JWT valid for 2 minutes and naming that one request, signed with DebitMyData's C
 (`adapters/cdp_auth.py`, the same token as Coinbase's SDK); the key secret is read from the
 environment only.
 
-**Bazaar listing.** Coinbase validates and indexes the route by calling it with the example
-request advertised in the `bazaar` extension. That example uses a reserved
-`registration_intent_id` (`dmd_did_intent_` followed by 26 zeros, a time no real quote can
-have). It answers `402` with the real terms (25.000000 USDC, Base, the receiving address)
-and is never paid: a payment sent with it is refused before the facilitator is called.
+**Bazaar listing.** x402 tools probe a paid route before they know its input: Coinbase's
+validator posts an empty body, then the example request advertised in the `bazaar`
+extension, which uses a reserved `registration_intent_id` (`dmd_did_intent_` followed by 26
+zeros, a time no real quote can have). A registration call without a quote, or with that
+example, answers `402` with the real terms (25.000000 USDC, Base, the receiving address) and
+is never paid: a payment sent with it is refused before the facilitator is called. Every
+402 also carries the PaymentRequired fields (`x402Version`, `resource`, `accepts`,
+`extensions`) at the top of its body, next to the gateway's `error` object, for clients
+that read the body instead of the `PAYMENT-REQUIRED` header.
 `scripts/validate_bazaar.py` runs Coinbase's validator against a deployed gateway; the
 listing itself follows the first payment settled through the CDP facilitator.
 

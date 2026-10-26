@@ -26,6 +26,7 @@ class ApiError(Exception):
         *,
         details: dict[str, Any] | None = None,
         headers: dict[str, str] | None = None,
+        body_extra: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -33,6 +34,8 @@ class ApiError(Exception):
         self.message = message
         self.details = details or {}
         self.headers = headers
+        # Top-level fields next to "error", for protocols that expect them (x402's 402 body).
+        self.body_extra = body_extra or {}
 
 
 def error_body(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -44,7 +47,7 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_body(exc.code, exc.message, exc.details),
+            content={**exc.body_extra, **error_body(exc.code, exc.message, exc.details)},
             headers=exc.headers,
         )
 

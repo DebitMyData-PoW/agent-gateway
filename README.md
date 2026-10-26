@@ -31,7 +31,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.9.0`). The whole registration flow (quote,
+This is an early development release (`0.9.1`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -52,7 +52,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
 | Staging server behind Cloudflare; the whole flow can be tried from its `/docs` page (staging-only test tools) | done |
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
-| Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, an example request that answers 402 for the Bazaar validator, `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
+| Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |

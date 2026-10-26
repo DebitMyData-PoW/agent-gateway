@@ -227,6 +227,8 @@ def test_payment_is_asked_only_once_the_did_can_be_issued(client: TestClient) ->
     assert body["code"] == "payment_required"
     required = decode(response.headers["PAYMENT-REQUIRED"])
     assert body["payment_required"] == required
+    for key in ("x402Version", "resource", "accepts", "extensions"):
+        assert response.json()[key] == required[key]
     assert required["x402Version"] == 2
     assert required["resource"]["url"] == f"{BASE}{REGISTER}"
     assert required["resource"]["serviceName"] == "DebitMyData"
@@ -244,16 +246,11 @@ def test_payment_is_asked_only_once_the_did_can_be_issued(client: TestClient) ->
     assert bazaar["schema"]["required"] == ["input"]
 
 
-def test_bazaar_example_request_gets_the_real_terms_and_can_never_be_paid(
-    client: TestClient, engine: Engine
-) -> None:
-    """The x402 Bazaar checks and indexes the endpoint with the example request it
-    advertises: that call gets a 402 with the real price, asset, network and receiving
-    address. A payment sent with the example is refused before the facilitator."""
-    authorizations = scalar(engine, "SELECT count(*) FROM x402_authorizations")
-    response = register(client, EXAMPLE_REGISTRATION_INTENT_ID)
-    assert response.status_code == 402
-    assert response.json()["error"]["code"] == "example_registration_intent"
+def _assert_terms_only(response: httpx2.Response) -> dict[str, Any]:
+    """A 402 carrying the real payment terms and no quote: what probes must get."""
+    assert response.status_code == 402, response.text
+    body = response.json()
+    assert body["error"]["code"] == "registration_quote_required"
     required = decode(response.headers["PAYMENT-REQUIRED"])
     assert required["x402Version"] == 2
     assert required["resource"]["url"] == f"{BASE}{REGISTER}"
@@ -264,20 +261,52 @@ def test_bazaar_example_request_gets_the_real_terms_and_can_never_be_paid(
         NETWORK,
         MERCHANT,
     )
-    bazaar = required["extensions"]["bazaar"]
-    assert bazaar["info"]["input"]["body"] == {
+    assert required["extensions"]["bazaar"]["info"]["input"]["body"] == {
         "registration_intent_id": EXAMPLE_REGISTRATION_INTENT_ID
     }
+    # The same PaymentRequired fields at the top of the body, for clients reading the body.
+    for key in ("x402Version", "resource", "accepts", "extensions"):
+        assert body[key] == required[key]
+    return required
+
+
+def test_probes_without_a_quote_get_the_real_terms_and_can_never_be_paid(
+    client: TestClient, engine: Engine
+) -> None:
+    """x402 tools probe the route before knowing its input: Coinbase's validator posts an
+    empty body, then the advertised example. Both get a 402 with the real price, asset,
+    network and receiving address; a payment sent with them is refused before the
+    facilitator and nothing is charged."""
+    authorizations = scalar(engine, "SELECT count(*) FROM x402_authorizations")
+    _assert_terms_only(client.post(REGISTER))  # no body at all
+    _assert_terms_only(
+        client.post(REGISTER, content=b"{}", headers={"Content-Type": "application/json"})
+    )
+    required = _assert_terms_only(register(client, EXAMPLE_REGISTRATION_INTENT_ID))
 
     payer = TestPayer()
-    paid = register(client, EXAMPLE_REGISTRATION_INTENT_ID, payer.header(required))
-    assert paid.status_code == 402
-    assert paid.json()["error"]["code"] == "example_registration_intent"
+    _assert_terms_only(register(client, EXAMPLE_REGISTRATION_INTENT_ID, payer.header(required)))
+    _assert_terms_only(
+        client.post(REGISTER, json={}, headers={"PAYMENT-SIGNATURE": payer.header(required)})
+    )
     assert FACILITATOR.verify_calls == [] and FACILITATOR.settle_calls == []
     assert CHAIN.balances[payer.address.lower()] == 100_000_000
     assert scalar(engine, "SELECT count(*) FROM x402_authorizations") == authorizations
-    # It is not a registration either.
+    # It is not a registration either, and bad input is still refused.
     assert client.get(f"{REGISTER}/{EXAMPLE_REGISTRATION_INTENT_ID}").status_code == 404
+    assert client.post(REGISTER, json={"other": 1}).status_code == 422
+    assert client.post(REGISTER, json={"registration_intent_id": "nope"}).status_code == 422
+
+
+def test_without_an_x402_rail_the_quote_is_simply_required(registry: Path, engine: Engine) -> None:
+    dmd_only = {k: v for k, v in ENVIRON.items() if k != "DMD_RAIL_X402_USDC_BASE_ENABLED"}
+    with TestClient(make_app(registry, engine, environ=dmd_only)) as dmd_client:
+        response = dmd_client.post(REGISTER, json={})
+        assert response.status_code == 422
+        assert response.json()["detail"][0]["loc"] == ["body", "registration_intent_id"]
+        assert dmd_client.post(REGISTER).status_code == 422
+        response = register(dmd_client, EXAMPLE_REGISTRATION_INTENT_ID)
+        assert (response.status_code, response.json()["error"]["code"]) == (404, "not_found")
 
 
 def _any_required(client: TestClient) -> dict[str, Any]:

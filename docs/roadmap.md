@@ -153,9 +153,9 @@ place; the application logic comes with the related phase.
   API key (Ed25519 or ECDSA, the same token as Coinbase's SDK), key from the environment
   only; the gateway refuses to start with the CDP facilitator and no usable key
 - [x] X402-13 Bazaar listing requirements: description under 500 characters that describes
-  rather than instructs, request schema with an example, PNG icon, and a reserved example
-  `registration_intent_id` that answers 402 with the real terms (for Coinbase's validator)
-  and can never be paid
+  rather than instructs, request schema with an example, PNG icon; a call without a quote
+  (empty body) or with the reserved example `registration_intent_id` answers 402 with the
+  real terms, as Coinbase's validator requires, and can never be paid
 
 ## Phases 8–13
 
