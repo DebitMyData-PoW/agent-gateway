@@ -157,6 +157,24 @@ def _detail(
     return detail
 
 
+def expected_payment(session: Session, intent: PaymentIntent) -> ExpectedPayment:
+    """What the adapter should look for on chain for this intent."""
+    return ExpectedPayment(
+        payment_intent_id=intent.id,
+        network=intent.network,
+        asset_canonical_id=intent.asset_canonical_id,
+        amount_base_units=int(intent.amount_base_units),
+        destination=PaymentDestination(
+            recipient=intent.recipient,
+            recipient_kind=intent.recipient_kind,
+            payment_reference=intent.payment_reference,
+        ),
+        required_confirmations=intent.required_confirmations,
+        known_transactions=_known_transactions(session, intent.id),
+        authorizations=submitted_authorizations(session, intent.id),
+    )
+
+
 def process_intent(
     session: Session,
     payment_intent_id: str,
@@ -177,20 +195,7 @@ def process_intent(
 
     current = S(intent.status)
     expected_units = int(intent.amount_base_units)
-    expected = ExpectedPayment(
-        payment_intent_id=intent.id,
-        network=intent.network,
-        asset_canonical_id=intent.asset_canonical_id,
-        amount_base_units=expected_units,
-        destination=PaymentDestination(
-            recipient=intent.recipient,
-            recipient_kind=intent.recipient_kind,
-            payment_reference=intent.payment_reference,
-        ),
-        required_confirmations=intent.required_confirmations,
-        known_transactions=_known_transactions(session, intent.id),
-        authorizations=submitted_authorizations(session, intent.id),
-    )
+    expected = expected_payment(session, intent)
     observation = adapter.observe(expected)  # AdapterUnavailable propagates: no change
     ctx = SettlementContext(
         expected_base_units=expected_units,

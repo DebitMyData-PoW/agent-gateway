@@ -81,6 +81,8 @@ X402_AUTHORIZATION_STATUSES = (
 # At most one authorization per payment intent is in progress or settled at a time.
 X402_LIVE_STATUSES = ("received", "submitted", "settled")
 POLICY_KINDS = ("terms", "privacy", "payment", "refund", "did", "marketplace", "security")
+ALERT_SEVERITIES = ("critical", "warning")
+ALERT_KINDS = ("condition", "event")  # an ongoing problem, or something that happened once
 CONTROLLER_PRESENT = "controller_public_key IS NOT NULL OR controller_wallet_address IS NOT NULL"
 
 
@@ -528,6 +530,39 @@ class PriceRecord(Base):
     observed_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
     inputs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = created_at()
+
+
+class MonitorState(Base):
+    """Small operational values kept between runs: the payment worker's heartbeat, the
+    monitor's position in the audit trail, the receiving destinations last seen."""
+
+    __tablename__ = "monitor_state"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+
+
+class AlertState(Base):
+    """One row per alert the monitor raised: when it started, when it was last sent, and
+    when it was resolved, so an ongoing problem is not sent again on every run."""
+
+    __tablename__ = "alert_states"
+    __table_args__ = (
+        CheckConstraint(one_of("severity", ALERT_SEVERITIES), name="severity"),
+        CheckConstraint(one_of("kind", ALERT_KINDS), name="kind"),
+    )
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    severity: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    last_sent_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    resolved_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    notifications: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
 
 APPEND_ONLY_TABLES = (

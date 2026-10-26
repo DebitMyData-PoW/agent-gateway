@@ -344,6 +344,12 @@ long, heavy run for an attack. The script refuses to run against production. Quo
 creates are real, unpaid quotes that expire after 15 minutes; their DMD addresses stay in the
 watch-only wallet, which is harmless.
 
+## 7. Alerts
+
+The update installs the monitor (every 2 minutes) and the daily report (07:00 UTC). They send
+nothing until the email and Discord settings are in `/etc/dmd-gateway/gateway.env`: see
+[monitoring.md](monitoring.md), then run `dmd-gateway-monitor test` as shown there.
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |

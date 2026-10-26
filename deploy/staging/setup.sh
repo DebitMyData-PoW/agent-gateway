@@ -186,6 +186,15 @@ $SYSTEMCTL daemon-reload
 $SYSTEMCTL enable dmd-gateway-api dmd-gateway-worker >/dev/null
 $SYSTEMCTL restart dmd-gateway-api dmd-gateway-worker
 
+step "Starting the monitor (every 2 minutes) and the daily report (07:00 UTC)"
+# Alerts go nowhere until the alert settings are filled in: see docs/monitoring.md.
+for unit in dmd-gateway-monitor.service dmd-gateway-monitor.timer \
+    dmd-gateway-report.service dmd-gateway-report.timer; do
+    sed "s#@APP_DIR@#$APP_DIR#g" "$FILES/$unit" >"/etc/systemd/system/$unit"
+done
+$SYSTEMCTL daemon-reload
+$SYSTEMCTL enable --now dmd-gateway-monitor.timer dmd-gateway-report.timer >/dev/null
+
 # ------------------------------------------------------------------ nginx + firewall
 step "Configuring nginx and the firewall (port 443 open to Cloudflare only)"
 install -m 644 "$FILES/nginx-proxy.conf" /etc/nginx/snippets/dmd-gateway-proxy.conf

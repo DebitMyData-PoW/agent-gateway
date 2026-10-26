@@ -32,8 +32,8 @@ place; the application logic comes with the related phase.
 - [x] SEC-09 Watch-only / descriptor-based payment tracking (the gateway refuses a wallet that can spend)
 - [ ] SEC-10 Firewall verified from an external host
 - [ ] SEC-11 Secondary verification node with tip comparison
-- [ ] SEC-12 Node health and sync checks
-- [ ] SEC-13 Reorg monitoring and alert thresholds
+- [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DMD node's height with the public explorer ([monitoring.md](monitoring.md))
+- [x] SEC-13 Reorg monitoring and alert thresholds: a payment that leaves the chain after its DID or receipt was issued is a critical alert; payments confirming for more than 2 hours are a warning
 - [ ] SEC-14 Backup and restore test (descriptors, configuration, database)
 - [ ] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook
 
@@ -84,7 +84,7 @@ place; the application logic comes with the related phase.
 - [x] DMD-10 Deterministic underpaid/overpaid handling
 - [x] DMD-11 One output credited to at most one intent
 - [x] DMD-12 Payer-submitted reference treated as a hint only (`POST /v1/payments/{id}/references`, MCP `dmd_submit_payment_reference`)
-- [ ] DMD-13 Periodic reconciliation against the chain
+- [x] DMD-13 Periodic reconciliation against the chain: daily report, with every payment settled in the last 30 days checked again on chain and the database checked against itself
 - [ ] DMD-14 Node failover / second verification node
 - [x] DMD-15 Address reuse prevention and treasury separation (watch-only gateway wallet)
 
@@ -167,7 +167,8 @@ place; the application logic comes with the related phase.
 ## Phases 8–13
 
 Additional rails (RAIL-*), abuse prevention and policy (POL-*), monitoring and operations
-(OPS-*), developer documentation (DOC-*), testing and security validation (TEST-*),
+(OPS-*: alerts by email and Discord, daily report and receiving-address change alerts done in
+0.12.0), developer documentation (DOC-*), testing and security validation (TEST-*),
 deployment and cutover (DEP-*).
 
 ## Decisions

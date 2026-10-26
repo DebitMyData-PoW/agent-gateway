@@ -8,6 +8,7 @@ rail secrets such as merchant addresses are read by the route registry from
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +21,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_DATABASE_URL = "postgresql+psycopg://gateway:gateway-dev-only@localhost:5432/agent_gateway"
 ENV_FILE = ".env"
+EMAIL = re.compile(r"^[^@\s,<>]+@[^@\s,<>]+\.[A-Za-z]{2,}$")
 
 
 class Settings(BaseSettings):
@@ -83,7 +85,38 @@ class Settings(BaseSettings):
     staging_test_tools: bool = False
     staging_payer_wallet: str = Field(default="payer-test", min_length=1, max_length=64)
 
-    @field_validator("mcp_url", "issuer_key_path", mode="before")
+    # Monitoring and alerts (dmd-gateway-monitor, docs/monitoring.md). Email addresses are
+    # comma-separated: alert_email_to receives every alert and its resolution,
+    # alert_email_critical_to only critical alerts, report_email_to the daily report. The
+    # SMTP password and the Discord webhook address are secrets, read from the environment
+    # only (DMD_ALERT_SMTP_PASSWORD, DMD_ALERT_DISCORD_WEBHOOK_URL).
+    alert_email_to: str = ""
+    alert_email_critical_to: str = ""
+    report_email_to: str = ""
+    alert_smtp_host: str = ""
+    alert_smtp_port: int = Field(default=587, ge=1, le=65535)
+    alert_smtp_security: Literal["starttls", "ssl"] = "starttls"
+    alert_smtp_username: str = ""
+    alert_smtp_from: str = ""
+    # Discord user mentioned in critical alerts, so they notify that person.
+    alert_discord_mention_user_id: str = Field(default="", pattern=r"^([0-9]{17,20})?$")
+    # An ongoing problem is sent again after this long, until it is resolved.
+    alert_repeat_critical_minutes: int = Field(default=60, ge=5, le=1440)
+    alert_repeat_warning_hours: int = Field(default=24, ge=1, le=168)
+    # The API's readiness address as seen from the monitor (on the same server).
+    monitor_api_url: str = "http://127.0.0.1:8000/readyz"
+    # Where the monitor remembers alerts it sent while the database was unreachable.
+    monitor_fallback_state_path: Path | None = None
+
+    @field_validator("alert_email_to", "alert_email_critical_to", "report_email_to")
+    @classmethod
+    def _email_list(cls, value: str) -> str:
+        for address in email_list(value):
+            if not EMAIL.match(address):
+                raise ValueError(f"not an email address: {address!r}")
+        return value
+
+    @field_validator("mcp_url", "issuer_key_path", "monitor_fallback_state_path", mode="before")
     @classmethod
     def _empty_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -127,6 +160,10 @@ class Settings(BaseSettings):
         if self.environment == "production" and self.staging_test_tools:
             raise ValueError("staging test tools must never be enabled in production")
         return self
+
+
+def email_list(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 @lru_cache(maxsize=1)

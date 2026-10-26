@@ -1,0 +1,9 @@
+[Unit]
+Description=Send the DebitMyData Agent Gateway reconciliation report every day at 07:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

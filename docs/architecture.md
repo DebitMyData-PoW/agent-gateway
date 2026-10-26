@@ -101,6 +101,20 @@ minimum: that takes about 15 times today's network work for most of a week. The 
 DebitMyData's written approval of the rate goes in `minimum_approved_on` and is shown with
 the price. Once DMD trades on an exchange, a market price source replaces both.
 
+## Monitoring
+
+`dmd-gateway-monitor` (`monitoring/`) runs every 2 minutes from a systemd timer. It checks the
+API, the payment worker's heartbeat (recorded on every pass), each enabled payment option's
+readiness (node, chain RPC, facilitator), the DMD price, the DMD node against the public
+explorer, alerts recorded by the worker (a payment that left the chain after issuance),
+refunds due, stuck payments, and whether a receiving destination changed. Findings are kept
+in `alert_states`: an ongoing problem is sent when it starts, repeated while it lasts, and
+sent again when resolved; one-off events are sent once. Messages go by email (SMTP with TLS)
+and to a Discord webhook, critical ones also to the critical-only recipients and with a
+mention. Every day a reconciliation report checks the database against itself and every
+payment settled in the last 30 days again on its chain, read-only. See
+[monitoring.md](monitoring.md).
+
 ## Registration flow
 
 1. `GET /v1/discovery` and `GET /v1/payment-options` describe the offer and the rails

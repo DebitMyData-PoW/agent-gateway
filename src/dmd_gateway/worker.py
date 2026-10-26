@@ -17,8 +17,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import FrameType
 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
+
 from dmd_gateway.adapters import AdapterUnavailable
-from dmd_gateway.db.session import build_engine, session_factory
+from dmd_gateway.db.session import build_engine, session_factory, transaction
+from dmd_gateway.monitoring.state import WORKER_HEARTBEAT, put_state
 from dmd_gateway.observability import configure_logging
 from dmd_gateway.pricing.mining_cost import PriceRefresher
 from dmd_gateway.runtime import build_runtime
@@ -68,10 +72,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             now = datetime.now(UTC)
             if prices is not None and prices.due(now):
                 prices.run(factory, now)
+            result = None
             if runtime.adapters:
                 result = run_pass(factory, runtime.adapters, now)
                 if result.processed or result.unavailable or result.errors:
                     log.info("worker pass", extra={"event": result.__dict__})
+            _heartbeat(factory, now, result.__dict__ if result else {})
             if args.once:
                 break
             for _ in range(int(settings.worker_interval_seconds * 10)):
@@ -81,6 +87,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         engine.dispose()
     return 0
+
+
+def _heartbeat(factory: sessionmaker[Session], now: datetime, last_pass: dict[str, int]) -> None:
+    """Tells the monitor the worker is alive (it alerts when this stops)."""
+    try:
+        with transaction(factory) as session:
+            put_state(session, WORKER_HEARTBEAT, {"last_pass": last_pass}, now)
+    except SQLAlchemyError as exc:
+        log.error("worker heartbeat not recorded", extra={"event": {"error": type(exc).__name__}})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,25 @@
+[Unit]
+Description=DebitMyData Agent Gateway monitor: health checks and alerts
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gateway
+Group=gateway
+WorkingDirectory=@APP_DIR@
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=DMD_GW_MONITOR_FALLBACK_STATE_PATH=/var/lib/dmd-gateway-monitor/fallback.json
+EnvironmentFile=/etc/dmd-gateway/gateway.env
+StateDirectory=dmd-gateway-monitor
+ExecStart=@APP_DIR@/.venv/bin/dmd-gateway-monitor check
+TimeoutStartSec=110
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
