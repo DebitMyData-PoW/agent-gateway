@@ -215,8 +215,45 @@ def test_channels_come_from_the_settings() -> None:
     no_sender = configured.model_copy(update={"alert_smtp_from": ""})
     with pytest.raises(ValueError, match="SMTP_FROM"):
         notifiers_from_settings(no_sender, environ)
-    with pytest.raises(ValueError, match="not an email address"):
-        Settings(_env_file=None, alert_email_critical_to="boss")
+
+
+@pytest.mark.parametrize(
+    ("changes", "environ", "message"),
+    [
+        # A comment written after a value becomes part of it (systemd environment files).
+        ({"alert_email_to": "ops@example.com   # every alert"}, {}, "ALERT_EMAIL_TO"),
+        ({"alert_email_critical_to": "boss"}, {}, "ALERT_EMAIL_CRITICAL_TO"),
+        ({"alert_smtp_host": "smtp.example.com   # host"}, {}, "SMTP_HOST"),
+        ({"alert_smtp_port": "587   # port"}, {}, "SMTP_PORT"),
+        ({"alert_smtp_security": "tls"}, {}, "SMTP_SECURITY"),
+        ({"alert_discord_mention_user_id": "12345678901234567890123"}, {}, "MENTION_USER_ID"),
+        ({}, {"DMD_ALERT_DISCORD_WEBHOOK_URL": WEBHOOK + "   # my channel"}, "contains a space"),
+    ],
+)
+def test_wrong_alert_settings_are_named_and_never_stop_the_gateway(
+    changes: dict[str, str], environ: dict[str, str], message: str
+) -> None:
+    values = {
+        "alert_smtp_host": "smtp.example.com",
+        "alert_smtp_from": "alerts@example.com",
+        "alert_email_to": "ops@example.com",
+        **changes,
+    }
+    settings = Settings(_env_file=None, **values)  # the API and the worker still start
+    with pytest.raises(ValueError, match=message):
+        notifiers_from_settings(settings, environ)
+
+
+def test_the_monitor_names_a_wrong_setting(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from dmd_gateway.monitoring import cli
+
+    wrong = Settings(_env_file=None, alert_smtp_host="x", alert_email_to="ops@example.com # x")
+    monkeypatch.setattr(cli, "get_settings", lambda: wrong)
+    monkeypatch.setattr(cli, "runtime_environ", lambda: {})
+    assert cli.main(["test"]) == 2
+    assert "DMD_GW_ALERT_EMAIL_TO" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------- database

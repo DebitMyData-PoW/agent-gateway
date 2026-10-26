@@ -35,7 +35,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.db.models import AlertState
-from dmd_gateway.settings import Settings, email_list
+from dmd_gateway.settings import EMAIL, Settings, email_list
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +44,8 @@ DISCORD_LIMIT = 2000
 SUBJECT_LIMIT = 150
 SMTP_TIMEOUT_SECONDS = 20
 _URL = re.compile(r"[a-z][a-z0-9+.-]*://[^\s'\"<>]+", re.IGNORECASE)
+_DISCORD_USER = re.compile(r"[0-9]{17,20}")
+ON_ITS_OWN_LINE = "a comment must be on its own line, never after a value"
 
 
 class Severity(StrEnum):
@@ -183,21 +185,39 @@ class DiscordNotifier:
             raise NotifyError(f"discord: HTTP {response.status_code}")
 
 
+def _emails(name: str, value: str) -> list[str]:
+    addresses = email_list(value)
+    for address in addresses:
+        if not EMAIL.match(address):
+            raise ValueError(f"{name}: {address!r} is not an email address ({ON_ITS_OWN_LINE})")
+    return addresses
+
+
 def notifiers_from_settings(
     settings: Settings, environ: Mapping[str, str], client: httpx.Client | None = None
 ) -> list[Notifier]:
+    """The configured channels. Raises ValueError, naming the setting, when one is wrong."""
     notifiers: list[Notifier] = []
-    to_all = email_list(settings.alert_email_to)
-    to_critical = email_list(settings.alert_email_critical_to)
-    to_report = email_list(settings.report_email_to)
-    if settings.alert_smtp_host and (to_all or to_critical or to_report):
-        if not settings.alert_smtp_from:
+    to_all = _emails("DMD_GW_ALERT_EMAIL_TO", settings.alert_email_to)
+    to_critical = _emails("DMD_GW_ALERT_EMAIL_CRITICAL_TO", settings.alert_email_critical_to)
+    to_report = _emails("DMD_GW_REPORT_EMAIL_TO", settings.report_email_to)
+    host = settings.alert_smtp_host.strip()
+    if host and (to_all or to_critical or to_report):
+        if not settings.alert_smtp_from.strip():
             raise ValueError("DMD_GW_ALERT_SMTP_FROM is required to send alert emails")
+        if any(char.isspace() for char in host):
+            raise ValueError(f"DMD_GW_ALERT_SMTP_HOST: {host!r} ({ON_ITS_OWN_LINE})")
+        port = settings.alert_smtp_port.strip()
+        if not port.isdigit() or not 1 <= int(port) <= 65535:
+            raise ValueError(f"DMD_GW_ALERT_SMTP_PORT: {port!r} is not a port number, e.g. 587")
+        security = settings.alert_smtp_security.strip().lower()
+        if security not in ("starttls", "ssl"):
+            raise ValueError("DMD_GW_ALERT_SMTP_SECURITY must be starttls (port 587) or ssl (465)")
         notifiers.append(
             EmailNotifier(
-                host=settings.alert_smtp_host,
-                port=settings.alert_smtp_port,
-                security=settings.alert_smtp_security,
+                host=host,
+                port=int(port),
+                security="ssl" if security == "ssl" else "starttls",
                 username=settings.alert_smtp_username,
                 password=environ.get("DMD_ALERT_SMTP_PASSWORD", ""),
                 sender=settings.alert_smtp_from,
@@ -207,11 +227,18 @@ def notifiers_from_settings(
             )
         )
     webhook = (environ.get("DMD_ALERT_DISCORD_WEBHOOK_URL") or "").strip()
+    mention = settings.alert_discord_mention_user_id.strip()
+    if mention and not _DISCORD_USER.fullmatch(mention):
+        raise ValueError(
+            f"DMD_GW_ALERT_DISCORD_MENTION_USER_ID must be a Discord user ID ({ON_ITS_OWN_LINE})"
+        )
     if webhook:
+        if any(char.isspace() for char in webhook):
+            raise ValueError(f"DMD_ALERT_DISCORD_WEBHOOK_URL contains a space ({ON_ITS_OWN_LINE})")
         notifiers.append(
             DiscordNotifier(
                 webhook,
-                settings.alert_discord_mention_user_id,
+                mention,
                 client or httpx.Client(timeout=15, follow_redirects=False),
             )
         )

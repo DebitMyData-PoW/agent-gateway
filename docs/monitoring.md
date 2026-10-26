@@ -14,26 +14,32 @@ Alerts and reports go by email and to a Discord channel. Telegram and Slack are 
 ## 1. Settings
 
 In `/etc/dmd-gateway/gateway.env` on the server (then nothing to restart: each run reads it
-again). The real addresses and IDs live only there, never in this repository:
+again). The real addresses and IDs live only there, never in this repository. Write each
+value alone on its line: a comment after a value becomes part of it.
 
 ```bash
-# Who receives what (comma-separated).
-DMD_GW_ALERT_EMAIL_TO=ops@example.com                  # every alert and its resolution
-DMD_GW_ALERT_EMAIL_CRITICAL_TO=manager@example.com     # critical alerts only
-DMD_GW_REPORT_EMAIL_TO=ops@example.com,manager@example.com  # daily report
+# Who receives every alert and its resolution / critical alerts only / the daily report
+# (comma-separated).
+DMD_GW_ALERT_EMAIL_TO=ops@example.com
+DMD_GW_ALERT_EMAIL_CRITICAL_TO=manager@example.com
+DMD_GW_REPORT_EMAIL_TO=ops@example.com,manager@example.com
 
-# The mailbox that sends them (SMTP submission with TLS).
+# The mailbox that sends them (SMTP with TLS: 587 with starttls, or 465 with ssl).
 DMD_GW_ALERT_SMTP_HOST=smtp.example.com
 DMD_GW_ALERT_SMTP_PORT=587
-DMD_GW_ALERT_SMTP_SECURITY=starttls        # or ssl (port 465)
+DMD_GW_ALERT_SMTP_SECURITY=starttls
 DMD_GW_ALERT_SMTP_USERNAME=alerts@example.com
 DMD_GW_ALERT_SMTP_FROM=DebitMyData Gateway <alerts@example.com>
-DMD_ALERT_SMTP_PASSWORD=...                # secret: this file only (mode 600)
+# Secret: this file only (mode 600).
+DMD_ALERT_SMTP_PASSWORD=...
 
-# Discord: a webhook of a private channel, and who to mention for critical alerts.
-DMD_ALERT_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...   # secret
+# Discord: the webhook of a private channel (secret), and who to mention for critical alerts.
+DMD_ALERT_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 DMD_GW_ALERT_DISCORD_MENTION_USER_ID=123456789012345678
 ```
+
+A wrong value here never stops the API or the payment worker: the monitor names the setting
+in its log and in `dmd-gateway-monitor test`, and sends nothing until it is fixed.
 
 - **Email**: any mailbox that allows SMTP with TLS works (the company's email provider with
   an app password, or an email-sending service). Vultr blocks outgoing port 25, so use 587

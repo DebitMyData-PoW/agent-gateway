@@ -45,7 +45,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     configure_logging(settings.log_level)
     environ = runtime_environ()
-    dispatcher = AlertDispatcher.from_settings(settings, environ)
+    try:
+        dispatcher = AlertDispatcher.from_settings(settings, environ)
+    except ValueError as exc:
+        # The alert settings are wrong: say which one, and send nothing.
+        log.error("alert settings", extra={"event": {"error": str(exc)}})
+        print(f"Alert settings: {exc}")
+        return 2
     if args.command == "test":
         return _test(settings, dispatcher)
     return run(args.command, settings, environ, dispatcher)

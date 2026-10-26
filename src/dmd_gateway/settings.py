@@ -89,17 +89,19 @@ class Settings(BaseSettings):
     # comma-separated: alert_email_to receives every alert and its resolution,
     # alert_email_critical_to only critical alerts, report_email_to the daily report. The
     # SMTP password and the Discord webhook address are secrets, read from the environment
-    # only (DMD_ALERT_SMTP_PASSWORD, DMD_ALERT_DISCORD_WEBHOOK_URL).
+    # only (DMD_ALERT_SMTP_PASSWORD, DMD_ALERT_DISCORD_WEBHOOK_URL). These are plain strings,
+    # checked by the monitor itself (monitoring/alerts.py): a mistake in them stops the
+    # alerts, never the API or the payment worker.
     alert_email_to: str = ""
     alert_email_critical_to: str = ""
     report_email_to: str = ""
     alert_smtp_host: str = ""
-    alert_smtp_port: int = Field(default=587, ge=1, le=65535)
-    alert_smtp_security: Literal["starttls", "ssl"] = "starttls"
+    alert_smtp_port: str = "587"
+    alert_smtp_security: str = "starttls"  # or ssl
     alert_smtp_username: str = ""
     alert_smtp_from: str = ""
     # Discord user mentioned in critical alerts, so they notify that person.
-    alert_discord_mention_user_id: str = Field(default="", pattern=r"^([0-9]{17,20})?$")
+    alert_discord_mention_user_id: str = ""
     # An ongoing problem is sent again after this long, until it is resolved.
     alert_repeat_critical_minutes: int = Field(default=60, ge=5, le=1440)
     alert_repeat_warning_hours: int = Field(default=24, ge=1, le=168)
@@ -107,14 +109,6 @@ class Settings(BaseSettings):
     monitor_api_url: str = "http://127.0.0.1:8000/readyz"
     # Where the monitor remembers alerts it sent while the database was unreachable.
     monitor_fallback_state_path: Path | None = None
-
-    @field_validator("alert_email_to", "alert_email_critical_to", "report_email_to")
-    @classmethod
-    def _email_list(cls, value: str) -> str:
-        for address in email_list(value):
-            if not EMAIL.match(address):
-                raise ValueError(f"not an email address: {address!r}")
-        return value
 
     @field_validator("mcp_url", "issuer_key_path", "monitor_fallback_state_path", mode="before")
     @classmethod
