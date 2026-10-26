@@ -128,10 +128,15 @@ def test_docs_page_guide_links_to_each_endpoint(staging_client: TestClient) -> N
     assert [tag["name"] for tag in schema["tags"]][:3] == ["discovery", "staging", "registration"]
     guide = schema["info"]["description"]
     links = re.findall(r"\]\(#/([a-z]+)/([A-Za-z0-9_]+)\)", guide)
-    assert len(links) == 8
+    assert len(links) == 10
     linked = [operations[link] for link in links]  # every link names a real operation
     assert linked[0] == KEYS and linked[2] == PAYMENTS and linked[5] == SIGNATURES
     assert linked[7] == "/v1/dids/registrations"
+    # Then the inference donation: sign a test payment, and donate with it.
+    assert linked[8:] == ["/v1/staging/test-donation-payments", "/v1/donations/{name}"]
+    donation = schema["paths"]["/v1/donations/{name}"]["post"]["requestBody"]["content"]
+    assert list(donation)[0] == FORM
+    assert set(donation[FORM]["schema"]["properties"]) == {"amount_usd", "donor_name", "donor_did"}
 
 
 def test_quote_offers_one_example_per_way_to_pay(staging_client: TestClient) -> None:

@@ -53,6 +53,27 @@ class Offer(BaseModel):
     endpoints: dict[str, Endpoint]
 
 
+class AmountRange(BaseModel):
+    currency: str
+    minimum: str
+    maximum: str
+
+
+class DonationOffer(BaseModel):
+    """A donation: the donor chooses the amount within the range, and pays in one call."""
+
+    id: str
+    title: str
+    description: str
+    method: str
+    path: str
+    resource: str
+    amount: AmountRange
+    accepting_payments: bool
+    payment_options_url: str
+    endpoints: dict[str, Endpoint]
+
+
 class CredentialIssuer(BaseModel):
     did: str
     did_document_url: str
@@ -62,6 +83,7 @@ class Discovery(BaseModel):
     service: str
     version: str
     offers: list[Offer]
+    donations: list[DonationOffer]
     mcp_url: str | None
     credential_issuer: CredentialIssuer | None
     policy_urls: dict[str, str]
@@ -85,7 +107,8 @@ class PaymentOption(BaseModel):
 
 class PaymentOptions(BaseModel):
     service: str
-    commercial_fee: Money
+    commercial_fee: Money | None  # a fixed price; None for a donation
+    donation_amount: AmountRange | None = None  # the range a donor may choose from
     supported_payment_options: list[PaymentOption]
     notice: str
 
@@ -156,10 +179,14 @@ def discovery(request: Request, response: Response) -> Discovery:
             )
         )
         policy_urls.update(policy_links(service.policy_urls, base))
+    donations = [
+        _donation_offer(registry, donation_id, base, issuing) for donation_id in registry.donations
+    ]
     return Discovery(
         service="DebitMyData Agent Gateway",
         version=__version__,
         offers=offers,
+        donations=donations,
         mcp_url=settings.mcp_url or f"{base}/mcp",
         credential_issuer=(
             CredentialIssuer(
@@ -174,6 +201,54 @@ def discovery(request: Request, response: Response) -> Discovery:
     )
 
 
+def _amount_range(registry: PaymentRouteRegistry, donation_id: str) -> AmountRange:
+    amount = registry.donations[donation_id].amount
+    return AmountRange(
+        currency=amount.currency, minimum=f"{amount.minimum:.2f}", maximum=f"{amount.maximum:.2f}"
+    )
+
+
+def _donation_offer(
+    registry: PaymentRouteRegistry, donation_id: str, base: str, issuing: bool
+) -> DonationOffer:
+    donation = registry.donations[donation_id]
+    accepting = bool(registry.donation_rails(donation_id)) and issuing
+    return DonationOffer(
+        id=donation_id,
+        title=donation.title,
+        description=" ".join(donation.description.split()),
+        method=donation.method,
+        path=donation.path,
+        resource=f"{base}{donation.path}",
+        amount=_amount_range(registry, donation_id),
+        accepting_payments=accepting,
+        payment_options_url=f"{base}/v1/payment-options?service={donation_id}",
+        endpoints={
+            "donate": Endpoint(method="POST", url=f"{base}{donation.path}", available=accepting),
+            "donation_status": Endpoint(
+                method="GET", url=f"{base}/v1/donations/{{purchase_id}}", available=accepting
+            ),
+        },
+    )
+
+
+def _option(rail_id: str, rail: RailConfig) -> PaymentOption:
+    return PaymentOption(
+        id=rail_id,
+        name=rail.name,
+        asset=rail.asset.symbol,
+        asset_id=rail.asset.canonical_id,
+        token_contract=rail.token_contract,
+        decimals=rail.asset.decimals,
+        network=rail.network,
+        payment_protocol=rail.protocol,
+        scheme=rail.scheme,
+        transfer_method=_transfer_method(rail),
+        wallet_compatibility=list(rail.wallet_compatibility),
+        status=RailState.ENABLED,
+    )
+
+
 @router.get(
     "/payment-options",
     response_model=PaymentOptions,
@@ -182,30 +257,28 @@ def discovery(request: Request, response: Response) -> Discovery:
 def payment_options(
     request: Request,
     response: Response,
-    service: str = Query(default="did_registration", max_length=64),
+    service: str = Query(
+        default="did_registration",
+        max_length=64,
+        description="A service or donation ID from /v1/discovery",
+    ),
 ) -> PaymentOptions:
     response.headers["Cache-Control"] = CACHE_FOR_A_MINUTE
     registry = _registry(request)
+    if service in registry.donations:
+        return PaymentOptions(
+            service=registry.donations[service].title,
+            commercial_fee=None,
+            donation_amount=_amount_range(registry, service),
+            supported_payment_options=[
+                _option(rail_id, rail) for rail_id, rail, _ in registry.donation_rails(service)
+            ],
+            notice=AVAILABILITY_NOTICE,
+        )
     if service not in registry.services:
         raise HTTPException(status_code=404, detail="unknown service")
     config = registry.services[service]
-    options = [
-        PaymentOption(
-            id=rail_id,
-            name=rail.name,
-            asset=rail.asset.symbol,
-            asset_id=rail.asset.canonical_id,
-            token_contract=rail.token_contract,
-            decimals=rail.asset.decimals,
-            network=rail.network,
-            payment_protocol=rail.protocol,
-            scheme=rail.scheme,
-            transfer_method=_transfer_method(rail),
-            wallet_compatibility=list(rail.wallet_compatibility),
-            status=RailState.ENABLED,
-        )
-        for rail_id, rail in registry.enabled_rails(service)
-    ]
+    options = [_option(rail_id, rail) for rail_id, rail in registry.enabled_rails(service)]
     return PaymentOptions(
         service=config.title,
         commercial_fee=Money(

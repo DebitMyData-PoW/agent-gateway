@@ -31,7 +31,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.9.1`). The whole registration flow (quote,
+This is an early development release (`0.10.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -56,6 +56,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |
+| Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -145,6 +146,19 @@ The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_disc
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase` and `dmd_marketplace_provider_requirements`. Each
 tool calls the REST API above in-process, so both give the same results and error codes.
+
+**Inference donations (agents).** `POST /v1/donations/inference` with
+`{"amount_usd": "5.00"}` (from 0.50 to 1,000.00 USD; optionally `donor_name` and
+`donor_did`) answers `402` with the x402 terms for exactly that amount, paid to
+DebitMyData's inference wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, not the DID payment
+address). Send the same body again with the signed payment in `PAYMENT-SIGNATURE`: no quote
+is needed, the payment is checked on chain like a DID payment, and the answer (`201`) carries
+a receipt signed by DebitMyData (a `DebitMyDataDonationReceipt` credential), or `202` with a
+`status_url` (`GET /v1/donations/{purchase_id}`) while confirmations come in. Sending the
+same payment again returns the same donation. Through MCP: `dmd_catalog` lists
+`inference_donation`, and `dmd_purchase` takes the amount in `details` and the payment in
+`x402_payment` or `_meta["x402/payment"]`. Donations appear under `donations` in
+`/v1/discovery`.
 
 **Paying with x402 (USDC on Base).** Quote with `"preferred_payment_option":
 "x402_usdc_base"`, prove the controller key, then call `POST /v1/dids/registrations`. It
@@ -252,7 +266,7 @@ src/dmd_gateway/
                              x402 facilitator client
   pricing/                   price-source rules and the DMD mining-cost price
   services/                  quotes, settlement, payment references, controller proofs,
-                             registrations, x402 payments, staging test tools
+                             registrations, x402 payments, donations, staging test tools
   db/                        SQLAlchemy models and session handling
   domain/                    money, ids, payment states, settlement rules, issuance rule, registry
 scripts/demo_agent.py        agent side for demos: key, signature, credential check, MCP client

@@ -80,6 +80,36 @@ services:
       refund_policy: /policies/refunds
       did_policy: /policies/did
 
+# Donations: the donor chooses the amount, and pays in one call (x402), without a quote.
+donations:
+  # Towards the AI inference behind DebitMyData's agentic services. Humans donate on
+  # debitmydata.com (the "Inference $" button); agents and other wallets donate here.
+  inference_donation:
+    title: DebitMyData Inference Donation
+    description: >-
+      A voluntary donation towards the AI inference that runs DebitMyData's agentic
+      services, in an amount the donor chooses from 0.50 to 1,000.00 USD, paid in USDC on
+      Base through x402. Each donation is answered with a receipt signed by DebitMyData.
+    method: POST
+    path: /v1/donations/inference
+    amount:
+      currency: USD
+      minimum: "0.50"
+      maximum: "1000.00"
+    payment_options:
+      - x402_usdc_base
+    # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
+    recipients:
+      x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
+    terms_version: "2026-10-25"
+    policy_urls:
+      site: https://agenticssocialspaces.debitmydata.com/
+      terms: /policies/terms
+      privacy: /policies/privacy
+      security: /policies/security
+      payment_policy: /policies/payment-methods
+      refund_policy: /policies/refunds
+
 rails:
   # Primary native rail: direct DMD payment on the DebitMyData PoW chain.
   dmd_pow_native:

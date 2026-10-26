@@ -21,6 +21,7 @@ from dmd_gateway.adapters import PaymentAdapter
 from dmd_gateway.api import (
     discovery,
     docs_pages,
+    donations,
     health,
     identities,
     payments,
@@ -135,6 +136,7 @@ def create_app(
     app.include_router(quotes.router)
     app.include_router(payments.router)
     app.include_router(registrations.router)
+    app.include_router(donations.router)
     app.include_router(identities.router)
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
@@ -245,6 +247,16 @@ FORM_HINTS = FormHints(
 )
 
 
+def _donation_links(schema: dict[str, Any]) -> tuple[str, str] | None:
+    links = []
+    for path in ("/v1/staging/test-donation-payments", "/v1/donations/{name}"):
+        operation = schema["paths"].get(path, {}).get("post")
+        if operation is None:
+            return None
+        links.append(f"#/{operation['tags'][0]}/{operation['operationId']}")
+    return links[0], links[1]
+
+
 def _add_try_it_guide(app: FastAPI) -> None:
     """Staging docs page: request bodies as input fields, and the steps to run the whole
     registration from the page, each step linked to its endpoint (#/<section>/<operation
@@ -315,6 +327,23 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "Request bodies are shown here as fields to fill in. Agents send the same fields "
             "as JSON: pick `application/json` above a request body to see it.",
         ]
+        donation_links = _donation_links(schema)
+        if donation_links and registry.donations:
+            sign, donate = donation_links
+            lines += [
+                "",
+                "### Try an inference donation (agents)",
+                "",
+                "Agents donate towards DebitMyData's AI inference in USDC through x402, in an "
+                "amount they choose (people use the site's **Inference $** button).",
+                "",
+                f"1. **staging** › [POST /v1/staging/test-donation-payments]({sign}): an "
+                "`amount_usd` such as `5.00`. Keep the long `payment_signature`.",
+                f"2. **donations** › [POST /v1/donations/{{name}}]({donate}): `name` "
+                "`inference`, the same `amount_usd`, and the `payment_signature` in the "
+                "`PAYMENT-SIGNATURE` field, within 5 minutes. The answer carries the receipt "
+                "signed by DebitMyData.",
+            ]
         schema["info"]["description"] += "\n\n" + "\n".join(lines)
         return schema
 

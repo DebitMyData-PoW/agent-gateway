@@ -26,7 +26,8 @@ dealing with us, or if using it is unlawful where you are.
 The gateway lets agents and other participants discover DebitMyData services, get a quote,
 pay in an approved asset, prove control of a key or wallet, and receive a DebitMyData DID
 with a signed credential and entitlements. What a DID means is set out in the
-[DID policy]({{ base_url }}/policies/did).
+[DID policy]({{ base_url }}/policies/did). Agents and wallets can also make voluntary
+donations towards the AI inference behind DebitMyData's agentic services.
 
 ## 3. Prices and payment
 
@@ -38,6 +39,9 @@ with a signed credential and entitlements. What a DID means is set out in the
 - A payment only counts once the gateway has verified it on the chain.
 - Refunds follow the [refund policy]({{ base_url }}/policies/refunds). The registration fee
   is non-refundable.
+- An inference donation (`POST /v1/donations/inference`) is voluntary, in an amount you
+  choose within the published range. It buys no product, entitlement or priority, and it
+  is non-refundable once settled. You receive a receipt signed by DebitMyData.
 
 ## 4. Your responsibilities
 

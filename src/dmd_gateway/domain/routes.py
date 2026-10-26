@@ -198,6 +198,16 @@ class CommercialPrice(_Strict):
         return amount
 
 
+def _check_policy_urls(value: dict[str, str]) -> dict[str, str]:
+    # A path ("/policies/terms") is a page served by the gateway itself; anything else is a
+    # full https URL.
+    for key, url in value.items():
+        local = url.startswith("/") and not url.startswith("//")
+        if not (local or url.startswith("https://")):
+            raise ValueError(f"policy_urls.{key} must be a path (/...) or an https URL")
+    return value
+
+
 class ServiceConfig(_Strict):
     title: str
     description: str
@@ -206,18 +216,67 @@ class ServiceConfig(_Strict):
     commercial_price: CommercialPrice
     payment_options: tuple[str, ...]
     terms_version: str = Field(min_length=1, max_length=64)
-    # A path ("/policies/terms") is a page served by the gateway itself; anything else is a
-    # full https URL.
     policy_urls: dict[str, str] = {}
 
     @field_validator("policy_urls")
     @classmethod
     def _policy_urls(cls, value: dict[str, str]) -> dict[str, str]:
-        for key, url in value.items():
-            local = url.startswith("/") and not url.startswith("//")
-            if not (local or url.startswith("https://")):
-                raise ValueError(f"policy_urls.{key} must be a path (/...) or an https URL")
-        return value
+        return _check_policy_urls(value)
+
+
+class DonationAmount(_Strict):
+    """The range a donor may choose from, in USD (quoted decimal strings)."""
+
+    currency: Literal["USD"]
+    minimum: Decimal
+    maximum: Decimal
+
+    @field_validator("minimum", "maximum", mode="before")
+    @classmethod
+    def _parse(cls, value: object) -> Decimal:
+        if not isinstance(value, str):
+            raise ValueError('amounts must be quoted decimal strings, e.g. "0.50"')
+        amount = parse_amount(value)
+        if amount <= 0 or amount != amount.quantize(Decimal("0.01")):
+            raise ValueError("amounts must be greater than zero, with at most 2 decimals")
+        return amount
+
+    @model_validator(mode="after")
+    def _ordered(self) -> DonationAmount:
+        if self.minimum > self.maximum:
+            raise ValueError("minimum must not be greater than maximum")
+        return self
+
+
+class DonationConfig(_Strict):
+    """A donation the donor sizes: no quote, paid in one call (x402 rails only)."""
+
+    title: str
+    # The x402 Bazaar lists descriptions of 500 characters at most.
+    description: str = Field(max_length=500)
+    method: Literal["POST"]
+    path: str = Field(pattern=r"^/v1/donations/[a-z][a-z0-9-]{1,40}$")
+    amount: DonationAmount
+    payment_options: tuple[str, ...] = Field(min_length=1)
+    # Receiving address of each payment option, by environment variable name: donations go
+    # to their own wallet, not to the rail's default (DID) receiving address.
+    recipients: dict[str, str]
+    terms_version: str = Field(min_length=1, max_length=64)
+    policy_urls: dict[str, str] = {}
+
+    @field_validator("policy_urls")
+    @classmethod
+    def _policy_urls(cls, value: dict[str, str]) -> dict[str, str]:
+        return _check_policy_urls(value)
+
+    @model_validator(mode="after")
+    def _recipients(self) -> DonationConfig:
+        if set(self.recipients) != set(self.payment_options):
+            raise ValueError("recipients must name one environment variable per payment option")
+        for env in self.recipients.values():
+            if not re.match(ENV_NAME, env):
+                raise ValueError(f"recipient {env!r} is not an environment variable name")
+        return self
 
 
 class MiningCostParameters(_Strict):
@@ -248,6 +307,7 @@ class RegistryFile(_Strict):
     version: Literal[1]
     discovery_terms: tuple[str, ...] = ()
     services: dict[str, ServiceConfig]
+    donations: dict[str, DonationConfig] = {}
     rails: dict[str, RailConfig]
     dmd_mining_cost: MiningCostParameters | None = None
 
@@ -257,6 +317,24 @@ class RegistryFile(_Strict):
             for rail_id in service.payment_options:
                 if rail_id not in self.rails:
                     raise ValueError(f"service {service_id!r} references unknown rail {rail_id!r}")
+        paths = [service.path for service in self.services.values()]
+        for donation_id, donation in self.donations.items():
+            if donation_id in self.services:
+                raise ValueError(f"donation {donation_id!r} has the ID of a service")
+            if donation.path in paths:
+                raise ValueError(f"donation {donation_id!r} reuses the path {donation.path}")
+            paths.append(donation.path)
+            for rail_id in donation.payment_options:
+                rail = self.rails.get(rail_id)
+                if rail is None:
+                    raise ValueError(
+                        f"donation {donation_id!r} references unknown rail {rail_id!r}"
+                    )
+                if rail.protocol != "x402" or not rail.asset.usd_denominated:
+                    raise ValueError(
+                        f"donation {donation_id!r}: only x402 rails in a USD stablecoin can "
+                        f"take donations ({rail_id!r} cannot)"
+                    )
         return self
 
 
@@ -348,13 +426,35 @@ def _facilitator_key_problems(x402: X402Config, environ: Mapping[str, str]) -> l
 
 
 class PaymentRouteRegistry:
-    def __init__(self, data: RegistryFile, states: Mapping[str, RailState]) -> None:
+    def __init__(
+        self,
+        data: RegistryFile,
+        states: Mapping[str, RailState],
+        donation_recipients: Mapping[tuple[str, str], str] | None = None,
+    ) -> None:
         self._data = data
         self._states = dict(states)
+        # (donation ID, rail ID) -> receiving address, for the configured ones only.
+        self._donation_recipients = dict(donation_recipients or {})
 
     @property
     def services(self) -> Mapping[str, ServiceConfig]:
         return self._data.services
+
+    @property
+    def donations(self) -> Mapping[str, DonationConfig]:
+        return self._data.donations
+
+    def donation_rails(self, donation_id: str) -> list[tuple[str, RailConfig, str]]:
+        """Enabled payment options of a donation that have a receiving address:
+        (rail ID, rail, receiving address)."""
+        donation = self._data.donations[donation_id]
+        return [
+            (rail_id, self._data.rails[rail_id], self._donation_recipients[(donation_id, rail_id)])
+            for rail_id in donation.payment_options
+            if self._states[rail_id] is RailState.ENABLED
+            and (donation_id, rail_id) in self._donation_recipients
+        ]
 
     @property
     def rails(self) -> Mapping[str, RailConfig]:
@@ -415,4 +515,18 @@ def load_registry(
                     f"rail {rail_id!r} is switched on but not ready: " + "; ".join(problems)
                 )
             states[rail_id] = RailState.ENABLED
-    return PaymentRouteRegistry(data, states)
+
+    # A donation without a receiving address is simply not offered; a malformed address is a
+    # configuration mistake and stops the gateway.
+    donation_recipients: dict[tuple[str, str], str] = {}
+    for donation_id, donation in data.donations.items():
+        for rail_id, env in donation.recipients.items():
+            address = (environ.get(env) or "").strip()
+            if not address:
+                continue
+            if not EVM_ADDRESS.match(address):
+                raise RegistryError(
+                    f"donation {donation_id!r}: {env} is not an EVM address (0x + 40 hex)"
+                )
+            donation_recipients[(donation_id, rail_id)] = address
+    return PaymentRouteRegistry(data, states, donation_recipients)

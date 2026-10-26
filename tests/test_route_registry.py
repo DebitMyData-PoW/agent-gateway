@@ -322,3 +322,73 @@ def test_price_source_must_be_implemented(tmp_path: Path) -> None:
 def test_terms_version_is_set() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
     assert registry.services["did_registration"].terms_version == "2026-10-25"
+
+
+# --------------------------------------------------------------------------- donations
+
+USDC_ENV = {
+    "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
+    "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "11" * 20,
+    "DMD_X402_FACILITATOR_URL": "https://facilitator.test",
+    "DMD_BASE_RPC_URL": "https://rpc.test",
+}
+
+
+def test_shipped_inference_donation() -> None:
+    registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
+    donation = registry.donations["inference_donation"]
+    assert donation.path == "/v1/donations/inference"
+    assert (str(donation.amount.minimum), str(donation.amount.maximum)) == ("0.50", "1000.00")
+    assert donation.payment_options == ("x402_usdc_base",)
+    assert donation.recipients == {"x402_usdc_base": "DMD_USDC_BASE_INFERENCE_ADDRESS"}
+    assert donation.terms_version == "2026-10-25"
+    assert registry.donation_rails("inference_donation") == []  # every rail is off
+
+
+def test_donation_is_offered_once_its_rail_and_wallet_are_ready() -> None:
+    inference = "0x" + "1d" * 20
+    registry = load_registry(REGISTRY_PATH, environ=USDC_ENV, available_adapters=ALL_ADAPTERS)
+    assert registry.donation_rails("inference_donation") == []  # no receiving wallet yet
+    environ = {**USDC_ENV, "DMD_USDC_BASE_INFERENCE_ADDRESS": inference}
+    registry = load_registry(REGISTRY_PATH, environ=environ, available_adapters=ALL_ADAPTERS)
+    ((rail_id, _, recipient),) = registry.donation_rails("inference_donation")
+    assert (rail_id, recipient) == ("x402_usdc_base", inference)
+    # The DID payment wallet is not the donation wallet.
+    assert registry.rails["x402_usdc_base"].recipient.env == "DMD_USDC_BASE_MERCHANT_ADDRESS"
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        (
+            lambda d: d.update(
+                payment_options=["dmd_pow_native"], recipients={"dmd_pow_native": "X"}
+            ),
+            "only x402 rails in a USD",
+        ),
+        (
+            lambda d: d.update(payment_options=["nope"], recipients={"nope": "X"}),
+            "unknown rail 'nope'",
+        ),
+        (lambda d: d.update(path="/v1/dids/registrations"), "path"),
+        (lambda d: d["amount"].update(minimum="0"), "greater than zero"),
+        (lambda d: d["amount"].update(minimum="2000.00"), "minimum"),
+        (lambda d: d["amount"].update(minimum="1.005"), "decimals"),
+        (lambda d: d["amount"].update(currency="EUR"), "currency"),
+        (lambda d: d["policy_urls"].update(terms="http://example.com"), "policy_urls.terms"),
+        (lambda d: d.update(recipients={"other": "X"}), "recipients"),
+        (lambda d: d.update(other=1), "other"),
+    ],
+)
+def test_donation_configuration_is_checked(tmp_path: Path, change: Any, message: str) -> None:
+    data = _shipped()
+    change(data["donations"]["inference_donation"])
+    with pytest.raises((RegistryError, ValueError), match=re.escape(message)):
+        load_registry(_write(tmp_path, data), environ={}, available_adapters=set())
+
+
+def test_a_donation_cannot_take_the_id_of_a_service(tmp_path: Path) -> None:
+    data = _shipped()
+    data["donations"]["did_registration"] = data["donations"].pop("inference_donation")
+    with pytest.raises(RegistryError, match="has the ID of a service"):
+        load_registry(_write(tmp_path, data), environ={}, available_adapters=set())

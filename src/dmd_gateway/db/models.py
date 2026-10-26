@@ -60,6 +60,12 @@ REGISTRATION_STATUSES = (
     "rejected",
     "cancelled",
 )
+PURCHASE_STATUSES = (
+    "awaiting_payment",  # a payment was received and is being settled
+    "paid",  # the payment is settled; the receipt is not issued yet
+    "completed",  # the receipt is issued
+    "failed",  # the payment failed or expired: nothing was received
+)
 IDENTITY_STATUSES = ("active", "suspended", "revoked")
 PROOF_STATUSES = ("verified", "rejected")
 CHALLENGE_PURPOSES = ("registration", "rotation", "recovery")
@@ -147,10 +153,41 @@ class RegistrationIntent(Base):
     updated_at: Mapped[datetime] = updated_at()
 
 
+class Purchase(Base):
+    """A purchase of anything other than a DID registration, such as an inference donation.
+
+    It owns its payment intent (``payment_intents.purchase_id``); once that payment is
+    settled the purchase is completed with a receipt signed by the issuer key.
+    """
+
+    __tablename__ = "purchases"
+    __table_args__ = (
+        CheckConstraint(one_of("status", PURCHASE_STATUSES), name="status"),
+        CheckConstraint("commercial_price_amount > 0", name="price_positive"),
+        CheckConstraint("status <> 'completed' OR receipt IS NOT NULL", name="receipt_present"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    product_id: Mapped[str] = mapped_column(Text, nullable=False)
+    commercial_price_currency: Mapped[str] = mapped_column(Text, nullable=False)
+    commercial_price_amount: Mapped[Decimal] = mapped_column(UsdAmount, nullable=False)
+    # Optional, given by the donor and shown in the receipt.
+    donor_name: Mapped[str | None] = mapped_column(Text)
+    donor_did: Mapped[str | None] = mapped_column(Text)
+    terms_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    receipt: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    completed_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
+
+
 class PaymentIntent(Base):
     __tablename__ = "payment_intents"
     __table_args__ = (
         CheckConstraint(one_of("status", PAYMENT_STATUSES), name="status"),
+        # A payment pays for exactly one thing: a DID registration or a purchase.
+        CheckConstraint("num_nonnulls(registration_intent_id, purchase_id) = 1", name="one_owner"),
         CheckConstraint(one_of("recipient_kind", RECIPIENT_KINDS), name="recipient_kind"),
         CheckConstraint("amount_base_units > 0", name="amount_positive"),
         CheckConstraint("asset_decimals BETWEEN 0 AND 36", name="asset_decimals"),
@@ -181,9 +218,10 @@ class PaymentIntent(Base):
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
-    registration_intent_id: Mapped[str] = mapped_column(
-        ForeignKey("registration_intents.id"), nullable=False, index=True
+    registration_intent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("registration_intents.id"), index=True
     )
+    purchase_id: Mapped[str | None] = mapped_column(ForeignKey("purchases.id"), index=True)
     rail_id: Mapped[str] = mapped_column(Text, nullable=False)
     adapter: Mapped[str] = mapped_column(Text, nullable=False)
     asset_symbol: Mapped[str] = mapped_column(Text, nullable=False)

@@ -92,11 +92,18 @@ def test_quotes_name_the_version_of_the_terms_page(path: Path) -> None:
     terms = _pages(path)["terms"]
     for service in registry.services.values():
         assert service.terms_version == terms.version.isoformat()
+    for donation in registry.donations.values():
+        assert donation.terms_version == terms.version.isoformat()
 
 
 @pytest.mark.parametrize("path", CONFIGS, ids=["production", "staging"])
 def test_policy_links_point_to_served_pages(path: Path) -> None:
-    services = yaml.safe_load(path.read_text(encoding="utf-8"))["services"]
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for donation in data["donations"].values():
+        for key, url in donation["policy_urls"].items():
+            if url.startswith("/"):
+                assert PAGES[url.removeprefix("/policies/")] == key, (key, url)
+    services = data["services"]
     for service in services.values():
         urls = service["policy_urls"]
         # The directive's list: terms, refund, privacy and DID policies, plus payments.

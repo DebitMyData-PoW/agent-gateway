@@ -122,3 +122,73 @@ def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict
         verification_method=issuer.verification_method,
         created=facts.issued_at,
     )
+
+
+# --------------------------------------------------------------------------- receipts
+
+RECEIPT_TYPE = "DebitMyDataDonationReceipt"
+
+
+@dataclass(frozen=True)
+class DonationFacts:
+    receipt_url: str
+    purchase_id: str
+    purpose: str
+    currency: str
+    amount: str
+    terms_version: str
+    payment_intent_id: str
+    payment_option: str
+    asset: str
+    network: str
+    amount_paid: str
+    payer_account: str  # CAIP-10, e.g. eip155:8453:0x...
+    recipient: str
+    transactions: Sequence[str]
+    issued_at: datetime
+    donor_name: str | None = None
+    donor_did: str | None = None
+
+
+def donation_receipt(facts: DonationFacts, issuer: IssuerKey) -> dict[str, Any]:
+    """A donation receipt: a W3C Verifiable Credential signed like the DID credential.
+
+    Its subject is the donor's DID when the donor gave one, otherwise the paying wallet as a
+    ``did:pkh`` (CAIP-10) identifier, so anyone can check who paid what, and when.
+    """
+    donation: dict[str, Any] = {
+        "purpose": facts.purpose,
+        "purchaseId": facts.purchase_id,
+        "amount": {"currency": facts.currency, "amount": facts.amount},
+        "termsVersion": facts.terms_version,
+    }
+    if facts.donor_name:
+        donation["donorName"] = facts.donor_name
+    document: dict[str, Any] = {
+        "@context": VC_CONTEXT,
+        "id": facts.receipt_url,
+        "type": ["VerifiableCredential", RECEIPT_TYPE],
+        "issuer": {"id": issuer.did, "name": "DebitMyData"},
+        "validFrom": xml_datetime(facts.issued_at),
+        "credentialSubject": {
+            "id": facts.donor_did or f"did:pkh:{facts.payer_account}",
+            "donation": donation,
+            "payment": {
+                "paymentIntentId": facts.payment_intent_id,
+                "paymentOption": facts.payment_option,
+                "asset": facts.asset,
+                "network": facts.network,
+                "amount": facts.amount_paid,
+                "payer": facts.payer_account,
+                "recipient": facts.recipient,
+                "transactions": list(facts.transactions),
+                "status": "settled",
+            },
+        },
+    }
+    return add_proof(
+        document,
+        issuer.private_key,
+        verification_method=issuer.verification_method,
+        created=facts.issued_at,
+    )

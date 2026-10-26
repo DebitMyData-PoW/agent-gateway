@@ -68,3 +68,32 @@ def test_unreachable_validator_is_reported(monkeypatch: pytest.MonkeyPatch) -> N
 
     monkeypatch.setattr(validate_bazaar, "validate", down)
     assert validate_bazaar.main(["https://api.debitmydata.io"]) == 2
+
+
+def test_checks_every_paid_route(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[str] = []
+
+    def answer(base_url: str, route: str) -> tuple[bool, dict]:
+        asked.append(route)
+        ok = route != "/v1/donations/inference"
+        return ok, {"valid": ok, "simulation": {"outcome": "accepted" if ok else "rejected"}}
+
+    monkeypatch.setattr(validate_bazaar, "validate", answer)
+    assert validate_bazaar.main(["https://api.debitmydata.io"]) == 1
+    assert asked == ["/v1/dids/registrations", "/v1/donations/inference"]
+    out = capsys.readouterr().out
+    assert "== POST /v1/donations/inference" in out and "Route valid: NO" in out
+
+    asked.clear()
+    assert validate_bazaar.main(["https://api.debitmydata.io", "--route", ROUTE_DID]) == 0
+    assert asked == [ROUTE_DID]
+
+
+ROUTE_DID = "/v1/dids/registrations"
+
+
+def test_donation_route_url() -> None:
+    url = validate_bazaar.resource_url("https://api.debitmydata.io/", "/v1/donations/inference")
+    assert url == "https://api.debitmydata.io/v1/donations/inference"

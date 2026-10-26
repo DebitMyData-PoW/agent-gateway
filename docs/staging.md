@@ -184,9 +184,26 @@ grep -E 'DMD_USDC_BASE_MERCHANT_ADDRESS' /etc/dmd-gateway/gateway.env
 If a test payment answers that the facilitator refused it with `insufficient_funds`, the test
 wallet needs test USDC.
 
-### Checking the route with Coinbase's Bazaar validator
+### An inference donation (agents)
 
-Coinbase's validator calls the paid route with the example request the gateway advertises
+Agents donate towards DebitMyData's AI inference in an amount they choose (people keep using
+the site's "Inference $" button). From the docs page, under the registration steps:
+
+1. **staging** › `POST /v1/staging/test-donation-payments` with an `amount_usd` such as
+   `5.00`: the staging test wallet signs the payment and returns `payment_signature`, valid
+   for 5 minutes.
+2. **donations** › `POST /v1/donations/{name}` with `name` `inference`, the same `amount_usd`,
+   and `payment_signature` in the `PAYMENT-SIGNATURE` field. The answer carries the receipt
+   signed by DebitMyData, and `status_url` to read it again later.
+
+Without the `PAYMENT-SIGNATURE` field, step 2 answers **402** with what to pay. On staging,
+donations go back to the test wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, set by `setup.sh`),
+so its test USDC is never used up. In production they go to the "AgenticInference Pay"
+wallet.
+
+### Checking the routes with Coinbase's Bazaar validator
+
+Coinbase's validator calls each paid route with the example request the gateway advertises
 and reports whether the x402 Bazaar could list it (no API key needed, nothing is paid):
 
 ```bash
@@ -194,8 +211,9 @@ cd /opt/agent-gateway
 .venv/bin/python scripts/validate_bazaar.py https://staging-api.debitmydata.io
 ```
 
-It prints `Route valid: yes` when the route passes, and otherwise what to fix. Production is
-checked the same way before launch (X402-10).
+It checks the DID registration and the inference donation, and prints `Route valid: yes`
+for each route that passes, and otherwise what to fix (`--route` checks only one). Production
+is checked the same way before launch (X402-10).
 
 ## 4. Demo from the command line
 

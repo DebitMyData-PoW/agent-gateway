@@ -150,6 +150,8 @@ fi
 TEST_WALLET="$(DMD_KEY="$(env_value DMD_STAGING_BASE_PAYER_KEY)" "$APP_DIR/.venv/bin/python" -c \
     'import os; from eth_account import Account; print(Account.from_key(os.environ["DMD_KEY"]).address)')"
 add_setting DMD_USDC_BASE_MERCHANT_ADDRESS "$TEST_WALLET"
+# Inference donations go to the same test wallet here (production: AgenticInference Pay).
+add_setting DMD_USDC_BASE_INFERENCE_ADDRESS "$TEST_WALLET"
 add_setting DMD_X402_FACILITATOR_URL https://x402.org/facilitator
 add_setting DMD_BASE_RPC_URL https://sepolia.base.org
 add_setting DMD_RAIL_X402_USDC_BASE_ENABLED true

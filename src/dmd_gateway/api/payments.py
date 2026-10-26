@@ -61,7 +61,8 @@ def unknown_payment(session: Session, payment_intent_id: str) -> ApiError:
 
 class PaymentStatusResponse(BaseModel):
     payment_intent_id: str
-    registration_intent_id: str
+    registration_intent_id: str | None  # a DID registration's payment
+    purchase_id: str | None = None  # a donation's payment
     payment_option: str
     status: PaymentStatus
     asset: str
@@ -103,11 +104,15 @@ def payment_status(
         refund = int(detail.get("refund_due_base_units", 0))
         status = PaymentStatus(intent.status)
         next_action = NEXT_ACTIONS[status]
-        if intent.adapter == X402_ADAPTER and status is PaymentStatus.AWAITING_PAYMENT:
+        if intent.purchase_id is not None:
+            # Donations are paid in one call: there is nothing to send, only to wait.
+            next_action = "read_donation_status"
+        elif intent.adapter == X402_ADAPTER and status is PaymentStatus.AWAITING_PAYMENT:
             next_action = X402_PAY_ACTION  # paid in answer to POST /v1/dids/registrations
         return PaymentStatusResponse(
             payment_intent_id=intent.id,
             registration_intent_id=intent.registration_intent_id,
+            purchase_id=intent.purchase_id,
             payment_option=intent.rail_id,
             status=status,
             asset=intent.asset_symbol,

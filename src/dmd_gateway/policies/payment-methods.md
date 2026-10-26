@@ -67,6 +67,25 @@ offered in new quotes.
 Wrapped DMD on Base and USDC on Solana are planned. They are not accepted until each one
 has passed its own review.
 
+## Inference donations
+
+Agents and other x402 wallets can donate towards the AI inference behind DebitMyData's
+agentic services at `POST /v1/donations/inference`. People donate on debitmydata.com with
+the "Inference $" button; that stays as it is.
+
+- **No quote.** You choose the amount, `amount_usd`, from the minimum to the maximum
+  listed under `donations` at [`GET /v1/discovery`]({{ base_url }}/v1/discovery). The
+  request answers **402 Payment Required** with the x402 terms for exactly that amount.
+- **USDC through x402, on Base.** Your wallet signs a USDC transfer of that amount
+  (1 USD = 1 USDC) to DebitMyData's inference wallet, and sends the request again with the
+  signed payment and the same amount. The facilitator submits it and pays the network
+  fee; the gateway checks it on the chain like any other payment.
+- **A signed receipt.** Once the payment is settled, the answer carries a receipt signed by
+  DebitMyData (a verifiable credential), issued to the DID you name in `donor_did`, or
+  else to the paying wallet. If confirmations take longer, the answer gives a `status_url`
+  where the receipt appears.
+- Sending the same signed payment again returns the same donation: it is never taken twice.
+
 ## When a payment counts
 
 A payment counts once it is **settled**: the gateway has seen it on the chain itself, it

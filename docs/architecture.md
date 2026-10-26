@@ -207,6 +207,39 @@ that read the body instead of the `PAYMENT-REQUIRED` header.
 `scripts/validate_bazaar.py` runs Coinbase's validator against a deployed gateway; the
 listing itself follows the first payment settled through the CDP facilitator.
 
+## Inference donations
+
+People donate towards DebitMyData's AI inference on debitmydata.com (the "Inference $"
+button, PayPal); that is unchanged. Agents and other x402 wallets donate at
+`POST /v1/donations/inference` (`services/donations.py`), defined under `donations` in the
+route registry:
+
+1. There is no quote: the donor names `amount_usd`, within the registry's range (0.50 to
+   1,000.00 USD). The call answers `402` with the x402 terms for exactly that amount in USDC
+   (1 USD = 1 USDC), paid to the donation's own receiving address
+   (`DMD_USDC_BASE_INFERENCE_ADDRESS`, DebitMyData's "AgenticInference Pay" wallet), not to
+   the DID payment address. Without that address, donations are not offered.
+2. With `PAYMENT-SIGNATURE`, the signed authorization is checked against those terms (and
+   must expire within the donation's 15-minute window), then stored with a new `purchases`
+   row and its payment intent before anything is sent out. Each payment intent belongs to
+   exactly one registration or one purchase.
+3. From there it is a DID payment in every respect: facilitator verify and settle, the
+   transfer checked on chain, confirmations, crediting once, the payment worker and reorg
+   handling. The purchase follows its payment (`awaiting_payment` → `paid`, or `failed` when
+   nothing was received).
+4. Once paid, the donation is completed with a receipt: a W3C credential
+   (`DebitMyDataDonationReceipt`, signed with the issuer key like the DID credential) whose
+   subject is the donor's DID, or the paying wallet as `did:pkh`. The answer is `201` with
+   the receipt, or `202` with `status_url` (`GET /v1/donations/{purchase_id}`) while
+   confirming.
+
+An authorization already received returns the same donation (`200`) and is never settled
+again; one used for another amount is refused. A call without `amount_usd` (Coinbase's
+validator posts an empty body first) answers `402` with the terms of an example amount and
+can never be paid. A payment refused by the facilitator closes its donation at once; if a
+completed donation's payment is later reorganized out of the chain, an alert is recorded in
+the audit trail. Through MCP, `dmd_catalog` lists the donation and `dmd_purchase` pays it.
+
 ## Controller proof
 
 The quote names the DID's controller: an Ed25519 public key, an EVM wallet, or both. Each
@@ -269,8 +302,8 @@ reach it through another public address).
 | `dmd_prove_wallet_control` | first call: `POST .../controller-challenges`; second call with the signature: `POST .../controller-proofs` |
 | `dmd_register_did` | `POST /v1/dids/registrations` |
 | `dmd_get_registration_status` | `GET /v1/dids/registrations/{id}` (added to the directive's list) |
-| `dmd_catalog`, `dmd_get_purchase_quote` | the offers and their enabled payment options |
-| `dmd_purchase` | for `did_registration`, the same as creating a quote |
+| `dmd_catalog`, `dmd_get_purchase_quote` | the offers and donations, and their enabled payment options |
+| `dmd_purchase` | for `did_registration`, the same as creating a quote; for `inference_donation`, `POST /v1/donations/inference` (the x402 payment in `x402_payment` or `_meta["x402/payment"]`) |
 | `dmd_marketplace_provider_requirements` | states that provider onboarding is not open yet |
 
 Failed calls return the REST error body (`http_status`, `error.code`, details) as a tool

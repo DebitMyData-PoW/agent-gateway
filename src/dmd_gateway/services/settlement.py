@@ -6,7 +6,7 @@ For each open payment intent the worker:
   3. applies the status changes decided by ``domain.settlement`` and records each one in
      the append-only ``payment_events`` and ``audit_events`` tables;
   4. on settlement, credits each paying output exactly once in ``credited_outputs`` and
-     marks the registration as paid;
+     marks the registration (or the purchase) as paid;
   5. records any amount that must be refunded (over-, under- or late payment).
 
 If the node is unreachable nothing changes: a payment is never expired, failed or settled
@@ -37,6 +37,7 @@ from dmd_gateway.db.models import (
     CreditedOutput,
     PaymentEvent,
     PaymentIntent,
+    Purchase,
     RegistrationIntent,
     X402Authorization,
 )
@@ -284,7 +285,10 @@ def process_intent(
     reached = {step.to_status for step in steps}
     if S.SETTLED in reached and final is S.SETTLED:
         _credit_outputs(session, intent, summary.timely)
-    _sync_registration(session, intent, current, final, reached, now)
+    if intent.purchase_id is not None:
+        _sync_purchase(session, intent, current, final, reached, now)
+    else:
+        _sync_registration(session, intent, current, final, reached, now)
 
     if final is not current:
         intent.status = final.value
@@ -355,6 +359,48 @@ def _sync_registration(
     if new_status:
         registration.status = new_status
         registration.updated_at = now
+
+
+def _sync_purchase(
+    session: Session,
+    intent: PaymentIntent,
+    current: PaymentStatus,
+    final: PaymentStatus,
+    reached: set[PaymentStatus],
+    now: datetime,
+) -> None:
+    """The purchase follows its payment: paid once settled, failed if nothing arrived."""
+    purchase = session.get(Purchase, intent.purchase_id, with_for_update=True)
+    if purchase is None:
+        return
+    new_status = None
+    if final is S.SETTLED and purchase.status == "awaiting_payment":
+        new_status = "paid"
+    elif final in (S.FAILED, S.EXPIRED) and purchase.status == "awaiting_payment":
+        new_status = "failed"
+    elif current is S.SETTLED and S.REORGED in reached:
+        if purchase.status == "paid":
+            new_status = "awaiting_payment"
+        elif purchase.status == "completed":
+            record_audit_event(
+                session,
+                action="alert.completed_purchase_payment_reorged",
+                subject_type="purchase",
+                subject_id=purchase.id,
+                actor_type="worker",
+                data={"payment_intent_id": intent.id},
+            )
+    if new_status:
+        record_audit_event(
+            session,
+            action="purchase.status_changed",
+            subject_type="purchase",
+            subject_id=purchase.id,
+            actor_type="worker",
+            data={"from": purchase.status, "to": new_status, "payment_intent_id": intent.id},
+        )
+        purchase.status = new_status
+        purchase.updated_at = now
 
 
 def run_pass(

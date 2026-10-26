@@ -169,6 +169,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
     async def offers() -> list[dict[str, Any]]:
         return (await api.call("GET", "/v1/discovery"))["offers"]
 
+    async def donations() -> list[dict[str, Any]]:
+        return (await api.call("GET", "/v1/discovery"))["donations"]
+
     async def payment_options(service: str) -> dict[str, Any]:
         return await api.call("GET", "/v1/payment-options", params={"service": service})
 
@@ -407,17 +410,32 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
     @server.tool(title="Catalog", annotations=READ_ONLY)
     async def dmd_catalog() -> dict[str, Any]:
         """DebitMyData products and services available through this gateway, with their
-        commercial price and the payment options accepted right now."""
+        commercial price (or, for a donation, the amount range the donor chooses from) and
+        the payment options accepted right now."""
         products = []
         for offer in await offers():
             options = await payment_options(offer["id"])
             products.append(
                 {
                     "product_id": offer["id"],
+                    "kind": "fixed_price",
                     "title": offer["title"],
                     "description": offer["description"],
                     "commercial_price": offer["commercial_price"],
                     "accepting_payments": offer["accepting_payments"],
+                    "payment_options": [o["id"] for o in options["supported_payment_options"]],
+                }
+            )
+        for donation in await donations():
+            options = await payment_options(donation["id"])
+            products.append(
+                {
+                    "product_id": donation["id"],
+                    "kind": "donation",
+                    "title": donation["title"],
+                    "description": donation["description"],
+                    "amount": donation["amount"],
+                    "accepting_payments": donation["accepting_payments"],
                     "payment_options": [o["id"] for o in options["supported_payment_options"]],
                 }
             )
@@ -427,9 +445,11 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
     async def dmd_get_purchase_quote(
         product_id: Annotated[str, Field(description="Product ID from dmd_catalog")],
     ) -> dict[str, Any]:
-        """The commercial price and the supported currencies and wallets for one product.
-        Use dmd_purchase (or dmd_create_did_payment_quote) to get a payable quote."""
+        """The commercial price (or a donation's amount range) and the supported currencies
+        and wallets for one product. Use dmd_purchase to buy it or to donate."""
         offer = next((o for o in await offers() if o["id"] == product_id), None)
+        if offer is None:
+            offer = next((d for d in await donations() if d["id"] == product_id), None)
         if offer is None:
             raise ToolError(
                 json.dumps({"error": {"code": "unknown_product", "message": "See dmd_catalog."}})
@@ -445,25 +465,89 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             Field(
                 description="Product-specific fields. For did_registration: display_name, "
                 "participant_type, controller_public_key and/or controller_wallet_address "
-                "(with optional controller_network), and optionally metadata"
+                "(with optional controller_network), and optionally metadata. For a "
+                "donation (inference_donation): amount_usd, and optionally donor_name and "
+                "donor_did"
             ),
         ],
+        ctx: Context,
         idempotency_key: Annotated[
             str | None,
             Field(
-                description="Optional random key (16-128 characters) for safe retries",
+                description="did_registration only: optional random key (16-128 characters) "
+                "for safe retries",
                 pattern=r"^[A-Za-z0-9._:-]{16,128}$",
             ),
         ] = None,
-    ) -> dict[str, Any]:
-        """Start a purchase with the chosen payment option: returns a payable quote. For
-        did_registration this is the same as dmd_create_did_payment_quote."""
-        if product_id != DID_REGISTRATION:
+        x402_payment: Annotated[
+            dict[str, Any] | None,
+            Field(
+                description="Donations only: your signed PaymentPayload (x402 version 2) "
+                "answering the payment requirements this tool returned. It may also be sent "
+                "in the request's _meta['x402/payment']."
+            ),
+        ] = None,
+    ) -> CallToolResult:
+        """Start a purchase with the chosen payment option.
+
+        did_registration: returns a payable quote (the same as dmd_create_did_payment_quote).
+
+        Donations (inference_donation, USDC on Base through x402): call with the amount; it
+        fails with the x402 payment requirements. Sign them with your wallet and call again
+        with the same details and x402_payment. The answer is the donation with a receipt
+        signed by DebitMyData, or its status_url while the payment confirms. Sending the same
+        payment again returns the same donation."""
+        if product_id == DID_REGISTRATION:
+            body = await create_quote(
+                {**details, "preferred_payment_option": preferred_payment_option}, idempotency_key
+            )
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(body))], structured_content=body
+            )
+        donation = next((d for d in await donations() if d["id"] == product_id), None)
+        if donation is None:
             raise ToolError(
                 json.dumps({"error": {"code": "unknown_product", "message": "See dmd_catalog."}})
             )
-        return await create_quote(
-            {**details, "preferred_payment_option": preferred_payment_option}, idempotency_key
+        accepted = [
+            o["id"] for o in (await payment_options(product_id))["supported_payment_options"]
+        ]
+        if preferred_payment_option not in accepted:
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "payment_option_unavailable",
+                            "message": f"This donation accepts: {', '.join(accepted) or 'none'}.",
+                        }
+                    }
+                )
+            )
+        payment = x402_payment or _meta_payment(ctx)
+        headers = {PAYMENT_SIGNATURE: encode_header(payment)} if payment else None
+        try:
+            body = await api.call("POST", donation["path"], json_body=details, headers=headers)
+        except PaymentRequired as required:
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(required.required))],
+                structured_content=required.required,
+                is_error=True,
+            )
+        paid = body.get("payment") or {}
+        settlement = (
+            {
+                "success": True,
+                "transaction": paid["transaction"],
+                "network": paid["network"],
+                "payer": paid["payer"],
+            }
+            if paid.get("transaction")
+            else None
+        )
+        return CallToolResult(
+            content=[TextContent(type="text", text=json.dumps(body))],
+            structured_content=body,
+            meta={"x402/payment-response": settlement} if settlement else None,
         )
 
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)

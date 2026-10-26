@@ -156,6 +156,13 @@ place; the application logic comes with the related phase.
   rather than instructs, request schema with an example, PNG icon; a call without a quote
   (empty body) or with the reserved example `registration_intent_id` answers 402 with the
   real terms, as Coinbase's validator requires, and can never be paid
+- [x] X402-14 Inference donations for agents (Preska Thomas, October 2026: people keep
+  donating on the site, agents must be able to donate too): `POST /v1/donations/inference`,
+  an amount the agent chooses (0.50 to 1,000.00 USD) paid in USDC through x402 to the
+  "AgenticInference Pay" wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`), checked on chain like a
+  DID payment, answered with a signed receipt; MCP (`dmd_catalog`, `dmd_purchase`), Bazaar
+  description, staging test payer. Open: the production address in the production
+  environment, and the Bazaar validation of the route on production (X402-10)
 
 ## Phases 8–13
 

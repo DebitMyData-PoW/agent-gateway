@@ -4,6 +4,8 @@
                                         production)
     POST /v1/staging/test-payments      pay a quote with test coins (DMD: send and mine the
                                         confirmations; x402: sign the payment)
+    POST /v1/staging/test-donation-payments
+                                        sign a donation's x402 payment (test USDC)
     POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key or
                                         wallet
 
@@ -24,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.x402 import X402PaymentAdapter
+from dmd_gateway.api.donations import donation_context
 from dmd_gateway.api.payments import ID_PATTERN as PAYMENT_ID
 from dmd_gateway.api.payments import PAYMENT_ID_HELP, unknown_payment
 from dmd_gateway.api.registrations import CHALLENGE_ID
@@ -36,6 +39,7 @@ from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import encode_signature
 from dmd_gateway.identity.wallets import WalletError, wallet_from_account_id
 from dmd_gateway.services.controller_proofs import EIP155
+from dmd_gateway.services.donations import AMOUNT_PATTERN, donation_payment_terms
 from dmd_gateway.services.payment_references import X402_ADAPTER
 from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.services.staging_tools import (
@@ -58,6 +62,7 @@ TEST_RAIL = "dmd_pow_native"
 TEST_NETWORK = "dmd:regtest"
 PAYMENT_ACTION = "staging.test_payment_sent"
 X402_SIGNED_ACTION = "staging.test_x402_payment_signed"
+DONATION_SIGNED_ACTION = "staging.test_donation_payment_signed"
 
 
 # --------------------------------------------------------------------------- agent key
@@ -274,6 +279,118 @@ def _sign_x402_test_payment(
             "payment_signature in the PAYMENT-SIGNATURE header, before "
             f"{valid_until:%H:%M:%S} UTC. The payment is settled on Base Sepolia and the DID "
             "is issued in the same answer."
+        ),
+    )
+
+
+class StagingDonationPaymentRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+        json_schema_extra={"examples": [{"amount_usd": "5.00"}]},
+    )
+
+    amount_usd: str = Field(
+        pattern=AMOUNT_PATTERN,
+        description='The donation in US dollars, e.g. "5.00": the same amount_usd as in '
+        "POST /v1/donations/inference.",
+    )
+    donation_id: str = Field(
+        default="inference_donation",
+        pattern=r"^[a-z][a-z0-9_]{1,40}$",
+        description="The donation, as listed in GET /v1/discovery (inference_donation).",
+    )
+
+
+class StagingDonationPaymentResponse(BaseModel):
+    donation_id: str
+    amount_usd: str
+    asset: str
+    network: str
+    recipient: str
+    payment_signature: str = Field(
+        description="The signed payment (long, it starts with eyJ). Put it in the "
+        "PAYMENT-SIGNATURE header of the donation, with the same amount_usd, before "
+        "valid_until."
+    )
+    payer: str
+    valid_until: datetime
+    next_step: str
+
+
+@router.post(
+    "/test-donation-payments",
+    status_code=201,
+    response_model=StagingDonationPaymentResponse,
+    summary="Staging only: sign a donation's x402 payment with test USDC",
+    description=(
+        "Stands in for the agent's own wallet, on Base Sepolia (test USDC, no value): the "
+        "staging test wallet signs the x402 payment of a donation of `amount_usd`, exactly "
+        "as the 402 of POST /v1/donations/inference asks for it. Nothing moves until the "
+        "signed payment is used."
+    ),
+    responses={
+        404: {"description": "Unknown donation."},
+        409: {"description": "Donations on this server are not paid on a test network."},
+        422: {"description": "amount_usd is outside the accepted range."},
+        503: {"description": "Donations or the test wallet are not available."},
+    },
+)
+def create_test_donation_payment(
+    body: StagingDonationPaymentRequest, request: Request
+) -> StagingDonationPaymentResponse:
+    state = request.app.state
+    donation = state.registry.donations.get(body.donation_id)
+    if donation is None:
+        raise ApiError(404, "not_found", "Unknown donation; see GET /v1/discovery.")
+    now = datetime.now(UTC)
+    requirements, required = donation_payment_terms(
+        donation_context(request), body.donation_id, body.amount_usd
+    )
+    if requirements["network"] != BASE_SEPOLIA:
+        raise ApiError(
+            409, "not_a_test_payment", "Only donations paid on Base Sepolia can be test-signed."
+        )
+    try:
+        payer = BaseSepoliaTestPayer.from_environ(state.environ)
+        signed = payer.sign(
+            requirements, required["resource"], required["extensions"], int(now.timestamp())
+        )
+    except StagingToolError as exc:
+        raise ApiError(503, "test_wallet_unavailable", str(exc)) from exc
+    with transaction(state.session_factory) as session:
+        record_audit_event(
+            session,
+            action=DONATION_SIGNED_ACTION,
+            subject_type="donation",
+            subject_id=body.donation_id,
+            actor_type="system",
+            data={
+                "payer": signed.payer,
+                "amount": requirements["amount"],
+                "valid_before": signed.valid_before,
+            },
+        )
+    amount = Decimal(body.amount_usd).quantize(Decimal("0.01"))
+    valid_until = datetime.fromtimestamp(signed.valid_before, UTC)
+    return StagingDonationPaymentResponse(
+        donation_id=body.donation_id,
+        amount_usd=f"{amount:.2f}",
+        asset=next(
+            rail.asset.symbol
+            for _, rail, _ in state.registry.donation_rails(body.donation_id)
+            if rail.network == requirements["network"]
+        ),
+        network=requirements["network"],
+        recipient=requirements["payTo"],
+        payment_signature=encode_header(signed.payment_payload),
+        payer=signed.payer,
+        valid_until=valid_until,
+        next_step=(
+            f'POST {donation.path} with {{"amount_usd": "{amount:.2f}"}} and this '
+            f"payment_signature in the PAYMENT-SIGNATURE header, before {valid_until:%H:%M:%S} "
+            "UTC. The payment is settled on Base Sepolia and the answer carries the signed "
+            "donation receipt."
         ),
     )
 

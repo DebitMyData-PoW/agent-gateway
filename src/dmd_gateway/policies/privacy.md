@@ -22,6 +22,9 @@ DebitMyData's websites and apps are covered by the
 - During the registration: the signatures that prove control of your controller, the
   transaction references you report, and, for x402, the signed payment (which names the
   paying wallet).
+- In an inference donation: the amount, the signed payment (which names the paying wallet),
+  and the donor name and DID if you give them. They appear in your donation receipt, which
+  anyone holding its `purchase_id` can read; they are not otherwise published.
 
 **What we see on blockchains**
 
@@ -73,9 +76,9 @@ We do not sell personal data, and we do not use it for advertising.
 
 ## How long we keep it
 
-- **Registrations, payments, controller proofs and the audit trail** are kept permanently.
-  They are written once and never changed, because issued credentials, accounting and
-  refunds depend on them.
+- **Registrations, donations, payments, controller proofs and the audit trail** are kept
+  permanently. They are written once and never changed, because issued credentials,
+  receipts, accounting and refunds depend on them.
 - **Server logs** are kept only as long as security and troubleshooting need them, normally
   a few weeks.
 - **Data on blockchains** is permanent and outside our control.

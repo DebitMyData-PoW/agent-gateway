@@ -2,7 +2,7 @@
 title: Refund policy
 version: 2026-10-25
 status: draft
-summary: The DID registration fee is non-refundable; payments that are not credited to a registration are returned.
+summary: The DID registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
 
 # Refund policy
@@ -16,6 +16,13 @@ a registration. This includes a DID that is later suspended or revoked under the
 A paid registration does not expire. If you have paid but not yet proved control of your
 DID's controller, you can finish the proof at any time and receive your DID. With USDC
 through x402, you are only charged once the DID can be issued.
+
+## Inference donations are non-refundable
+
+An inference donation is voluntary and you choose its amount, so it is **non-refundable**
+once settled. A donation whose payment was refused or failed was never taken: nothing is
+charged and nothing needs refunding. If you believe a donation was taken by mistake, for
+example by a wallet you no longer control, write to us with its `purchase_id`.
 
 ## Payments that are returned
 

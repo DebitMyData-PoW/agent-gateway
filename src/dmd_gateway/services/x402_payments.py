@@ -356,13 +356,15 @@ def payment_required(
     requirements: Mapping[str, Any],
     error: str,
     public_base_url: str,
+    bazaar: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """The x402 ``PaymentRequired`` object; ``bazaar`` defaults to the DID registration's."""
     return {
         "x402Version": X402_VERSION,
         "error": error,
         "resource": dict(resource),
         "accepts": [dict(requirements)],
-        "extensions": {"bazaar": bazaar_extension(public_base_url)},
+        "extensions": {"bazaar": dict(bazaar or bazaar_extension(public_base_url))},
     }
 
 
@@ -745,7 +747,7 @@ def _update(ctx: X402Context, authorization_id: int, status: str, **changes: Any
             raise ApiError(
                 409,
                 "payment_in_progress",
-                "A payment for this registration is already being processed; ask again shortly.",
+                "This payment is already being processed; ask again shortly.",
                 headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
             )
         _set_status(session, row, status, ctx.clock(), **changes)
@@ -810,6 +812,42 @@ def _verify_and_settle(ctx: X402Context, prepared: _Prepared) -> None:
         raise _payment_required_error(
             prepared.required, f"Payment failed: {reason}", code="payment_failed"
         )
+
+
+# Shared with other paid resources (donations), which have no registration.
+def verify_and_settle(
+    ctx: X402Context,
+    *,
+    payment_intent_id: str,
+    rail_id: str,
+    network: str,
+    authorization_id: int,
+    payload: dict[str, Any],
+    requirements: dict[str, Any],
+    required: dict[str, Any],
+) -> None:
+    """Have the facilitator verify, then settle, a stored authorization (see _prepare)."""
+    _verify_and_settle(
+        ctx,
+        _Prepared(
+            "",
+            payment_intent_id,
+            rail_id,
+            network,
+            authorization_id,
+            payload,
+            requirements,
+            required,
+        ),
+    )
+
+
+payment_required_error = _payment_required_error
+
+
+def settlement_response(session: Session, payment_intent_id: str) -> dict[str, Any] | None:
+    """The PAYMENT-RESPONSE object of a payment intent's settlement, if any."""
+    return _payment_response(session, payment_intent_id)
 
 
 def _is_transaction(value: str) -> bool:

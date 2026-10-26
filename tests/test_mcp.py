@@ -120,9 +120,15 @@ async def test_discovery_tools(app: FastAPI) -> None:
     assert discovery["mcp_url"] == f"{BASE}/mcp"
     assert offer["offer"]["commercial_price"] == {"currency": "USD", "amount": "25.00"}
     assert offer["payment_options"]["supported_payment_options"] == []  # every rail is off
-    (product,) = catalog["products"]
+    product, donation = catalog["products"]
     assert product["product_id"] == "did_registration"
+    assert product["kind"] == "fixed_price"
     assert product["payment_options"] == []
+    assert donation["product_id"] == "inference_donation"
+    assert donation["kind"] == "donation"
+    assert donation["amount"] == {"currency": "USD", "minimum": "0.50", "maximum": "1000.00"}
+    assert donation["accepting_payments"] is False
+    assert donation["payment_options"] == []
     assert marketplace["status"] == "not_open"
 
 
