@@ -46,7 +46,9 @@ A wrong value here never stops the API or the payment worker: the monitor names 
 in its log and in `dmd-gateway-monitor test`, and sends nothing until it is fixed.
 
 - **Email**: any mailbox that allows SMTP with TLS works (the company's email provider with
-  an app password, or an email-sending service). Vultr blocks outgoing port 25, so use 587
+  an app password, or an email-sending service). `DMD_GW_ALERT_SMTP_USERNAME` and
+  `DMD_ALERT_SMTP_PASSWORD` are the SMTP login and its password (Mailgun: the domain's
+  *SMTP credentials*); the sender in `DMD_GW_ALERT_SMTP_FROM` should be on that same domain. Vultr blocks outgoing port 25, so use 587
   or 465. Use a dedicated sender (an `alerts@` address on your own domain) and add it to the
   domain's SPF and DKIM records so the messages are not marked as spam.
 - **Discord**: create a private server or channel (for example `#gateway-alerts`), then

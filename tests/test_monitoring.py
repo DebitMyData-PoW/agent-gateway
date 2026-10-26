@@ -206,6 +206,7 @@ def test_channels_come_from_the_settings() -> None:
         _env_file=None,
         alert_smtp_host="smtp.test",
         alert_smtp_from="alerts@example.com",
+        alert_smtp_username="alerts@example.com",
         alert_email_to="ops@example.com",
         alert_discord_mention_user_id="123456789012345678",
     )
@@ -215,6 +216,27 @@ def test_channels_come_from_the_settings() -> None:
     no_sender = configured.model_copy(update={"alert_smtp_from": ""})
     with pytest.raises(ValueError, match="SMTP_FROM"):
         notifiers_from_settings(no_sender, environ)
+    # A password without its login would never log in (530 "Authentication required").
+    no_login = configured.model_copy(update={"alert_smtp_username": ""})
+    with pytest.raises(ValueError, match="DMD_GW_ALERT_SMTP_USERNAME is empty"):
+        notifiers_from_settings(no_login, environ)
+
+
+def test_smtp_refusals_say_what_to_fix() -> None:
+    import smtplib
+
+    class NoLogin(FakeSmtp):
+        def send_message(self, message: Any) -> None:
+            raise smtplib.SMTPSenderRefused(530, b"5.7.0 Authentication required", "a@b.c")
+
+    class WrongPassword(FakeSmtp):
+        def login(self, user: str, password: str) -> None:
+            raise smtplib.SMTPAuthenticationError(535, b"5.7.0 Mailgun is not loving your login")
+
+    with pytest.raises(NotifyError, match="set DMD_GW_ALERT_SMTP_USERNAME"):
+        email_notifier(smtp=NoLogin, username="").send(Message("s", "b"))
+    with pytest.raises(NotifyError, match="refused the login and password"):
+        email_notifier(smtp=WrongPassword).send(Message("s", "b"))
 
 
 @pytest.mark.parametrize(

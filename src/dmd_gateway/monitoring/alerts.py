@@ -150,7 +150,14 @@ class EmailNotifier:
                     server.login(self._username, self._password)
                 server.send_message(email)
         except (OSError, smtplib.SMTPException) as exc:
-            raise NotifyError(f"email: {type(exc).__name__}: {redact(str(exc))[:200]}") from exc
+            hint = ""
+            if isinstance(exc, smtplib.SMTPAuthenticationError):
+                hint = " (the SMTP server refused the login and password)"
+            elif getattr(exc, "smtp_code", None) == 530:
+                hint = " (the SMTP server wants a login: set DMD_GW_ALERT_SMTP_USERNAME)"
+            raise NotifyError(
+                f"email: {type(exc).__name__}: {redact(str(exc))[:200]}{hint}"
+            ) from exc
 
 
 class DiscordNotifier:
@@ -205,6 +212,11 @@ def notifiers_from_settings(
     if host and (to_all or to_critical or to_report):
         if not settings.alert_smtp_from.strip():
             raise ValueError("DMD_GW_ALERT_SMTP_FROM is required to send alert emails")
+        if environ.get("DMD_ALERT_SMTP_PASSWORD") and not settings.alert_smtp_username.strip():
+            raise ValueError(
+                "DMD_GW_ALERT_SMTP_USERNAME is empty: set it to the SMTP login that goes with "
+                "DMD_ALERT_SMTP_PASSWORD"
+            )
         if any(char.isspace() for char in host):
             raise ValueError(f"DMD_GW_ALERT_SMTP_HOST: {host!r} ({ON_ITS_OWN_LINE})")
         port = settings.alert_smtp_port.strip()
