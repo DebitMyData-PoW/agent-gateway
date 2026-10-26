@@ -14,8 +14,12 @@ Alerts and reports go by email and to a Discord channel. Telegram and Slack are 
 ## 1. Settings
 
 In `/etc/dmd-gateway/gateway.env` on the server (then nothing to restart: each run reads it
-again). The real addresses and IDs live only there, never in this repository. Write each
-value alone on its line: a comment after a value becomes part of it.
+again). The real addresses and IDs live only there, never in this repository. Two rules, because
+the file is read both by systemd and by the update script:
+
+- write each value alone on its line: a comment after a value becomes part of it;
+- put a value that contains spaces, `<`, `>`, `$`, `"` or other symbols (the sender name, a
+  password) in single quotes: `'...'`.
 
 ```bash
 # Who receives every alert and its resolution / critical alerts only / the daily report
@@ -29,9 +33,9 @@ DMD_GW_ALERT_SMTP_HOST=smtp.example.com
 DMD_GW_ALERT_SMTP_PORT=587
 DMD_GW_ALERT_SMTP_SECURITY=starttls
 DMD_GW_ALERT_SMTP_USERNAME=alerts@example.com
-DMD_GW_ALERT_SMTP_FROM=DebitMyData Gateway <alerts@example.com>
+DMD_GW_ALERT_SMTP_FROM='DebitMyData Gateway <alerts@example.com>'
 # Secret: this file only (mode 600).
-DMD_ALERT_SMTP_PASSWORD=...
+DMD_ALERT_SMTP_PASSWORD='...'
 
 # Discord: the webhook of a private channel (secret), and who to mention for critical alerts.
 DMD_ALERT_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
@@ -52,12 +56,26 @@ in its log and in `dmd-gateway-monitor test`, and sends nothing until it is fixe
   *Copy user ID*); nobody else is ever mentioned.
 - Without any channel, alerts are only written to the log (`journalctl -u dmd-gateway-monitor`).
 
-Check that both channels work:
+Check the file, then send a test message the way the timers run the monitor (as root):
 
 ```bash
-sudo -u gateway bash -c 'cd /opt/agent-gateway && set -a && . /etc/dmd-gateway/gateway.env && \
-    .venv/bin/dmd-gateway-monitor test'
+bash -n /etc/dmd-gateway/gateway.env && echo "file OK"
+systemd-run --wait --pipe --quiet -p User=gateway -p WorkingDirectory=/opt/agent-gateway \
+    -p EnvironmentFile=/etc/dmd-gateway/gateway.env \
+    /opt/agent-gateway/.venv/bin/dmd-gateway-monitor test
 ```
+
+It prints `Test message sent (email, discord)` when both channels are set up; the message
+should arrive in the inbox and in the Discord channel. A wrong setting is named instead.
+Then run the checks once and look at what they did:
+
+```bash
+systemctl start dmd-gateway-monitor.service
+journalctl -u dmd-gateway-monitor -n 30 --no-pager
+```
+
+The first run records the receiving destinations in use and sends whatever is wrong at that
+moment. `systemctl start dmd-gateway-report.service` sends a daily report right away.
 
 ## 2. How alerts behave
 

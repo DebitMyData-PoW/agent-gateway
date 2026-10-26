@@ -157,6 +157,9 @@ add_setting DMD_BASE_RPC_URL https://sepolia.base.org
 add_setting DMD_RAIL_X402_USDC_BASE_ENABLED true
 chmod 600 "$ENV_FILE"
 
+bash -n "$ENV_FILE" 2>/dev/null ||
+    fail "$ENV_FILE has a syntax error: put values with spaces, < > or \$ in single quotes ('...')"
+
 run_as_gateway() {
     # shellcheck disable=SC1090  # the settings file is generated above
     (cd "$APP_DIR" && set -a && . "$ENV_FILE" && set +a && runuser -u gateway -- "$@")
