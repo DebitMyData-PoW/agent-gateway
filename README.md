@@ -31,7 +31,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.10.0`). The whole registration flow (quote,
+This is an early development release (`0.11.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -55,13 +55,14 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
+| Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (awaiting DebitMyData's written approval of the rate) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it is
-priced by the cost of mining DMD and still needs the gateway's own DMD node with the
+priced by the higher of a minimum rate (0.001 USD per DMD) and the cost of mining DMD, and still needs the gateway's own DMD node with the
 watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging; on
 Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
 facilitator, which needs DebitMyData's CDP API key (DEC-08). A staging server with the full flow on a private

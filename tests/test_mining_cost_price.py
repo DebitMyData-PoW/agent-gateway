@@ -23,6 +23,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import DBAPIError
 
 from dmd_gateway.db.session import session_factory
+from dmd_gateway.domain.money import usd_to_base_units
 from dmd_gateway.domain.routes import MiningCostParameters, RegistryError, load_registry
 from dmd_gateway.main import create_app
 from dmd_gateway.pricing import mining_cost as mc
@@ -42,6 +43,7 @@ PARAMETERS = MiningCostParameters(
     efficiency_joules_per_terahash="20",  # type: ignore[arg-type]
     reviewed_on=date(2026, 10, 24),
 )
+WITH_MINIMUM = PARAMETERS.model_copy(update={"minimum_usd_per_dmd": Decimal("0.001")})
 
 
 # --------------------------------------------------------------------------- chain rules
@@ -102,6 +104,22 @@ def test_parameters_must_be_written_exactly() -> None:
             efficiency_joules_per_terahash="20",  # type: ignore[arg-type]
             reviewed_on=date(2026, 10, 24),
         )
+    base = {
+        "electricity_usd_per_kwh": "0.06",
+        "efficiency_joules_per_terahash": "20",
+        "reviewed_on": date(2026, 10, 24),
+    }
+    for minimum, message in ((0.001, "quoted decimal string"), ("0", "greater than zero")):
+        with pytest.raises(ValidationError, match=message):
+            MiningCostParameters(**base, minimum_usd_per_dmd=minimum)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError, match="minimum_usd_per_dmd is not"):
+        MiningCostParameters(**base, minimum_approved_on=date(2026, 10, 26))  # type: ignore[arg-type]
+    approved = MiningCostParameters(
+        **base,  # type: ignore[arg-type]
+        minimum_usd_per_dmd="0.001",  # type: ignore[arg-type]
+        minimum_approved_on=date(2026, 10, 26),
+    )
+    assert approved.minimum_usd_per_dmd == Decimal("0.001")
 
 
 @pytest.mark.parametrize("path", [REGISTRY_PATH, REGTEST_PATH])
@@ -110,6 +128,9 @@ def test_shipped_registries_carry_the_approved_parameters(path: Path) -> None:
     assert registry.dmd_mining_cost is not None
     assert registry.dmd_mining_cost.electricity_usd_per_kwh == Decimal("0.06")
     assert registry.dmd_mining_cost.efficiency_joules_per_terahash == Decimal(20)
+    # Proposed in October 2026; its approval date is set once DebitMyData approves it.
+    assert registry.dmd_mining_cost.minimum_usd_per_dmd == Decimal("0.001")
+    assert registry.dmd_mining_cost.minimum_approved_on is None
 
 
 def test_a_rail_priced_by_mining_cost_needs_the_parameters(tmp_path: Path) -> None:
@@ -219,6 +240,51 @@ def test_inputs_record_everything_the_price_came_from() -> None:
     assert "btc" not in str(inputs).lower()  # nothing from another blockchain
 
 
+# --------------------------------------------------------------------------- the minimum rate
+
+
+def test_the_minimum_applies_while_the_mining_cost_is_below_it() -> None:
+    price, inputs = mc.compute_price(explorer().read(), WITH_MINIMUM)
+    assert price == Decimal("0.001")
+    assert inputs["method"] == "electricity_cost_with_minimum"
+    assert inputs["price_from"] == "minimum"
+    assert inputs["minimum_usd_per_dmd"] == "0.001"
+    assert inputs["minimum_approved_on"] is None
+    assert inputs["price_rule"] == "the higher of the minimum rate and the mining cost"
+    # The mining cost is still computed and recorded next to it.
+    assert Decimal("0.0000675") < Decimal(inputs["mining_cost_usd_per_dmd"]) < Decimal("0.0000677")
+    # A 25.00 USD DID: 25,000 DMD (in data, the smallest unit).
+    assert usd_to_base_units("25.00", price, 8) == 25_000 * 10**8
+
+
+def test_the_mining_cost_applies_once_it_is_above_the_minimum() -> None:
+    # About 15 times today's work per block makes mining 1 DMD cost more than 0.001 USD.
+    busy = mc.ChainFigures(
+        Decimal(DIFFICULTY) * 2**32 * 16, Decimal(DIFFICULTY) * 16, HEIGHT, "node", 4032
+    )
+    price, inputs = mc.compute_price(busy, WITH_MINIMUM)
+    assert price > Decimal("0.001")
+    assert inputs["price_from"] == "mining_cost"
+    assert Decimal(inputs["mining_cost_usd_per_dmd"]) == price
+
+
+def test_a_one_hour_burst_of_hashing_power_does_not_move_the_price() -> None:
+    """The node averages a week of work: 24 blocks (one hour) mined at 30 times the usual
+    difficulty raise the weekly figure by about 17%, far from the 15 times needed to pass
+    the minimum."""
+    usual = Decimal(DIFFICULTY) * 2**32
+    burst = (usual * (4032 - 24) + usual * 30 * 24) / 4032
+    figures = mc.ChainFigures(burst, Decimal(DIFFICULTY), HEIGHT, "node", 4032)
+    price, inputs = mc.compute_price(figures, WITH_MINIMUM)
+    assert price == Decimal("0.001") and inputs["price_from"] == "minimum"
+
+
+def test_approval_date_is_recorded_with_the_price() -> None:
+    approved = WITH_MINIMUM.model_copy(update={"minimum_approved_on": date(2026, 10, 27)})
+    _, inputs = mc.compute_price(explorer().read(), approved)
+    assert inputs["minimum_approved_on"] == "2026-10-27"
+
+
 def test_refresher_settings() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
 
@@ -305,9 +371,33 @@ def test_public_endpoint_shows_the_price_and_its_inputs(engine: Engine) -> None:
         assert body["inputs"]["chain_data_from"] == "explorer"
         assert response.headers["Cache-Control"] == "public, max-age=60"
 
+        assert body["price_from"] == "mining_cost"
+        assert body["mining_cost_usd_per_unit"] == body["usd_per_unit"]
+        assert body["minimum_usd_per_unit"] is None
+        assert "minimum" not in body["note"]
+
         stale = PARAMETERS.model_copy(update={"reviewed_on": date(2026, 1, 1)})
         assert refresher(parameters=stale).run(session_factory(engine), datetime.now(UTC))
         assert client.get("/v1/prices/dmd-usd").json()["parameters_review_overdue"] is True
+
+
+@needs_db
+def test_public_endpoint_shows_the_minimum_and_the_mining_cost(engine: Engine) -> None:
+    settings = Settings(
+        _env_file=None, database_url=TEST_DATABASE_URL, route_registry_path=REGISTRY_PATH
+    )
+    approved = WITH_MINIMUM.model_copy(update={"minimum_approved_on": date(2026, 10, 27)})
+    with TestClient(create_app(settings, environ={}, engine=engine)) as client:
+        assert refresher(parameters=approved).run(session_factory(engine), datetime.now(UTC))
+        body = client.get("/v1/prices/dmd-usd").json()
+    assert body["usd_per_unit"] == "0.001"
+    assert body["units_per_usd"] == "1000.00000000"  # DMD per USD
+    assert body["method"] == "electricity_cost_with_minimum"
+    assert body["price_from"] == "minimum"
+    assert body["minimum_usd_per_unit"] == "0.001"
+    assert body["minimum_approved_on"] == "2026-10-27"
+    assert Decimal("0.0000675") < Decimal(body["mining_cost_usd_per_unit"]) < Decimal("0.0000677")
+    assert "minimum rate" in body["note"] and "not a market price" in body["note"]
 
 
 def test_no_price_yet_is_a_503(client: TestClient) -> None:

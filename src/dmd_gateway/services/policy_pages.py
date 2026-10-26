@@ -19,6 +19,7 @@ A text can use these placeholders, filled in for the server it runs on:
     {{ quote_minutes }}    how long a quote is valid
     {{ challenge_minutes }}  how long a controller challenge is valid
     {{ payment_methods }}  a table of the approved payment methods of this server
+    {{ dmd_price_rule }}   how the DMD/USD reference price is set (with its minimum rate)
 
 The terms page's version is the ``terms_version`` that quotes name (checked by the tests).
 """
@@ -104,8 +105,21 @@ def load_policy_pages(
         "quote_minutes": str(quote_minutes),
         "challenge_minutes": str(challenge_minutes),
         "payment_methods": payment_methods_table(registry),
+        "dmd_price_rule": dmd_price_rule(registry),
     }
     return {name: _page(name, values) for name in PAGES}
+
+
+def dmd_price_rule(registry: PaymentRouteRegistry) -> str:
+    cost = "the cost of mining DMD: the electricity that the work of a block takes"
+    parameters = registry.dmd_mining_cost
+    if parameters is None or parameters.minimum_usd_per_dmd is None:
+        return cost
+    minimum = format(parameters.minimum_usd_per_dmd.normalize(), "f")
+    return (
+        f"the higher of DebitMyData's minimum rate of {minimum} USD per DMD and {cost}. "
+        "While DMD is young and its mining power small, the minimum rate applies"
+    )
 
 
 def _page(name: str, values: Mapping[str, str]) -> PolicyPage:

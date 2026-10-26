@@ -90,6 +90,17 @@ or a website. `GET /v1/prices/dmd-usd` shows the price, its inputs and its age. 
 follows the network's work: more miners, a higher price. It is a reference price, not a
 market price.
 
+**Minimum rate.** While DMD is young and its mining power small, its mining cost is far
+below any useful rate (about 0.000065 USD per DMD in October 2026: a 25.00 USD DID would cost
+about 386,000 DMD, 8% of all DMD mined). The price is therefore the higher of a minimum rate
+set by DebitMyData (`minimum_usd_per_dmd` in `dmd_mining_cost`, 0.001 USD per DMD: 25,000
+DMD for a DID) and the mining cost. The mining cost keeps being computed and is shown next to
+the minimum, with the one that applied (`price_from`). Because the work per block is
+averaged over a week, a short burst of hashing power cannot lift the price above the
+minimum: that takes about 15 times today's network work for most of a week. The date of
+DebitMyData's written approval of the rate goes in `minimum_approved_on` and is shown with
+the price. Once DMD trades on an exchange, a market price source replaces both.
+
 ## Registration flow
 
 1. `GET /v1/discovery` and `GET /v1/payment-options` describe the offer and the rails

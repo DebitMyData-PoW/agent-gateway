@@ -241,3 +241,9 @@ dmd_mining_cost:
   efficiency_joules_per_terahash: "20"
   reviewed_on: 2026-10-24
   review_every_days: 92
+  # While DMD is young and its mining power small, its mining cost is far below any useful
+  # rate: the price is the higher of this minimum and the mining cost, until DMD has a market
+  # price. 0.001 USD per DMD: a 25.00 USD DID costs 25,000 DMD.
+  minimum_usd_per_dmd: "0.001"
+  # Date of DebitMyData's written approval of the minimum; set it when it is approved.
+  minimum_approved_on: null

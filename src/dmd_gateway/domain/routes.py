@@ -291,16 +291,34 @@ class MiningCostParameters(_Strict):
     efficiency_joules_per_terahash: Decimal
     reviewed_on: date
     review_every_days: int = Field(default=92, ge=1, le=366)
+    # The lowest DMD/USD price until DMD has a market price: the price is the higher of this
+    # reference rate and the mining cost. Unset: the mining cost alone.
+    minimum_usd_per_dmd: Decimal | None = None
+    # Date of DebitMyData's written approval of that minimum (shown with the price).
+    minimum_approved_on: date | None = None
 
-    @field_validator("electricity_usd_per_kwh", "efficiency_joules_per_terahash", mode="before")
+    @field_validator(
+        "electricity_usd_per_kwh",
+        "efficiency_joules_per_terahash",
+        "minimum_usd_per_dmd",
+        mode="before",
+    )
     @classmethod
-    def _quoted_positive(cls, value: object) -> Decimal:
+    def _quoted_positive(cls, value: object) -> Decimal | None:
+        if value is None:
+            return None
         if not isinstance(value, str):
             raise ValueError('must be a quoted decimal string, e.g. "0.06"')
         amount = parse_amount(value)
         if amount <= 0:
             raise ValueError("must be greater than zero")
         return amount
+
+    @model_validator(mode="after")
+    def _approval_needs_a_minimum(self) -> MiningCostParameters:
+        if self.minimum_approved_on is not None and self.minimum_usd_per_dmd is None:
+            raise ValueError("minimum_approved_on is set but minimum_usd_per_dmd is not")
+        return self
 
 
 class RegistryFile(_Strict):

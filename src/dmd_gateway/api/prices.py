@@ -23,6 +23,12 @@ NOTE = (
     "(the block's work at the approved machine efficiency and electricity price) divided by "
     "the DMD the block creates. It is not a market price."
 )
+NOTE_WITH_MINIMUM = (
+    "Reference price for DebitMyData Gateway payments until DMD has a market price: the "
+    "higher of DebitMyData's minimum rate and the cost of mining DMD (the electricity it "
+    "takes to mine a block, at the approved machine efficiency and electricity price, divided "
+    "by the DMD the block creates). It is not a market price."
+)
 
 
 class DmdPrice(BaseModel):
@@ -31,6 +37,14 @@ class DmdPrice(BaseModel):
     usd_per_unit: str
     units_per_usd: str
     method: str
+    price_from: str = Field(
+        description="mining_cost, or minimum when the minimum rate is higher than the mining cost."
+    )
+    mining_cost_usd_per_unit: str = Field(description="What it costs to mine 1 DMD.")
+    minimum_usd_per_unit: str | None = Field(
+        description="DebitMyData's minimum rate until DMD has a market price; null if none."
+    )
+    minimum_approved_on: date | None = None
     observed_at: datetime
     age_seconds: int
     fresh: bool = Field(description="Recent enough to be used in a quote.")
@@ -80,14 +94,28 @@ def dmd_price(request: Request, response: Response) -> DmdPrice:
         usd_per_unit=format(price.normalize(), "f"),
         units_per_usd=format((Decimal(1) / price).quantize(Decimal("0.00000001")), "f"),
         method=str(inputs.get("method", "mining_cost")),
+        price_from=str(inputs.get("price_from", "mining_cost")),
+        # Prices stored before the minimum rate existed are the mining cost itself.
+        mining_cost_usd_per_unit=str(
+            inputs.get("mining_cost_usd_per_dmd") or format(price.normalize(), "f")
+        ),
+        minimum_usd_per_unit=inputs.get("minimum_usd_per_dmd"),
+        minimum_approved_on=_date(inputs.get("minimum_approved_on")),
         observed_at=observed_at,
         age_seconds=age,
         fresh=age <= max_age,
         used_for_quotes=used,
         parameters_review_overdue=_overdue(inputs),
-        note=NOTE,
+        note=NOTE_WITH_MINIMUM if inputs.get("minimum_usd_per_dmd") else NOTE,
         inputs=inputs,
     )
+
+
+def _date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)) if value else None
+    except ValueError:
+        return None
 
 
 def _overdue(inputs: dict[str, Any]) -> bool:

@@ -86,6 +86,20 @@ def test_payment_methods_list_only_approved_rails() -> None:
     assert "`eip155:8453`)" not in staging
 
 
+def test_payment_methods_state_how_dmd_is_priced(tmp_path: Path) -> None:
+    text = _pages()["payment-methods"].markdown
+    assert "the higher of DebitMyData's minimum rate of 0.001 USD per DMD and the cost" in text
+    assert "{{" not in text
+    data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
+    del data["dmd_mining_cost"]["minimum_usd_per_dmd"]
+    del data["dmd_mining_cost"]["minimum_approved_on"]
+    path = tmp_path / "routes.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    text = _pages(path)["payment-methods"].markdown
+    assert "this reference price is the cost of mining DMD: the electricity" in text
+    assert "minimum rate" not in text
+
+
 @pytest.mark.parametrize("path", CONFIGS, ids=["production", "staging"])
 def test_quotes_name_the_version_of_the_terms_page(path: Path) -> None:
     registry = load_registry(path, environ={}, available_adapters=set())

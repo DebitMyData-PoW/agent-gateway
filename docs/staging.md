@@ -352,7 +352,7 @@ watch-only wallet, which is harmless.
 | USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
-| DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet mining-cost price, from the explorer's difficulty | the mining-cost price from the gateway's own mainnet node, averaged over a week (DEC-01) |
+| DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet price (the higher of the minimum rate and the mining cost, from the explorer's difficulty) | the higher of the minimum rate and the mining cost, from the gateway's own mainnet node averaged over a week (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |
 | Server | `staging-api.debitmydata.io` | separate server at `api.debitmydata.io` |

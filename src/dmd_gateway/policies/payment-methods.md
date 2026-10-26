@@ -1,6 +1,6 @@
 ---
 title: Payment methods
-version: 2026-10-25
+version: 2026-10-26
 status: draft
 summary: How a DebitMyData DID registration is priced, quoted and paid, and which assets and networks are accepted.
 ---
@@ -42,9 +42,9 @@ offered in new quotes.
 - Each quote has its own DMD address. Send the quoted amount to it from a DMD wallet.
 - The amount in DMD comes from the DMD/USD reference price, published at
   [`GET /v1/prices/dmd-usd`]({{ base_url }}/v1/prices/dmd-usd). Until DMD has a market
-  price, this reference price is the cost of mining DMD: the electricity that the work of a
-  block takes. It is recalculated every few minutes; no quote is made from a price older
-  than 15 minutes. The quoted amount is rounded up to the next 0.00000001 DMD.
+  price, this reference price is {{ dmd_price_rule }}. It is recalculated every few minutes;
+  no quote is made from a price older than 15 minutes. The quoted amount is rounded up to
+  the next 0.00000001 DMD.
 - The quoted amount must arrive in full: your wallet's network fee comes on top of it.
 - If you sent too little, you can send the rest to the same address before the quote
   expires.

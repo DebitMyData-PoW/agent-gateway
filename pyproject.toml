@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dmd-agent-gateway"
-version = "0.10.0"
+version = "0.11.0"
 description = "DebitMyData Agent Gateway: discovery, quoting, payment verification and DID issuance for autonomous agents."
 readme = "README.md"
 requires-python = ">=3.12"

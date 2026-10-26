@@ -1,5 +1,5 @@
 """DMD/USD reference price from the cost of mining DMD (DEC-01: the approved interim method,
-until DMD has a market price).
+until DMD has a market price), never below the minimum rate set by DebitMyData.
 
 Mining one block takes ``difficulty × 2^32`` hashes on average. The electricity those hashes
 use is what the block costs to mine; divided by the DMD the block creates, it is the cost of
@@ -19,6 +19,10 @@ Inputs:
     quarter; a review that is overdue is logged and shown with the price.
 Nothing comes from another blockchain or from an outside price service. Transaction fees are
 left out: they are negligible next to the block reward.
+
+The price is the higher of that mining cost and ``minimum_usd_per_dmd`` (a reference rate
+set by DebitMyData while DMD is young and its mining power small) when one is configured.
+Both figures are stored with the price, with the one that applied.
 
 ``refresh_price`` computes the price (the payment worker runs it every few minutes) and
 stores it with all its inputs. Quotes read the latest stored price through
@@ -52,7 +56,9 @@ SOURCE = "dmd_mining_cost"
 ASSET = "DMD"
 NETWORK = "dmd:mainnet"
 METHOD = "electricity_cost"
+METHOD_WITH_MINIMUM = "electricity_cost_with_minimum"
 FORMULA = "hashes per block × joules per hash × USD per joule ÷ DMD per block"
+PRICE_RULE = "the higher of the minimum rate and the mining cost"
 
 # DMD mainnet consensus rules (DebitMyData PoW Core: chainparams and GetBlockSubsidy).
 DMD_BLOCK_SECONDS = 150
@@ -209,10 +215,13 @@ def compute_price(
     dmd_per_block = dmd_block_subsidy(chain.height)
     if dmd_per_block <= 0:
         raise InputUnavailable("the DMD block reward is zero")
-    price = dmd_mining_cost_usd(chain.hashes_per_block, dmd_per_block, parameters)
-    price = price.quantize(PRICE_PLACES)
-    if price <= 0:
+    cost = dmd_mining_cost_usd(chain.hashes_per_block, dmd_per_block, parameters)
+    cost = cost.quantize(PRICE_PLACES)
+    minimum = parameters.minimum_usd_per_dmd
+    if minimum is None and cost <= 0:
         raise InputUnavailable("the DMD difficulty is too low to give a price")
+    from_minimum = minimum is not None and minimum > cost
+    price = minimum if from_minimum and minimum is not None else cost
     kwh_per_block = (
         chain.hashes_per_block
         / HASHES_PER_TERAHASH
@@ -220,8 +229,9 @@ def compute_price(
         / JOULES_PER_KWH
     )
     inputs: dict[str, Any] = {
-        "method": METHOD,
+        "method": METHOD if minimum is None else METHOD_WITH_MINIMUM,
         "formula": FORMULA,
+        "mining_cost_usd_per_dmd": format(cost.normalize(), "f"),
         "chain_data_from": chain.source,
         "averaged_over_blocks": chain.window_blocks,
         "dmd_height": chain.height,
@@ -241,6 +251,13 @@ def compute_price(
         "parameters_reviewed_on": parameters.reviewed_on.isoformat(),
         "parameters_review_due_on": review_due_on(parameters).isoformat(),
     }
+    if minimum is not None:
+        inputs["price_rule"] = PRICE_RULE
+        inputs["minimum_usd_per_dmd"] = format(minimum.normalize(), "f")
+        inputs["minimum_approved_on"] = (
+            parameters.minimum_approved_on.isoformat() if parameters.minimum_approved_on else None
+        )
+        inputs["price_from"] = "minimum" if from_minimum else "mining_cost"
     if cross_check is not None:
         difference = abs(cross_check.hashes_per_block - chain.hashes_per_block)
         inputs["cross_check"] = {
