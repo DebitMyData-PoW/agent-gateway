@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dmd-agent-gateway"
-version = "0.8.2"
+version = "0.9.0"
 description = "DebitMyData Agent Gateway: discovery, quoting, payment verification and DID issuance for autonomous agents."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -33,6 +33,7 @@ dmd-gateway-issuer-key = "dmd_gateway.identity.issuer:main"
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
+    "jsonschema>=4.18",
 ]
 
 [tool.hatch.build.targets.wheel]

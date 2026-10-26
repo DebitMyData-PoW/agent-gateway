@@ -146,6 +146,8 @@ rails:
       asset_eip712_name: USDC        # the contract's EIP-712 domain on Base Sepolia
       asset_eip712_version: "2"
       facilitator_url_env: DMD_X402_FACILITATOR_URL
+      facilitator_key_id_env: DMD_X402_CDP_API_KEY_ID          # Coinbase (CDP) facilitator only
+      facilitator_key_secret_env: DMD_X402_CDP_API_KEY_SECRET  # secret: environment only
       rpc_url_env: DMD_BASE_RPC_URL
     wallet_compatibility:
       - Coinbase Agentic Wallet

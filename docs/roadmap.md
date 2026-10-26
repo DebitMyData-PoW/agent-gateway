@@ -143,12 +143,19 @@ place; the application logic comes with the related phase.
 - [x] X402-09 Bazaar description (`bazaar` extension and service metadata) in the 402 of the
   enabled route only; MCP payments (`dmd_register_did` with `x402_payment` or
   `_meta["x402/payment"]`)
-- [ ] X402-10 Low-value production validation on Base mainnet (needs DEC-08)
+- [ ] X402-10 Production validation on Base mainnet: `scripts/validate_bazaar.py` against the
+  production server, then one real registration paid from a DebitMyData wallet (it also
+  triggers the Bazaar listing); needs the CDP API key and the production server
 - [x] X402-11 Independent kill switch (`DMD_RAIL_X402_USDC_BASE_KILL`); test networks refused
   in production
 - [x] Staging on Base Sepolia, with a test wallet that signs x402 payments from the docs page
-- [ ] Authentication for a production facilitator that requires it (for example Coinbase
-  CDP API keys), once DEC-08 names the facilitator
+- [x] X402-12 Coinbase CDP facilitator: each request signed with a short-lived JWT from a CDP
+  API key (Ed25519 or ECDSA, the same token as Coinbase's SDK), key from the environment
+  only; the gateway refuses to start with the CDP facilitator and no usable key
+- [x] X402-13 Bazaar listing requirements: description under 500 characters that describes
+  rather than instructs, request schema with an example, PNG icon, and a reserved example
+  `registration_intent_id` that answers 402 with the real terms (for Coinbase's validator)
+  and can never be paid
 
 ## Phases 8–13
 
@@ -168,8 +175,11 @@ and can be changed later.
 - [x] DEC-05 Public identity syntax: `did:web` hosted by the gateway; `did:dmd` only once a method specification is published
 - [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody stays open (ID-15)
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
-- [ ] DEC-08 Base/USDC receiving account and production x402 facilitator (staging uses the
-  public x402.org test facilitator)
+- [x] DEC-08 Base/USDC receiving account: DebitMyData's "AgenticSpaces DID-LLM" wallet,
+  `0x67C11dc63B45b916213189BF127094d4662a2eC3` (Preska Thomas, October 2026). Production
+  facilitator: Coinbase's CDP facilitator (it lists paid endpoints in the x402 Bazaar; free
+  for the first 1,000 settlements a month). Open: DebitMyData's CDP API key. Staging uses the
+  public x402.org test facilitator
 - [ ] DEC-09 Policy URLs and version owners: the pages are drafted and served by the gateway at `/policies` (terms, privacy, security, payment methods, refunds, DID policy); governing law and operator as in DebitMyData's website terms (Debit My Data, Inc., New York); open: DebitMyData's approval of the texts, and who owns each policy
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds

@@ -29,6 +29,7 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import Engine, create_engine, text
 
 from dmd_gateway.db.session import session_factory
+from dmd_gateway.domain.ids import EXAMPLE_REGISTRATION_INTENT_ID
 from dmd_gateway.identity.crypto import verify_proof
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import IssuerKey
@@ -241,6 +242,42 @@ def test_payment_is_asked_only_once_the_did_can_be_issued(client: TestClient) ->
     assert bazaar["info"]["input"]["method"] == "POST"
     assert bazaar["info"]["input"]["body"].keys() == {"registration_intent_id"}
     assert bazaar["schema"]["required"] == ["input"]
+
+
+def test_bazaar_example_request_gets_the_real_terms_and_can_never_be_paid(
+    client: TestClient, engine: Engine
+) -> None:
+    """The x402 Bazaar checks and indexes the endpoint with the example request it
+    advertises: that call gets a 402 with the real price, asset, network and receiving
+    address. A payment sent with the example is refused before the facilitator."""
+    authorizations = scalar(engine, "SELECT count(*) FROM x402_authorizations")
+    response = register(client, EXAMPLE_REGISTRATION_INTENT_ID)
+    assert response.status_code == 402
+    assert response.json()["error"]["code"] == "example_registration_intent"
+    required = decode(response.headers["PAYMENT-REQUIRED"])
+    assert required["x402Version"] == 2
+    assert required["resource"]["url"] == f"{BASE}{REGISTER}"
+    (accepts,) = required["accepts"]
+    assert (accepts["amount"], accepts["asset"], accepts["network"], accepts["payTo"]) == (
+        str(DUE),
+        TOKEN,
+        NETWORK,
+        MERCHANT,
+    )
+    bazaar = required["extensions"]["bazaar"]
+    assert bazaar["info"]["input"]["body"] == {
+        "registration_intent_id": EXAMPLE_REGISTRATION_INTENT_ID
+    }
+
+    payer = TestPayer()
+    paid = register(client, EXAMPLE_REGISTRATION_INTENT_ID, payer.header(required))
+    assert paid.status_code == 402
+    assert paid.json()["error"]["code"] == "example_registration_intent"
+    assert FACILITATOR.verify_calls == [] and FACILITATOR.settle_calls == []
+    assert CHAIN.balances[payer.address.lower()] == 100_000_000
+    assert scalar(engine, "SELECT count(*) FROM x402_authorizations") == authorizations
+    # It is not a registration either.
+    assert client.get(f"{REGISTER}/{EXAMPLE_REGISTRATION_INTENT_ID}").status_code == 404
 
 
 def _any_required(client: TestClient) -> dict[str, Any]:

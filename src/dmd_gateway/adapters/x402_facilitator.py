@@ -5,12 +5,14 @@ broadcasts it (``/settle``), paying the network fee. The gateway trusts neither 
 its own: what it credits comes from its own reading of the chain (see ``adapters/x402.py``).
 
 Any facilitator that speaks the standard HTTP interface works: the public x402.org one on
-test networks, or a production one (for example Coinbase's) once its account and
-credentials exist. Signatures are never logged.
+test networks, or Coinbase's (CDP) on Base mainnet, which needs an API key (``auth``, see
+``adapters/cdp_auth.py``) and is the one that lists paid endpoints in the x402 Bazaar.
+Signatures and keys are never logged.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -69,13 +71,27 @@ class FacilitatorClient:
         timeout_seconds: float = 30.0,
         transport: httpx.BaseTransport | None = None,
         headers: dict[str, str] | None = None,
+        auth: Callable[[str, str], dict[str, str]] | None = None,
     ) -> None:
-        self._url = require_https_or_loopback(url, "the x402 facilitator URL")
+        self._url = require_https_or_loopback(url, "the x402 facilitator URL").rstrip("/")
+        self._auth = auth  # headers for one request: (method, url) -> headers
         self._client = httpx.Client(
             timeout=timeout_seconds,
             transport=transport,
             headers={"Content-Type": "application/json", **(headers or {})},
         )
+
+    @property
+    def authenticated(self) -> bool:
+        return self._auth is not None
+
+    def _auth_headers(self, method: str, url: str) -> dict[str, str]:
+        if self._auth is None:
+            return {}
+        try:
+            return self._auth(method, url)
+        except ValueError as exc:
+            raise FacilitatorUnavailable(f"facilitator credentials unusable: {exc}") from exc
 
     def _post(self, path: str, payload: dict[str, Any], requirements: dict[str, Any]) -> Any:
         body = {
@@ -83,8 +99,9 @@ class FacilitatorClient:
             "paymentPayload": payload,
             "paymentRequirements": requirements,
         }
+        url = f"{self._url}{path}"
         try:
-            response = self._client.post(f"{self._url}{path}", json=body)
+            response = self._client.post(url, json=body, headers=self._auth_headers("POST", url))
         except httpx.HTTPError as exc:
             raise FacilitatorUnavailable(
                 f"facilitator {path} unreachable ({type(exc).__name__})"
@@ -101,8 +118,9 @@ class FacilitatorClient:
         return data
 
     def supported(self) -> dict[str, Any]:
+        url = f"{self._url}/supported"
         try:
-            response = self._client.get(f"{self._url}/supported")
+            response = self._client.get(url, headers=self._auth_headers("GET", url))
             data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise FacilitatorUnavailable("facilitator /supported unreachable") from exc

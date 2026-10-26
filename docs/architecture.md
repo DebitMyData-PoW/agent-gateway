@@ -188,6 +188,21 @@ Because the receiving address is shared, a transfer counts for an intent only th
 authorization received for that intent; transaction references sent by payers are refused
 on this rail.
 
+**Facilitators.** Staging uses the public x402.org test facilitator. On Base mainnet the
+gateway uses Coinbase's CDP facilitator (`https://api.cdp.coinbase.com/platform/v2/x402`),
+which is also what lists paid endpoints in the x402 Bazaar. Each request to it carries a
+JWT valid for 2 minutes and naming that one request, signed with DebitMyData's CDP API key
+(`adapters/cdp_auth.py`, the same token as Coinbase's SDK); the key secret is read from the
+environment only.
+
+**Bazaar listing.** Coinbase validates and indexes the route by calling it with the example
+request advertised in the `bazaar` extension. That example uses a reserved
+`registration_intent_id` (`dmd_did_intent_` followed by 26 zeros, a time no real quote can
+have). It answers `402` with the real terms (25.000000 USDC, Base, the receiving address)
+and is never paid: a payment sent with it is refused before the facilitator is called.
+`scripts/validate_bazaar.py` runs Coinbase's validator against a deployed gateway; the
+listing itself follows the first payment settled through the CDP facilitator.
+
 ## Controller proof
 
 The quote names the DID's controller: an Ed25519 public key, an EVM wallet, or both. Each

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from dmd_gateway.db.models import RegistrationIntent
 from dmd_gateway.db.session import transaction
+from dmd_gateway.domain.ids import EXAMPLE_REGISTRATION_INTENT_ID, REGISTRATION_INTENT_ID_PATTERN
 from dmd_gateway.errors import ApiError, error_body
 from dmd_gateway.identity.did import did_document_url
 from dmd_gateway.services import controller_proofs
@@ -37,13 +38,14 @@ from dmd_gateway.services.x402_payments import (
     RETRY_AFTER_SECONDS,
     X402Context,
     encode_header,
+    example_payment_required,
     register_paid,
     resource_info,
 )
 
 router = APIRouter(prefix="/v1", tags=["registration"])
 
-REGISTRATION_ID = r"^dmd_did_intent_[0-9A-HJKMNP-TV-Z]{26}$"
+REGISTRATION_ID = REGISTRATION_INTENT_ID_PATTERN
 CHALLENGE_ID = r"^dmd_challenge_[0-9A-HJKMNP-TV-Z]{26}$"
 REGISTRATION_ID_HELP = "`registration_intent_id` from the quote (it starts with `dmd_did_intent_`)."
 
@@ -333,6 +335,9 @@ def register(
     ] = None,
 ) -> JSONResponse:
     ctx = _ctx(request)
+    if body.registration_intent_id == EXAMPLE_REGISTRATION_INTENT_ID:
+        service = request.app.state.registry.services[DID_REGISTRATION]
+        raise example_payment_required(_x402_context(request), service)
     paid = register_paid(_x402_context(request), body.registration_intent_id, payment_signature)
     if paid is not None:
         headers = {}

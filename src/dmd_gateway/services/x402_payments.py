@@ -46,7 +46,9 @@ from dmd_gateway.db.models import (
     X402Authorization,
 )
 from dmd_gateway.db.session import transaction
+from dmd_gateway.domain.ids import EXAMPLE_REGISTRATION_INTENT_ID, REGISTRATION_INTENT_ID_PATTERN
 from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
+from dmd_gateway.domain.routes import ServiceConfig
 from dmd_gateway.errors import ApiError
 from dmd_gateway.services.registrations import (
     IssuanceContext,
@@ -254,16 +256,22 @@ def mismatches(
 # --------------------------------------------------------------------------- 402 contents
 
 
+# The x402 Bazaar refuses descriptions over 500 characters, and lists only metadata that
+# describes the endpoint (no instructions addressed to agents).
+MAX_DESCRIPTION_LENGTH = 500
+
+
 def resource_info(public_base_url: str, path: str, title: str) -> dict[str, Any]:
     """``ResourceInfo`` for the paid registration route, with Bazaar service metadata."""
     base = public_base_url.rstrip("/")
     info: dict[str, Any] = {
         "url": f"{base}{path}",
         "description": (
-            f"{title}: a DebitMyData DID, a signed credential and the dmd_did_holder "
-            "entitlement for an agent. Fixed fee 25.00 USD. Request a quote first "
-            "(POST /v1/dids/registration-quotes) and prove your controller key; then send "
-            "the registration_intent_id here."
+            f"{title}. Issues a DebitMyData DID (did:web), a signed W3C credential and the "
+            "dmd_did_holder entitlement for a registration whose controller key or wallet "
+            "has been proven. Fixed fee 25.00 USD, paid here in USDC on Base. The "
+            "registration_intent_id comes from POST /v1/dids/registration-quotes, which "
+            "also offers payment in native DMD."
         ),
         "mimeType": "application/json",
         "serviceName": "DebitMyData",
@@ -283,7 +291,7 @@ def bazaar_extension(public_base_url: str) -> dict[str, Any]:
                 "type": "http",
                 "method": "POST",
                 "bodyType": "json",
-                "body": {"registration_intent_id": "dmd_did_intent_<from your quote>"},
+                "body": {"registration_intent_id": EXAMPLE_REGISTRATION_INTENT_ID},
             },
             "output": {
                 "type": "json",
@@ -305,7 +313,18 @@ def bazaar_extension(public_base_url: str) -> dict[str, Any]:
                         "type": {"type": "string", "const": "http"},
                         "method": {"type": "string", "enum": ["POST", "PUT", "PATCH"]},
                         "bodyType": {"type": "string", "enum": ["json", "form-data", "text"]},
-                        "body": {"type": "object"},
+                        "body": {
+                            "type": "object",
+                            "properties": {
+                                "registration_intent_id": {
+                                    "type": "string",
+                                    "pattern": REGISTRATION_INTENT_ID_PATTERN,
+                                    "description": "From POST /v1/dids/registration-quotes",
+                                }
+                            },
+                            "required": ["registration_intent_id"],
+                            "additionalProperties": False,
+                        },
                         "queryParams": {
                             "type": "object",
                             "additionalProperties": {"type": "string"},
@@ -345,6 +364,43 @@ def payment_required(
         "accepts": [dict(requirements)],
         "extensions": {"bazaar": bazaar_extension(public_base_url)},
     }
+
+
+EXAMPLE_TIMEOUT_SECONDS = 300
+EXAMPLE_ERROR = (
+    "example registration_intent_id: it cannot be paid. Real ones come from "
+    "POST /v1/dids/registration-quotes."
+)
+
+
+def example_payment_required(ctx: X402Context, service: ServiceConfig) -> ApiError:
+    """The 402 answer to the reserved example ``registration_intent_id``.
+
+    The x402 Bazaar checks and indexes the endpoint by calling it with the example request
+    it advertises (``extensions.bazaar.info.input``); that call must get a 402 with the
+    real terms: the fixed price in USDC, the network and DebitMyData's receiving address.
+    The example is never a quote, so a payment sent with it is refused here, before any
+    facilitator call, and nothing is charged.
+    """
+    for rail_id in service.payment_options:
+        adapter = ctx.adapters.get(rail_id)
+        if isinstance(adapter, X402PaymentAdapter) and adapter.rail.asset.usd_denominated:
+            break
+    else:
+        return ApiError(404, "not_found", "Unknown registration intent.")
+    amount = service.commercial_price.amount.scaleb(adapter.rail.asset.decimals)
+    if amount != amount.to_integral_value():
+        raise ValueError("the commercial price does not fit the asset's decimals")
+    try:
+        requirements = adapter.payment_requirements(
+            int(amount), adapter.pay_to, EXAMPLE_TIMEOUT_SECONDS
+        )
+    except AdapterUnavailable:
+        return _adapter_unavailable(adapter.rail_id)
+    required = payment_required(
+        ctx.resource, requirements, EXAMPLE_ERROR, ctx.issuance.public_base_url
+    )
+    return _payment_required_error(required, EXAMPLE_ERROR, code="example_registration_intent")
 
 
 def payment_terms(
@@ -418,15 +474,19 @@ def register_paid(
     return _await_settlement(ctx, prepared)
 
 
+def _adapter_unavailable(rail_id: str) -> ApiError:
+    return ApiError(
+        503,
+        "payment_rail_unavailable",
+        f"Payment option {rail_id!r} is temporarily unavailable; try again later.",
+        headers={"Retry-After": "60"},
+    )
+
+
 def _adapter(ctx: X402Context, rail_id: str) -> X402PaymentAdapter:
     adapter = ctx.adapters.get(rail_id)
     if not isinstance(adapter, X402PaymentAdapter):
-        raise ApiError(
-            503,
-            "payment_rail_unavailable",
-            f"Payment option {rail_id!r} is temporarily unavailable; try again later.",
-            headers={"Retry-After": "60"},
-        )
+        raise _adapter_unavailable(rail_id)
     return adapter
 
 

@@ -184,6 +184,19 @@ grep -E 'DMD_USDC_BASE_MERCHANT_ADDRESS' /etc/dmd-gateway/gateway.env
 If a test payment answers that the facilitator refused it with `insufficient_funds`, the test
 wallet needs test USDC.
 
+### Checking the route with Coinbase's Bazaar validator
+
+Coinbase's validator calls the paid route with the example request the gateway advertises
+and reports whether the x402 Bazaar could list it (no API key needed, nothing is paid):
+
+```bash
+cd /opt/agent-gateway
+.venv/bin/python scripts/validate_bazaar.py https://staging-api.debitmydata.io
+```
+
+It prints `Route valid: yes` when the route passes, and otherwise what to fix. Production is
+checked the same way before launch (X402-10).
+
 ## 4. Demo from the command line
 
 Run as root on the VPS, one block at a time. The VPS plays both the agent and the agent's DMD
@@ -318,7 +331,7 @@ watch-only wallet, which is harmless.
 | | Staging | Production (to come) |
 | --- | --- | --- |
 | Chain | private regtest, coins without value | DMD mainnet |
-| USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address, a production facilitator (DEC-08) |
+| USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
 | DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet mining-cost price, from the explorer's difficulty | the mining-cost price from the gateway's own mainnet node, averaged over a week (DEC-01) |

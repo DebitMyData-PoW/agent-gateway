@@ -132,6 +132,19 @@ class X402Config(_Strict):
     asset_eip712_version: str = Field(min_length=1, max_length=16)
     facilitator_url_env: str = Field(pattern=ENV_NAME)
     rpc_url_env: str = Field(pattern=ENV_NAME)
+    # API key of a facilitator that needs one (Coinbase's CDP facilitator): its ID and secret.
+    facilitator_key_id_env: str | None = Field(default=None, pattern=ENV_NAME)
+    facilitator_key_secret_env: str | None = Field(default=None, pattern=ENV_NAME)
+
+
+CDP_FACILITATOR_HOST = "api.cdp.coinbase.com"
+
+
+def facilitator_credentials(x402: X402Config, environ: Mapping[str, str]) -> tuple[str, str] | None:
+    """The facilitator API key (ID, secret) from the environment, or None if none is set."""
+    key_id = (environ.get(x402.facilitator_key_id_env or "") or "").strip()
+    secret = (environ.get(x402.facilitator_key_secret_env or "") or "").strip()
+    return (key_id, secret) if key_id or secret else None
 
 
 class RailConfig(_Strict):
@@ -304,10 +317,34 @@ def x402_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]:
         for name in (rail.x402.facilitator_url_env, rail.x402.rpc_url_env):
             if not (environ.get(name) or "").strip():
                 problems.append(f"{name} is empty")
+        problems.extend(_facilitator_key_problems(rail.x402, environ))
     recipient = (environ.get(rail.recipient.env or "") or "").strip()
     if recipient and not EVM_ADDRESS.match(recipient):
         problems.append(f"{rail.recipient.env} is not an EVM address (0x + 40 hex characters)")
     return problems
+
+
+def _facilitator_key_problems(x402: X402Config, environ: Mapping[str, str]) -> list[str]:
+    from dmd_gateway.adapters.cdp_auth import CdpApiKeyAuth  # here: adapters import this module
+
+    url = (environ.get(x402.facilitator_url_env) or "").strip()
+    host = url.split("://", 1)[-1].split("/", 1)[0].lower()
+    credentials = facilitator_credentials(x402, environ)
+    key_names = f"{x402.facilitator_key_id_env} and {x402.facilitator_key_secret_env}"
+    if credentials is None:
+        if host == CDP_FACILITATOR_HOST:
+            return [f"the CDP facilitator needs an API key: set {key_names}"]
+        return []
+    if not (x402.facilitator_key_id_env and x402.facilitator_key_secret_env):
+        return ["facilitator_key_id_env and facilitator_key_secret_env must both be configured"]
+    key_id, secret = credentials
+    if not key_id or not secret:
+        return [f"set both {key_names}, or neither"]
+    try:
+        CdpApiKeyAuth(key_id, secret)
+    except ValueError as exc:  # the message never contains the secret
+        return [f"{x402.facilitator_key_secret_env}: {exc}"]
+    return []
 
 
 class PaymentRouteRegistry:

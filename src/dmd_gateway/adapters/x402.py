@@ -35,6 +35,7 @@ from dmd_gateway.adapters.base import (
     PaymentObservation,
     SubmittedAuthorization,
 )
+from dmd_gateway.adapters.cdp_auth import CdpApiKeyAuth
 from dmd_gateway.adapters.evm_rpc import (
     EvmRpcClient,
     EvmRpcError,
@@ -42,7 +43,7 @@ from dmd_gateway.adapters.evm_rpc import (
     quantity,
 )
 from dmd_gateway.adapters.x402_facilitator import FacilitatorClient, FacilitatorUnavailable
-from dmd_gateway.domain.routes import EVM_ADDRESS, RailConfig
+from dmd_gateway.domain.routes import EVM_ADDRESS, RailConfig, facilitator_credentials
 
 # keccak256 of the event signatures (checked in the tests).
 TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -109,10 +110,12 @@ class X402PaymentAdapter(PaymentAdapter):
     def facilitator(self) -> FacilitatorClient:
         if self._facilitator is None:
             try:
+                credentials = facilitator_credentials(self.settings, self.environ)
                 self._facilitator = FacilitatorClient(
-                    self._env_url(self.settings.facilitator_url_env)
+                    self._env_url(self.settings.facilitator_url_env),
+                    auth=CdpApiKeyAuth(*credentials) if credentials else None,
                 )
-            except ValueError as exc:
+            except ValueError as exc:  # never contains the key secret
                 raise AdapterUnavailable(str(exc)) from exc
         return self._facilitator
 

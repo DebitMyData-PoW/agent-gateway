@@ -20,6 +20,12 @@ CHALLENGE = "dmd_challenge"
 PROOF = "dmd_proof"
 CREDENTIAL = "dmd_credential"
 
+REGISTRATION_INTENT_ID_PATTERN = rf"^{REGISTRATION_INTENT}_[0-9A-HJKMNP-TV-Z]{{26}}$"
+
+# Reserved example registration ID, shown in the x402 Bazaar listing. Never a real quote:
+# generated IDs start with the current time, this one with 1970.
+EXAMPLE_REGISTRATION_INTENT_ID = f"{REGISTRATION_INTENT}_{'0' * 26}"
+
 
 def new_id(prefix: str) -> str:
     if not _PREFIX.match(prefix):
