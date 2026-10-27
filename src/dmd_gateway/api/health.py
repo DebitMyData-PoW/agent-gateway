@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from dmd_gateway.signer.client import RemoteIssuer
+
 router = APIRouter(tags=["health"])
 log = logging.getLogger(__name__)
 
@@ -29,6 +31,11 @@ def readyz(request: Request) -> JSONResponse:
             "database readiness check failed", extra={"event": {"exc_type": type(exc).__name__}}
         )
         checks["database"] = "unavailable"
+
+    # In production, the separate credential signer must answer with the expected key.
+    issuer = request.app.state.issuance.issuer
+    if isinstance(issuer, RemoteIssuer):
+        checks["credential_signer"] = "ok" if issuer.ready() else "unavailable"
 
     ready = all(value == "ok" for value in checks.values())
     return JSONResponse(

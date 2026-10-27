@@ -5,8 +5,9 @@ in the issuer's DID document (``/.well-known/did.json``), so anyone can verify a
 without asking the gateway.
 
 Development and staging read the private key from a PEM file that only its owner may read
-(``DMD_GW_ISSUER_KEY_PATH``). Production must use a separate signer so the key never sits on
-a public API host; until that exists, the settings refuse a key file in production.
+(``DMD_GW_ISSUER_KEY_PATH``). Production keeps the key in a separate signer service
+(``dmd_gateway.signer``): the API asks it for each signature over a local socket and never
+holds the key; the settings refuse a key file in production.
 
 Create a key with:
 
@@ -19,23 +20,51 @@ import argparse
 import os
 import stat
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Protocol
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from dmd_gateway.identity.crypto import ED25519_PUB_MULTICODEC, multibase_encode
+from dmd_gateway.identity.crypto import ED25519_PUB_MULTICODEC, add_proof, multibase_encode
 
 
 class IssuerKeyError(RuntimeError):
     pass
 
 
+class Issuer(Protocol):
+    """What signs credentials: a local key (development, staging) or the signer service."""
+
+    @property
+    def did(self) -> str: ...
+
+    @property
+    def public_key_multibase(self) -> str: ...
+
+    @property
+    def verification_method(self) -> str: ...
+
+    def sign(self, document: Mapping[str, Any], *, created: datetime) -> dict[str, Any]:
+        """``document`` with its ``eddsa-jcs-2022`` proof attached."""
+        ...
+
+
 @dataclass(frozen=True)
 class IssuerKey:
     private_key: Ed25519PrivateKey
     did: str
+
+    def sign(self, document: Mapping[str, Any], *, created: datetime) -> dict[str, Any]:
+        return add_proof(
+            document,
+            self.private_key,
+            verification_method=self.verification_method,
+            created=created,
+        )
 
     @property
     def public_key_multibase(self) -> str:

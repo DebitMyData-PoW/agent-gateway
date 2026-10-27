@@ -17,8 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from dmd_gateway.identity.crypto import ControllerKey, add_proof, xml_datetime
-from dmd_gateway.identity.issuer import IssuerKey
+from dmd_gateway.identity.crypto import ControllerKey, xml_datetime
+from dmd_gateway.identity.issuer import Issuer
 from dmd_gateway.identity.wallets import Wallet
 
 VC_CONTEXT = ["https://www.w3.org/ns/credentials/v2"]
@@ -77,7 +77,7 @@ def _wallet(facts: RegistrationFacts) -> dict[str, Any] | None:
     }
 
 
-def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict[str, Any]:
+def registration_credential(facts: RegistrationFacts, issuer: Issuer) -> dict[str, Any]:
     key, wallet = _key(facts), _wallet(facts)
     controller = key or wallet
     if controller is None:
@@ -116,12 +116,7 @@ def registration_credential(facts: RegistrationFacts, issuer: IssuerKey) -> dict
     }
     if key and wallet:
         document["credentialSubject"]["wallet"] = wallet
-    return add_proof(
-        document,
-        issuer.private_key,
-        verification_method=issuer.verification_method,
-        created=facts.issued_at,
-    )
+    return issuer.sign(document, created=facts.issued_at)
 
 
 # --------------------------------------------------------------------------- receipts
@@ -150,7 +145,7 @@ class DonationFacts:
     donor_did: str | None = None
 
 
-def donation_receipt(facts: DonationFacts, issuer: IssuerKey) -> dict[str, Any]:
+def donation_receipt(facts: DonationFacts, issuer: Issuer) -> dict[str, Any]:
     """A donation receipt: a W3C Verifiable Credential signed like the DID credential.
 
     Its subject is the donor's DID when the donor gave one, otherwise the paying wallet as a
@@ -186,9 +181,4 @@ def donation_receipt(facts: DonationFacts, issuer: IssuerKey) -> dict[str, Any]:
             },
         },
     }
-    return add_proof(
-        document,
-        issuer.private_key,
-        verification_method=issuer.verification_method,
-        created=facts.issued_at,
-    )
+    return issuer.sign(document, created=facts.issued_at)

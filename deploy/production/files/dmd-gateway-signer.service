@@ -1,0 +1,41 @@
+[Unit]
+Description=DebitMyData Agent Gateway credential signer (the only holder of the issuer key)
+After=postgresql.service
+Before=dmd-gateway-api.service
+
+[Service]
+User=dmd_signer
+Group=dmd_signer
+EnvironmentFile=/etc/dmd-signer/signer.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@APP_DIR@/.venv/bin/dmd-gateway-signer
+# The socket lives in /run/dmd-signer (owner dmd_signer, group dmd_signer: the gateway user is
+# a member). Kept across restarts so the API always finds the same directory.
+RuntimeDirectory=dmd-signer
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+Restart=always
+RestartSec=2
+# No network at all: it reaches PostgreSQL through its local socket only.
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

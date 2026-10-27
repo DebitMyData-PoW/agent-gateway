@@ -415,3 +415,22 @@ def test_proofs_cannot_be_altered(client: TestClient, engine: Engine) -> None:
     prove(client, rid)
     with pytest.raises(Exception, match="append-only"), engine.begin() as conn:
         conn.execute(text("UPDATE controller_proofs SET status = 'rejected'"))
+
+
+def test_answer_times_are_the_signed_times(client: TestClient) -> None:
+    # Whole seconds everywhere, so an agent can compare the JSON with what was signed.
+    def moment(value: str) -> datetime:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    q = quote(client, display_name="Seconds-01")
+    rid = q["registration_intent_id"]
+    settle(client, q, txid="5e" * 32)
+    c = challenge(client, rid)
+    signed = dict(line.split(": ", 1) for line in c["message"].split("\n")[1:])
+    assert moment(c["expires_at"]) == moment(signed["Expires"])
+    response = answer(client, rid, c["challenge_id"], sign_challenge(c["message"]))
+    assert response.status_code == 201, response.text
+    issued = register(client, rid).json()
+    credential = issued["credential"]
+    assert moment(issued["issued_at"]) == moment(credential["validFrom"])
+    assert moment(issued["issued_at"]) == moment(credential["proof"]["created"])

@@ -128,9 +128,9 @@ def test_shipped_registries_carry_the_approved_parameters(path: Path) -> None:
     assert registry.dmd_mining_cost is not None
     assert registry.dmd_mining_cost.electricity_usd_per_kwh == Decimal("0.06")
     assert registry.dmd_mining_cost.efficiency_joules_per_terahash == Decimal(20)
-    # Proposed in October 2026; its approval date is set once DebitMyData approves it.
+    # Proposed in October 2026 and approved by DebitMyData on 27 October 2026.
     assert registry.dmd_mining_cost.minimum_usd_per_dmd == Decimal("0.001")
-    assert registry.dmd_mining_cost.minimum_approved_on is None
+    assert registry.dmd_mining_cost.minimum_approved_on == date(2026, 10, 27)
 
 
 def test_a_rail_priced_by_mining_cost_needs_the_parameters(tmp_path: Path) -> None:

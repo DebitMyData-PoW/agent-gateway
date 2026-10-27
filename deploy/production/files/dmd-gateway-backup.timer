@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the DebitMyData Agent Gateway every night at 03:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

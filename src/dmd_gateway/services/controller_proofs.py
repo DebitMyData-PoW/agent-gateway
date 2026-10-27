@@ -157,6 +157,8 @@ def create_challenge(
     ttl: timedelta,
     now: datetime,
 ) -> ControllerChallenge:
+    # Whole seconds, so the challenge's times in the JSON answer are exactly the signed ones.
+    now = now.replace(microsecond=0)
     registration = _open_registration(session, registration_intent_id)
     kind, controller = _choose_controller(session, registration, controller_type)
     if kind == ED25519:

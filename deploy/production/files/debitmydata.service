@@ -1,0 +1,19 @@
+[Unit]
+Description=DebitMyData node for the Agent Gateway production server (main chain, watch-only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=dmd
+Group=dmd
+ExecStart=/usr/local/bin/debitmydatad -conf=/etc/debitmydata/debitmydata.conf -datadir=/var/lib/debitmydata -printtoconsole=0
+Restart=on-failure
+TimeoutStopSec=300
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

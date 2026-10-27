@@ -13,6 +13,7 @@ Each check looks at one thing and returns what is wrong, as findings (``alerts.F
   payments   USDC settlements with an unknown outcome, and payments confirming for too long
   receiving  the receiving addresses in use did not change since the last run; a change that
              was not approved in writing is the first sign of a compromised server
+  backups    the nightly encrypted backup succeeded within the last 26 hours (production)
 
 A check that cannot run is reported as such, and the alerts it raised earlier stay open.
 """
@@ -409,6 +410,35 @@ def check_receiving(ctx: MonitorContext, session: Session, now: datetime) -> lis
     return findings
 
 
+BACKUP_MAX_AGE = timedelta(hours=26)
+
+
+def check_backups(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
+    path = ctx.settings.backup_status_path
+    if path is None:
+        return []
+    try:
+        last: datetime | None = datetime.fromisoformat(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        last = None
+    if last is not None and last.tzinfo is not None and now - last <= BACKUP_MAX_AGE:
+        return []
+    when = (
+        f"{int((now - last).total_seconds() // 3600)} hours ago"
+        if last is not None and last.tzinfo is not None
+        else "never"
+    )
+    return [
+        Finding(
+            "backups.stale",
+            W,
+            "The nightly backup has not succeeded",
+            f"Last successful backup: {when}. On the server: systemctl status "
+            "dmd-gateway-backup; journalctl -u dmd-gateway-backup -n 50 (docs/production.md).",
+        )
+    ]
+
+
 CHECKS: dict[str, Check] = {
     "api": check_api,
     "worker": check_worker,
@@ -418,6 +448,7 @@ CHECKS: dict[str, Check] = {
     "audit": check_audit,
     "payments": check_payments,
     "receiving": check_receiving,
+    "backups": check_backups,
 }
 
 

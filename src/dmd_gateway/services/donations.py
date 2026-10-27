@@ -630,7 +630,7 @@ def complete_purchase(session: Session, ctx: DonationContext, purchase_id: str) 
         )
     )
     donation = ctx.issuance.registry.donations[purchase.product_id]
-    now = ctx.clock()
+    now = ctx.clock().replace(microsecond=0)  # equal to the receipt's signed validFrom
     purchase.receipt = donation_receipt(
         DonationFacts(
             receipt_url=f"{ctx.base}/v1/donations/{purchase.id}",

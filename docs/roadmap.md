@@ -34,7 +34,7 @@ place; the application logic comes with the related phase.
 - [ ] SEC-11 Secondary verification node with tip comparison
 - [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DebitMyData node's height with the public explorer ([monitoring.md](monitoring.md))
 - [x] SEC-13 Reorg monitoring and alert thresholds: a payment that leaves the chain after its DID or receipt was issued is a critical alert; payments confirming for more than 2 hours are a warning
-- [ ] SEC-14 Backup and restore test (descriptors, configuration, database)
+- [ ] SEC-14 Backup and restore test (descriptors, configuration, database): nightly encrypted backup of the database and settings to object storage, monitored; restore procedure in [production.md](production.md#4-backups); open: the first restore test on the production server
 - [ ] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook
 
 ## Phase 2 – Gateway foundation
@@ -104,7 +104,7 @@ place; the application logic comes with the related phase.
 - [ ] ID-12 Controller rotation with proof and audit history
 - [ ] ID-13 Suspension/revocation/recovery without deleting history
 - [ ] ID-14 Transfer/new-registration policy for material controller changes
-- [ ] ID-15 Issuer key custody: key file for development/staging (refused in production); separate production signer and rotation procedure open
+- [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); open: key rotation procedure
 
 ## Phase 6 – MCP server
 
@@ -176,12 +176,12 @@ deployment and cutover (DEP-*).
 Decisions marked done were made by the development team from the directive's examples
 and can be changed later.
 
-- [x] DEC-01 DMD/USD price: the mining-cost reference price, the electricity cost of a block's work (approved interim method until a market price exists; 20 J/TH and 0.06 USD/kWh, reviewed quarterly); quotes refused when it is older than 15 minutes. Minimum rate: the price is the higher of 0.001 USD per DMD and the mining cost (25,000 DMD for a 25.00 USD DID), proposed October 2026; open: DebitMyData's written approval (`minimum_approved_on`)
+- [x] DEC-01 DMD/USD price: the mining-cost reference price, the electricity cost of a block's work (approved interim method until a market price exists; 20 J/TH and 0.06 USD/kWh, reviewed quarterly); quotes refused when it is older than 15 minutes. Minimum rate: the price is the higher of 0.001 USD per DMD and the mining cost (25,000 DMD for a 25.00 USD DID), approved by DebitMyData on 27 October 2026 (`minimum_approved_on`)
 - [x] DEC-02 Native DMD confirmation requirement: 6 (from the directive's example)
 - [x] DEC-03 Quote lifetime: 15 minutes (from the directive's example)
 - [x] DEC-04 Underpayment: top-up allowed until expiry, then refund; overpayment: accepted, excess refunded; late payment: refunded, never credited
 - [x] DEC-05 Public identity syntax: `did:web` hosted by the gateway; `did:dmd` only once a method specification is published
-- [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody stays open (ID-15)
+- [x] DEC-06 Credential format and signature: W3C VC 2.0 with Data Integrity `eddsa-jcs-2022` (Ed25519); production key custody: the separate signer (ID-15)
 - [ ] DEC-07 Controller-proof method supported by official DMD wallets
 - [x] DEC-08 Base/USDC receiving account: DebitMyData's "AgenticSpaces DID-LLM" wallet,
   `0x67C11dc63B45b916213189BF127094d4662a2eC3` (Preska Thomas, October 2026). Production
@@ -192,8 +192,8 @@ and can be changed later.
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds
 - [ ] DEC-12 Refund signing/approval thresholds
-- [ ] DEC-13 Hosting topology and secret management
-- [ ] DEC-14 Database backup and retention policy
+- [x] DEC-13 Hosting topology and secret management: one production server on Vultr (DebitMyData's account), separate from staging and from other DebitMyData servers, behind Cloudflare; secrets only in root-only settings files on the server, the issuer key only with the signer ([production.md](production.md))
+- [x] DEC-14 Database backup and retention policy: nightly at 03:30 UTC, encrypted with an offline age key, kept 30 days in Vultr Object Storage and 7 days on the server, plus Vultr's server backups
 - [ ] DEC-15 Which EVM/Solana assets enter the next phase
 - [x] DEC-16 x402 confirmations before a USDC payment counts: 5 Base blocks (about 10
   seconds); 2 on Base Sepolia

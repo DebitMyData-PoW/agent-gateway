@@ -67,9 +67,13 @@ class Settings(BaseSettings):
     # How often the payment worker checks open payments.
     worker_interval_seconds: float = Field(default=10, ge=1, le=600)
 
-    # Ed25519 key that signs registration credentials (PEM file, mode 600). DID issuance is
-    # unavailable while this is unset. Production needs a separate signer instead (ID-15).
+    # What signs DID credentials and donation receipts (ID-15). Development and staging: an
+    # Ed25519 key file (PEM, mode 600). Production: the separate signer service
+    # (dmd-gateway-signer) on its local socket, with the issuer's public key, which the API
+    # checks every signature against. DID issuance is unavailable while neither is set.
     issuer_key_path: Path | None = None
+    issuer_signer_socket: Path | None = None
+    issuer_public_key: str | None = None
 
     # How long an agent has to sign a controller challenge.
     controller_challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
@@ -109,8 +113,19 @@ class Settings(BaseSettings):
     monitor_api_url: str = "http://127.0.0.1:8000/readyz"
     # Where the monitor remembers alerts it sent while the database was unreachable.
     monitor_fallback_state_path: Path | None = None
+    # Production: the file the nightly backup writes when it succeeds (its time, ISO 8601);
+    # the monitor warns when it is older than a day and a bit.
+    backup_status_path: Path | None = None
 
-    @field_validator("mcp_url", "issuer_key_path", "monitor_fallback_state_path", mode="before")
+    @field_validator(
+        "mcp_url",
+        "issuer_key_path",
+        "issuer_signer_socket",
+        "issuer_public_key",
+        "monitor_fallback_state_path",
+        "backup_status_path",
+        mode="before",
+    )
     @classmethod
     def _empty_to_none(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -151,6 +166,17 @@ class Settings(BaseSettings):
             raise ValueError(
                 "production must not keep the credential signing key on the API host (ID-15)"
             )
+        if (self.issuer_signer_socket is None) != (self.issuer_public_key is None):
+            raise ValueError(
+                "issuer_signer_socket and issuer_public_key go together (the signer's socket "
+                "and the public key it signs with)"
+            )
+        if self.issuer_signer_socket is not None and self.issuer_key_path is not None:
+            raise ValueError("set issuer_key_path or issuer_signer_socket, not both")
+        if self.issuer_public_key is not None and not re.fullmatch(
+            r"z6Mk[1-9A-HJ-NP-Za-km-z]{40,50}", self.issuer_public_key
+        ):
+            raise ValueError("issuer_public_key must be an Ed25519 Multikey (z6Mk...)")
         if self.environment == "production" and self.staging_test_tools:
             raise ValueError("staging test tools must never be enabled in production")
         return self

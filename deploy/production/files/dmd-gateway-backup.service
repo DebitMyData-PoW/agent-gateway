@@ -1,0 +1,11 @@
+[Unit]
+Description=DebitMyData Agent Gateway nightly encrypted backup
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@APP_DIR@/deploy/production/backup.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3600

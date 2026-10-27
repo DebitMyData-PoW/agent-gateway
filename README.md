@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.13.0`). The whole registration flow (quote,
+This is an early development release (`0.14.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -64,10 +64,12 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DebitMyData difficulty from the public explorer) |
 | Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
-| Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (awaiting DebitMyData's written approval of the rate) |
+| Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
+| Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |
+| Credential signer (ID-15): in production the issuer key is held only by `dmd-gateway-signer` (own user, no network), which checks the database before signing; the API checks every signature | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -262,6 +264,7 @@ once safely. To try the whole flow on a private chain, from quote to DID, follow
 config/payment_routes.yaml   payment rails, services, commercial price (no secrets)
 config/payment_routes.regtest.yaml   the same, on test networks (DebitMyData regtest, Base Sepolia)
 deploy/staging/              staging server setup (nginx, systemd services, Cloudflare-only firewall)
+deploy/production/           production server setup, signer and backup units, nightly backup
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
@@ -270,6 +273,7 @@ src/dmd_gateway/
   monitoring/                health checks, email/Discord alerts, daily reconciliation report
                              (dmd-gateway-monitor)
   identity/                  controller keys, did:web documents, issuer key, signed credentials
+  signer/                    the production credential signer (dmd-gateway-signer) and its client
   runtime.py                 registry, adapters and price sources shared by API and worker
   settings.py                environment configuration
   observability.py           JSON logging, correlation IDs

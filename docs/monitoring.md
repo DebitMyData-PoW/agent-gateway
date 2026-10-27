@@ -94,7 +94,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 
 | Alert | Level | What it means and what to do |
 | --- | --- | --- |
-| The gateway API is not ready / not answering | critical | Agents cannot get quotes or register. `systemctl status dmd-gateway-api`; `curl http://127.0.0.1:8000/readyz` shows which part fails. |
+| The gateway API is not ready / not answering | critical | Agents cannot get quotes or register. `systemctl status dmd-gateway-api`; `curl http://127.0.0.1:8000/readyz` shows which part fails. In production, `credential_signer` unavailable means no DID or receipt can be issued: `systemctl status dmd-gateway-signer`. |
 | The payment worker has stopped | critical | Payments are not verified, so nothing is issued after payment. `systemctl status dmd-gateway-worker`, `journalctl -u dmd-gateway-worker`. |
 | The payment worker fails on some payments | warning | Some payments raise errors; see the worker's log. |
 | USDC/DMD payments cannot be verified | critical | The DebitMyData node, the Base RPC or the x402 facilitator does not answer or is on the wrong chain. Payments with that option are not confirmed until it is fixed. To stop new quotes for it, set its kill switch (e.g. `DMD_RAIL_X402_USDC_BASE_KILL=true`) and restart the API. |
@@ -109,6 +109,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 | A new receiving destination is in use | warning | A payment option was switched on. |
 | The gateway database is unreachable | critical | Sent at most once an hour (remembered in `/var/lib/dmd-gateway-monitor`). |
 | The gateway's configuration cannot be loaded | critical | The gateway would refuse to start with it. |
+| The nightly backup has not succeeded | warning | Production only: no backup in the last 26 hours. `systemctl status dmd-gateway-backup`, `journalctl -u dmd-gateway-backup` ([production.md](production.md#4-backups)). |
 | The monitor could not run its … check | warning | That check failed by itself; the alerts it raised before stay open. |
 
 ## 4. The daily report

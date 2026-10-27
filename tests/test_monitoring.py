@@ -846,3 +846,16 @@ def test_test_command_needs_a_channel(capsys: pytest.CaptureFixture[str]) -> Non
     notifier = FakeNotifier()
     assert _test(settings, dispatcher(notifier)) == 0
     assert notifier.messages[0].subject == "[DebitMyData Gateway development] Test message"
+
+
+def test_backup_check(tmp_path: Path) -> None:
+    status = tmp_path / "last-success"
+    ctx = context(backup_status_path=status)
+    assert mc.check_backups(context(), None, NOW) == []  # type: ignore[arg-type]  # not set
+    (finding,) = mc.check_backups(ctx, None, NOW)  # type: ignore[arg-type]
+    assert finding.key == "backups.stale" and "never" in finding.detail
+    status.write_text((NOW - timedelta(hours=3)).isoformat(), encoding="utf-8")
+    assert mc.check_backups(ctx, None, NOW) == []  # type: ignore[arg-type]
+    status.write_text((NOW - timedelta(hours=30)).isoformat(), encoding="utf-8")
+    (finding,) = mc.check_backups(ctx, None, NOW)  # type: ignore[arg-type]
+    assert "30 hours ago" in finding.detail

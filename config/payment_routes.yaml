@@ -235,5 +235,5 @@ dmd_mining_cost:
   # rate: the price is the higher of this minimum and the mining cost, until DMD has a market
   # price. 0.001 USD per DMD: a 25.00 USD DID costs 25,000 DMD.
   minimum_usd_per_dmd: "0.001"
-  # Date of DebitMyData's written approval of the minimum; set it when it is approved.
-  minimum_approved_on: null
+  # Date of DebitMyData's written approval of the minimum (Preska Thomas).
+  minimum_approved_on: 2026-10-27

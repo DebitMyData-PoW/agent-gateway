@@ -36,7 +36,7 @@ from dmd_gateway.db.session import build_engine, session_factory
 from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
 from dmd_gateway.identity.did import issuer_did
-from dmd_gateway.identity.issuer import IssuerKey, load_issuer_key
+from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
@@ -45,6 +45,7 @@ from dmd_gateway.services.policy_pages import load_policy_pages
 from dmd_gateway.services.quotes import DID_REGISTRATION, QuoteContext
 from dmd_gateway.services.registrations import IssuanceContext
 from dmd_gateway.settings import Settings, get_settings, runtime_environ
+from dmd_gateway.signer.client import RemoteIssuer
 
 log = logging.getLogger("dmd_gateway")
 
@@ -56,7 +57,7 @@ def create_app(
     engine: Engine | None = None,
     adapters: Mapping[str, type[PaymentAdapter]] | None = None,
     price_sources: Mapping[str, PriceSourceFactory] | None = None,
-    issuer_key: IssuerKey | None = None,
+    issuer_key: Issuer | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -71,6 +72,12 @@ def create_app(
     engine = engine or build_engine(settings)
     if issuer_key is None and settings.issuer_key_path is not None:
         issuer_key = load_issuer_key(settings.issuer_key_path, issuer_did(settings.public_base_url))
+    if issuer_key is None and settings.issuer_signer_socket and settings.issuer_public_key:
+        issuer_key = RemoteIssuer(
+            socket_path=settings.issuer_signer_socket,
+            did=issuer_did(settings.public_base_url),
+            public_key_multibase=settings.issuer_public_key,
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

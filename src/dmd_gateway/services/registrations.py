@@ -49,7 +49,7 @@ from dmd_gateway.identity.credentials import (
 )
 from dmd_gateway.identity.crypto import parse_controller_key
 from dmd_gateway.identity.did import agent_did
-from dmd_gateway.identity.issuer import IssuerKey
+from dmd_gateway.identity.issuer import Issuer
 from dmd_gateway.identity.wallets import Wallet
 from dmd_gateway.services.controller_proofs import (
     ED25519,
@@ -68,7 +68,7 @@ X402_PAY_ACTION = "register_did_with_x402_payment"
 @dataclass(frozen=True)
 class IssuanceContext:
     registry: PaymentRouteRegistry
-    issuer: IssuerKey | None
+    issuer: Issuer | None
     public_base_url: str
 
     @property
@@ -254,10 +254,12 @@ def complete_registration(
 def _issue(
     session: Session,
     ctx: IssuanceContext,
-    issuer: IssuerKey,
+    issuer: Issuer,
     state: RegistrationState,
     now: datetime,
 ) -> IssuedIdentity:
+    # Whole seconds, so issued_at in the API equals the credential's signed validFrom.
+    now = now.replace(microsecond=0)
     registration, payment, proof = state.registration, state.payment, state.proof
     if payment is None or proof is None or proof.verified_at is None:  # excluded by the blockers
         raise RuntimeError("issuance reached without a settled payment and a verified proof")

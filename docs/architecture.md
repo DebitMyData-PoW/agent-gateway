@@ -54,7 +54,8 @@ callers:
 * DebitMyData Core RPC (private network only, dedicated credentials, method allowlist);
 * node administration, mining controls, wallet unlock, key export;
 * treasury and spending keys (kept in a separate environment);
-* credential-signing keys (stored apart from public API hosts).
+* the credential-signing key (in production, held only by the credential signer: no network,
+  its own user, checks every request against the database).
 
 DMD payments are tracked with a watch-only / descriptor wallet so that gateway hosts never
 hold keys that can move funds.
@@ -97,9 +98,9 @@ set by DebitMyData (`minimum_usd_per_dmd` in `dmd_mining_cost`, 0.001 USD per DM
 DMD for a DID) and the mining cost. The mining cost keeps being computed and is shown next to
 the minimum, with the one that applied (`price_from`). Because the work per block is
 averaged over a week, a short burst of hashing power cannot lift the price above the
-minimum: that takes about 15 times today's network work for most of a week. The date of
-DebitMyData's written approval of the rate goes in `minimum_approved_on` and is shown with
-the price. Once DMD trades on an exchange, a market price source replaces both.
+minimum: that takes about 15 times today's network work for most of a week. DebitMyData
+approved the rate on 27 October 2026 (`minimum_approved_on`); the date is shown with the
+price. Once DMD trades on an exchange, a market price source replaces both.
 
 ## Monitoring
 
@@ -386,8 +387,18 @@ issued identity is later reorganized away, the worker records the alert
   eligibility come later (ID-11).
 * **Issuer key custody (ID-15):** development and staging read the key from a file only its
   owner can read (`DMD_GW_ISSUER_KEY_PATH`, created with `dmd-gateway-issuer-key`).
-  Production refuses a key file: it needs a separate signer so the key never sits on a
-  public API host.
+  Production refuses a key file. There the key belongs to the credential signer
+  (`dmd-gateway-signer`, `src/dmd_gateway/signer`): its own system user, no network access,
+  reached by the API through a local socket that only the gateway's user can open. Before
+  signing, it checks the facts in the database itself through a read-only role: a
+  registration credential only for a settled payment with a verified controller proof and no
+  credential yet; a donation receipt only for a settled donation without one. The API checks
+  every returned signature against the published key (`DMD_GW_ISSUER_PUBLIC_KEY`), and answers
+  503 `issuance_unavailable` (nothing issued, the payment kept) while the signer is down. A
+  compromised API host can therefore neither copy the key nor obtain a credential for
+  something unpaid. The key is backed up encrypted with the nightly backup
+  ([production.md](production.md)); rotating it means publishing the new key while keeping
+  the old one verifiable, a procedure still to write.
 
 ## Policy pages
 
