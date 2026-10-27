@@ -1,16 +1,24 @@
 # DebitMyData Agent Gateway
 
 > **Status: in development.** Nothing accepts real payments yet and every payment rail is
-> switched off by default. The full flow runs on test networks (a private DMD regtest chain,
-> and Base Sepolia for USDC through x402). See [Status](#status).
+> switched off by default. The full flow runs on test networks (a private DebitMyData regtest
+> chain, and Base Sepolia for USDC through x402). See [Status](#status).
 
 The Agent Gateway is being built as the public integration surface that will let autonomous
 agents, bots, digital twins, people and organizations **discover DebitMyData, get a quote,
 pay through an approved rail, prove control of their wallet or key, and receive a
 DebitMyData DID, signed credential and entitlements**.
 
-The gateway sits *around* the DebitMyData Proof-of-Work chain. It does not change DMD
-consensus, and it never exposes node RPC, private keys or treasury controls to callers.
+The gateway sits *around* the DebitMyData Proof-of-Work chain. It does not change
+DebitMyData consensus, and it never exposes node RPC, private keys or treasury controls to
+callers.
+
+**Naming.** DMD is the ticker of the DebitMyData coin, the native coin of the DebitMyData
+Proof-of-Work chain (addresses start with `dm1`); it is what every DebitMyData wallet shows.
+It is not a token on Ethereum or Base, and it is unrelated to other tokens that use the same
+ticker. So amounts and prices are in **DMD**, the payment option is named **DebitMyData coin
+(native PoW chain)**, and the project, its chain, nodes and explorer are called
+**DebitMyData**.
 
 ```
 Agent wallet (Coinbase / AWS / DMD / other approved)
@@ -21,7 +29,7 @@ Discovery: REST / MCP / x402 Bazaar
         ▼
 Agent Gateway ── quote + payment intent + policy
         │
-        ├── Native DMD adapter ──► private DMD nodes (watch-only)
+        ├── Native DMD adapter ──► private DebitMyData nodes (watch-only)
         ├── x402 / USDC Base adapter ──► facilitator
         └── future approved rails (disabled until reviewed)
         │
@@ -31,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.12.3`). The whole registration flow (quote,
+This is an early development release (`0.13.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -54,17 +62,18 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
 | Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
-| DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DMD difficulty from the public explorer) |
-| Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DMD node vs explorer, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
+| DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DebitMyData difficulty from the public explorer) |
+| Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
 | Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (awaiting DebitMyData's written approval of the rate) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (drafts awaiting DebitMyData's approval) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
+| Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it is
-priced by the higher of a minimum rate (0.001 USD per DMD) and the cost of mining DMD, and still needs the gateway's own DMD node with the
-watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging; on
+priced by the higher of a minimum rate (0.001 USD per DMD) and the cost of mining DMD, and
+still needs the gateway's own DebitMyData node with the watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging; on
 Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
 facilitator, which needs DebitMyData's CDP API key (DEC-08). A staging server with the full flow on a private
 regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
@@ -225,7 +234,7 @@ how an agent may pay. A rail is enabled only when **all** of these hold:
    (`https://api.cdp.coinbase.com/platform/v2/x402`) also needs a usable CDP API key
    (`DMD_X402_CDP_API_KEY_ID`, `DMD_X402_CDP_API_KEY_SECRET`).
 
-Rails on test networks (DMD regtest/testnets, Base Sepolia) are refused in production.
+Rails on test networks (DebitMyData regtest/testnets, Base Sepolia) are refused in production.
 
 If a rail is switched on while 3–8 are not met, the gateway **refuses to start** instead of
 running a half-configured rail. Kill switches fail safe: any unrecognised value counts as
@@ -251,7 +260,7 @@ once safely. To try the whole flow on a private chain, from quote to DID, follow
 
 ```
 config/payment_routes.yaml   payment rails, services, commercial price (no secrets)
-config/payment_routes.regtest.yaml   the same, on test networks (DMD regtest, Base Sepolia)
+config/payment_routes.regtest.yaml   the same, on test networks (DebitMyData regtest, Base Sepolia)
 deploy/staging/              staging server setup (nginx, systemd services, Cloudflare-only firewall)
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
@@ -279,15 +288,15 @@ tests/
 docs/                        architecture, roadmap, operator checklists
 ```
 
-Before connecting the gateway to any DMD node, verify that node's RPC isolation with
+Before connecting the gateway to any DebitMyData node, verify that node's RPC isolation with
 [docs/sec-04-rpc-isolation.md](docs/sec-04-rpc-isolation.md).
 
 ## Ground rules
 
 These apply to every change in this repository:
 
-- Do not modify DMD consensus code to support gateway features.
-- Never expose DMD Core RPC publicly or forward arbitrary RPC methods.
+- Do not modify DebitMyData consensus code to support gateway features.
+- Never expose DebitMyData Core RPC publicly or forward arbitrary RPC methods.
 - Never give callers private keys, seed phrases, wallet unlock or unrestricted signing.
 - No treasury or spending keys on gateway hosts; payment tracking is watch-only.
 - Never accept an asset by ticker symbol; match chain ID + canonical contract/identifier.

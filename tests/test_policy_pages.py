@@ -77,6 +77,7 @@ def test_pages_are_filled_in_for_their_server() -> None:
 def test_payment_methods_list_only_approved_rails() -> None:
     table = _pages()["payment-methods"].markdown
     assert "| DMD | DebitMyData PoW (`dmd:mainnet`) | native coin | 6 |" in table
+    assert "| DebitMyData coin (native PoW chain) (`dmd_pow_native`) | DMD |" in table
     usdc = "| USDC | Base (`eip155:8453`) | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | 5 |"
     assert usdc in table
     assert "x402_dmd_wrapped_base" not in table and "solana_usdc" not in table
@@ -89,6 +90,9 @@ def test_payment_methods_list_only_approved_rails() -> None:
 def test_payment_methods_state_how_dmd_is_priced(tmp_path: Path) -> None:
     text = _pages()["payment-methods"].markdown
     assert "the higher of DebitMyData's minimum rate of 0.001 USD per DMD and the cost" in text
+    # The ticker is explained once, so DMD is never taken for an unrelated token.
+    assert "DMD is the ticker of the DebitMyData coin, the native coin of DebitMyData's own" in text
+    assert "unrelated to other tokens that use the same ticker" in text
     assert "{{" not in text
     data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
     del data["dmd_mining_cost"]["minimum_usd_per_dmd"]

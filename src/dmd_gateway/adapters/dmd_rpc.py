@@ -103,7 +103,7 @@ class DmdRpcClient:
             if not (environ.get(name) or "").strip()
         ]
         if missing:
-            raise RpcUnavailable("missing DMD RPC settings: " + ", ".join(missing))
+            raise RpcUnavailable("missing DebitMyData node RPC settings: " + ", ".join(missing))
         return cls(
             environ["DMD_RPC_URL"].strip(),
             environ["DMD_RPC_USER"].strip(),

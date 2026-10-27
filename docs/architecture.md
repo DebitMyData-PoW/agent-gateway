@@ -21,7 +21,7 @@ the quote states the exact amount in that rail's asset.
                  │        │                                    │
                  │        ▼                                    │
                  │  Payment adapters (one per rail)            │
-                 │   ├─ DMDNativePaymentAdapter ───────────────┼──► private DMD nodes
+                 │   ├─ DMDNativePaymentAdapter ───────────────┼──► private DebitMyData nodes
                  │   ├─ X402PaymentAdapter ────────────────────┼──► x402 facilitator
                  │   └─ Evm / Solana / future (disabled)       │
                  │        │                                    │
@@ -51,7 +51,7 @@ the quote states the exact amount in that rail's asset.
 The gateway is the only public integration surface. Behind it, and never reachable by
 callers:
 
-* DMD Core RPC (private network only, dedicated credentials, method allowlist);
+* DebitMyData Core RPC (private network only, dedicated credentials, method allowlist);
 * node administration, mining controls, wallet unlock, key export;
 * treasury and spending keys (kept in a separate environment);
 * credential-signing keys (stored apart from public API hosts).
@@ -72,7 +72,7 @@ USD per DMD = hashes per block × joules per hash × USD per joule ÷ DMD per bl
 The payment worker computes it every 5 minutes (`pricing/mining_cost.py`) and stores it,
 append-only, with every input:
 
-* **hashes per block**: from the gateway's own DMD mainnet node, averaged over the last week
+* **hashes per block**: from the gateway's own DebitMyData mainnet node, averaged over the last week
   (4,032 blocks) from the chain's total work, so a short burst of extra hashing power barely
   moves it, and cross-checked against the public explorer. Servers without a mainnet node
   (staging) use the explorer's current difficulty instead (`DMD_GW_DMD_PRICE_CHAIN_DATA_FROM`);
@@ -105,7 +105,7 @@ the price. Once DMD trades on an exchange, a market price source replaces both.
 
 `dmd-gateway-monitor` (`monitoring/`) runs every 2 minutes from a systemd timer. It checks the
 API, the payment worker's heartbeat (recorded on every pass), each enabled payment option's
-readiness (node, chain RPC, facilitator), the DMD price, the DMD node against the public
+readiness (node, chain RPC, facilitator), the DMD price, the DebitMyData node against the public
 explorer, alerts recorded by the worker (a payment that left the chain after issuance),
 refunds due, stuck payments, and whether a receiving destination changed. Findings are kept
 in `alert_states`: an ongoing problem is sent when it starts, repeated while it lasts, and
@@ -167,6 +167,11 @@ credited and is due for refund. Nothing is ever credited silently. These rules l
 `src/dmd_gateway/domain/settlement.py` and apply to every rail.
 
 ## Native DMD payments
+
+DMD is the ticker of the DebitMyData coin, the native coin of the DebitMyData Proof-of-Work
+chain, as every DebitMyData wallet shows it. Quotes give the asset as `DMD` and name the
+payment option "DebitMyData coin (native PoW chain)"; the ticker is explained wherever an
+agent first meets it, since unrelated tokens use the same ticker.
 
 * The gateway's node wallet is a **watch-only descriptor wallet** holding only the public
   receive descriptor of the treasury wallet. The gateway can create addresses and see

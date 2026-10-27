@@ -1,6 +1,6 @@
 ---
 title: Payment methods
-version: 2026-10-26
+version: 2026-10-27
 status: draft
 summary: How a DebitMyData DID registration is priced, quoted and paid, and which assets and networks are accepted.
 ---
@@ -37,7 +37,12 @@ offered in new quotes.
 
 {{ payment_methods }}
 
-### DMD, on the DebitMyData Proof-of-Work chain
+### DMD, the DebitMyData coin, on the DebitMyData Proof-of-Work chain
+
+DMD is the ticker of the DebitMyData coin, the native coin of DebitMyData's own
+Proof-of-Work blockchain; its addresses start with `dm1`, and DebitMyData wallets show
+amounts in DMD. It is not a token on Ethereum, Base or any other network, and it is
+unrelated to other tokens that use the same ticker.
 
 - Each quote has its own DMD address. Send the quoted amount to it from a DMD wallet.
 - The amount in DMD comes from the DMD/USD reference price, published at
@@ -99,8 +104,8 @@ them.
 
 ## Test networks
 
-On the staging server, payments use test networks whose coins have no value: a private DMD
-test chain and Base Sepolia. Test payments never count on the production service.
+On the staging server, payments use test networks whose coins have no value: a private
+DebitMyData test chain and Base Sepolia. Test payments never count on the production service.
 
 ## Questions
 

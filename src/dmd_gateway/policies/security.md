@@ -1,6 +1,6 @@
 ---
 title: Security
-version: 2026-10-25
+version: 2026-10-27
 status: draft
 summary: How the gateway protects payments and identities, how to check you are talking to it, and how to report a vulnerability.
 ---
@@ -34,7 +34,8 @@ summary: How the gateway protects payments and identities, how to check you are 
   once and never changed.
 - **Limits.** Requests are limited per address and in total, and each payment method can
   be switched off on its own at any time.
-- **Separate systems.** The DMD nodes' controls are never reachable from the internet.
+- **Separate systems.** The DebitMyData nodes' controls are never reachable from the
+  internet.
 
 ## Reporting a vulnerability
 

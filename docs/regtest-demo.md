@@ -13,7 +13,7 @@ This walkthrough runs the whole registration flow on a private regtest chain:
 Regtest coins have no value and the chain only exists on your machine. Never point the
 demo at a mainnet node or a real wallet.
 
-## 1. DMD node (once)
+## 1. DebitMyData node (once)
 
 Requires DebitMyData Core v1.3.3 (`debitmydatad`, `debitmydata-cli`).
 

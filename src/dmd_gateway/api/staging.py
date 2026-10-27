@@ -172,7 +172,9 @@ def create_test_payment(body: StagingPaymentRequest, request: Request) -> Stagin
             return _sign_x402_test_payment(session, request, intent, now)
         if intent.rail_id != TEST_RAIL or intent.network != TEST_NETWORK:
             raise ApiError(
-                409, "not_a_test_payment", "Only quotes on the DMD regtest chain can be test-paid."
+                409,
+                "not_a_test_payment",
+                "Only quotes on the DebitMyData regtest chain can be test-paid.",
             )
         _check_open(intent, now)
         already = session.scalar(

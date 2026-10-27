@@ -25,7 +25,11 @@ MAX_REFERENCES = 5
 X402_ADAPTER = "X402PaymentAdapter"
 
 _FORMATS: tuple[tuple[str, re.Pattern[str], str], ...] = (
-    ("dmd:", re.compile(r"^[0-9a-f]{64}$"), "a DMD transaction ID (64 hexadecimal characters)"),
+    (
+        "dmd:",
+        re.compile(r"^[0-9a-f]{64}$"),
+        "a DebitMyData transaction ID (64 hexadecimal characters)",
+    ),
     ("eip155:", re.compile(r"^0x[0-9a-f]{64}$"), "an EVM transaction hash (0x + 64 hex)"),
 )
 _GENERIC = re.compile(r"^[A-Za-z0-9._:-]{16,128}$")

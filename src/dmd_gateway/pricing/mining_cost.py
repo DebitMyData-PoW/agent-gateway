@@ -152,22 +152,22 @@ class DmdNodeFigures:
             chain = self._rpc.call("getblockchaininfo")
             if chain.get("chain") != "main":
                 raise InputUnavailable(
-                    f"the DMD node is on {chain.get('chain')!r}, not mainnet; "
+                    f"the DebitMyData node is on {chain.get('chain')!r}, not mainnet; "
                     "use the explorer for the chain figures"
                 )
             if chain.get("initialblockdownload"):
-                raise InputUnavailable("the DMD node is still syncing")
+                raise InputUnavailable("the DebitMyData node is still syncing")
             tip = int(chain["blocks"])
             window = min(DMD_WINDOW_BLOCKS, tip)
             if window < 1:
-                raise InputUnavailable("the DMD chain has no blocks yet")
+                raise InputUnavailable("the DebitMyData chain has no blocks yet")
             start_hash = self._rpc.call("getblockhash", {"height": tip - window})
             tip_header = self._rpc.call("getblockheader", {"blockhash": chain["bestblockhash"]})
             start_header = self._rpc.call("getblockheader", {"blockhash": start_hash})
         except (RpcError, RpcUnavailable, KeyError, TypeError, ValueError) as exc:
-            raise InputUnavailable(f"DMD node: {exc}") from exc
+            raise InputUnavailable(f"DebitMyData node: {exc}") from exc
         if int(tip_header.get("height", -1)) != tip:
-            raise InputUnavailable("the DMD node moved to a new block while being read")
+            raise InputUnavailable("the DebitMyData node moved to a new block while being read")
         work = int(tip_header["chainwork"], 16) - int(start_header["chainwork"], 16)
         return ChainFigures(
             hashes_per_block=_positive(Decimal(work) / window),
@@ -179,7 +179,7 @@ class DmdNodeFigures:
 
 
 class DmdExplorerFigures:
-    """The current difficulty and height from the public DMD explorer."""
+    """The current difficulty and height from the public DebitMyData explorer."""
 
     def __init__(self, client: httpx.Client, base_url: str) -> None:
         self._client = client
@@ -195,7 +195,7 @@ class DmdExplorerFigures:
             difficulty = self._get("/api/getdifficulty")
             height = int(self._get("/api/getblockcount"))
         except (httpx.HTTPError, InputUnavailable) as exc:
-            raise InputUnavailable(f"DMD explorer: {type(exc).__name__}") from exc
+            raise InputUnavailable(f"DebitMyData explorer: {type(exc).__name__}") from exc
         return ChainFigures(difficulty * TWO_POW_32, difficulty, height, "explorer", None)
 
 
@@ -214,12 +214,12 @@ def compute_price(
     """The DMD/USD price and the record of everything it came from."""
     dmd_per_block = dmd_block_subsidy(chain.height)
     if dmd_per_block <= 0:
-        raise InputUnavailable("the DMD block reward is zero")
+        raise InputUnavailable("the DebitMyData block reward is zero")
     cost = dmd_mining_cost_usd(chain.hashes_per_block, dmd_per_block, parameters)
     cost = cost.quantize(PRICE_PLACES)
     minimum = parameters.minimum_usd_per_dmd
     if minimum is None and cost <= 0:
-        raise InputUnavailable("the DMD difficulty is too low to give a price")
+        raise InputUnavailable("the DebitMyData difficulty is too low to give a price")
     from_minimum = minimum is not None and minimum > cost
     price = minimum if from_minimum and minimum is not None else cost
     kwh_per_block = (

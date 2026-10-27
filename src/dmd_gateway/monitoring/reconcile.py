@@ -63,7 +63,7 @@ class Report:
         else:
             verdict = "all checks passed"
         return Message(
-            subject=f"[DMD Gateway {environment}] Daily report {self.day}: {verdict}",
+            subject=f"[DebitMyData Gateway {environment}] Daily report {self.day}: {verdict}",
             body="\n".join(self.lines).strip() + "\n",
             critical=bool(problems),
             report=True,

@@ -253,7 +253,9 @@ def test_dmd_quote_uses_the_approved_price(db_client: TestClient, engine: Engine
     assert response.status_code == 201, response.text
     quote = response.json()
     option = quote["selected_payment_option"]
+    # DMD is the coin's ticker, as wallets show it; the name says whose coin it is.
     assert option["asset"] == "DMD"
+    assert option["name"] == "DebitMyData coin (native PoW chain)"
     assert option["network"] == "dmd:mainnet"
     assert option["payment_protocol"] == "dmd_native"
     assert option["amount"] == "125.00000000"  # 25.00 USD at 0.20 USD per DMD

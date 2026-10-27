@@ -7,7 +7,7 @@ Each check looks at one thing and returns what is wrong, as findings (``alerts.F
   rails      every enabled payment option can still verify payments (node, chain RPC,
              facilitator), with the same checks the gateway runs at start
   price      the DMD price is fresh, and its parameters are not past their review
-  dmd_chain  the gateway's DMD mainnet node agrees with the public explorer on the height
+  dmd_chain  the gateway's DebitMyData mainnet node agrees with the public explorer on the height
   audit      alerts recorded by the worker (a payment reorganized out of the chain after its
              DID or receipt was issued) and payments that need a refund
   payments   USDC settlements with an unknown outcome, and payments confirming for too long
@@ -184,7 +184,7 @@ def check_price(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
                 W,
                 "The DMD price is not being updated",
                 f"Last update: {age} ago. DMD quotes are refused until it is updated again "
-                "(the payment worker computes it every 5 minutes from the DMD chain).",
+                "(the payment worker computes it every 5 minutes from the DebitMyData chain).",
             )
         )
     due = (record.inputs or {}).get("parameters_review_due_on") if record else None
@@ -214,7 +214,8 @@ def check_dmd_chain(ctx: MonitorContext, session: Session, now: datetime) -> lis
         Finding(
             "dmd_chain.height",
             W,
-            f"The gateway's DMD node is {abs(node - explorer)} blocks {behind} the explorer",
+            f"The gateway's DebitMyData node is {abs(node - explorer)} blocks {behind} the "
+            "explorer",
             f"Node: block {node}. Public explorer: block {explorer}. A node behind sees DMD "
             "payments late; a large difference can also mean the node or the explorer is on "
             "another chain.",

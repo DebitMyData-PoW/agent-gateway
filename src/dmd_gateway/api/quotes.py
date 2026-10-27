@@ -28,7 +28,7 @@ _KEY = "ed25519:z6Mk<your agent public key>"
 # docs page's "Examples" list.
 EXAMPLES = {
     "dmd": {
-        "summary": "Pay in DMD (native DebitMyData PoW)",
+        "summary": "Pay in DMD, the DebitMyData coin (native PoW chain)",
         "value": {
             "controller_public_key": _KEY,
             "display_name": "TestAgent-01",

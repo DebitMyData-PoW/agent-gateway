@@ -11,9 +11,9 @@ place; the application logic comes with the related phase.
 ## Phase 0 – Setup and inventory
 
 - [x] P0-01 Dedicated Agent Gateway repository
-- [ ] P0-02 Tag/back up the current DMD Core production release
+- [ ] P0-02 Tag/back up the current DebitMyData Core production release
 - [ ] P0-03 Inventory nodes, Electrum servers, explorer, wallets, pool, DNS, TLS, hosting (kept outside this public repository)
-- [ ] P0-04 Decide which hosts may reach private DMD RPC; deny all others
+- [ ] P0-04 Decide which hosts may reach private DebitMyData RPC; deny all others
 - [x] P0-05 Staging environment (`deploy/staging`, [staging.md](staging.md)), with staging-only test tools so the flow can be tried from its docs page; production comes after the security review
 - [ ] P0-06 Owners for DNS/TLS, DevOps, database, treasury, policy approval, incident response
 - [ ] P0-08 Secrets inventory (never in tickets, chat, source or docs)
@@ -21,7 +21,7 @@ place; the application logic comes with the related phase.
 
 ## Phase 1 – DMD infrastructure hardening
 
-- [ ] SEC-01 All public DMD nodes on the intended Core release and chain
+- [ ] SEC-01 All public DebitMyData nodes on the intended Core release and chain
 - [ ] SEC-02 Chain-anchor / fork protections confirmed
 - [ ] SEC-03 Review upstream Core security changes relevant to the DMD base
 - [ ] SEC-04 RPC bound to loopback/private network only (operator checklist: [sec-04-rpc-isolation.md](sec-04-rpc-isolation.md))
@@ -32,7 +32,7 @@ place; the application logic comes with the related phase.
 - [x] SEC-09 Watch-only / descriptor-based payment tracking (the gateway refuses a wallet that can spend)
 - [ ] SEC-10 Firewall verified from an external host
 - [ ] SEC-11 Secondary verification node with tip comparison
-- [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DMD node's height with the public explorer ([monitoring.md](monitoring.md))
+- [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DebitMyData node's height with the public explorer ([monitoring.md](monitoring.md))
 - [x] SEC-13 Reorg monitoring and alert thresholds: a payment that leaves the chain after its DID or receipt was issued is a critical alert; payments confirming for more than 2 hours are a warning
 - [ ] SEC-14 Backup and restore test (descriptors, configuration, database)
 - [ ] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook
@@ -197,3 +197,9 @@ and can be changed later.
 - [ ] DEC-15 Which EVM/Solana assets enter the next phase
 - [x] DEC-16 x402 confirmations before a USDC payment counts: 5 Base blocks (about 10
   seconds); 2 on Base Sepolia
+- [x] DEC-17 Naming (Preska Thomas, October 2026): the project, its chain, nodes, explorer
+  and gateway are called DebitMyData, so they are not confused with unrelated tokens that
+  use the ticker DMD. DMD stays the coin's ticker, as every DebitMyData wallet shows it:
+  amounts and prices are in DMD, the payment option is named "DebitMyData coin (native PoW
+  chain)", and the ticker is explained on the payment methods page, the price page, the MCP
+  introduction and the API guide (0.13.0)

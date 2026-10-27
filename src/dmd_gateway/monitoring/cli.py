@@ -62,7 +62,7 @@ def _test(settings: Settings, dispatcher: AlertDispatcher) -> int:
         print("No alert channel is configured: see docs/monitoring.md.")
         return 1
     message = Message(
-        subject=f"[DMD Gateway {settings.environment}] Test message",
+        subject=f"[DebitMyData Gateway {settings.environment}] Test message",
         body="If you read this, the gateway's alerts reach you on this channel.\n",
     )
     names = ", ".join(n.name for n in dispatcher.notifiers)
@@ -82,7 +82,7 @@ def run(
 ) -> int:
     now = now or datetime.now(UTC)
     fallback = FallbackState(settings.monitor_fallback_state_path)
-    prefix = f"[DMD Gateway {settings.environment}]"
+    prefix = f"[DebitMyData Gateway {settings.environment}]"
     client = http or httpx.Client(
         timeout=15, follow_redirects=False, headers={"User-Agent": USER_AGENT}
     )

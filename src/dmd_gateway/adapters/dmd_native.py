@@ -68,7 +68,7 @@ class DMDNativePaymentAdapter(PaymentAdapter):
     ) -> None:
         super().__init__(rail_id, rail, environ)
         if rail.network not in NETWORKS:
-            raise ValueError(f"unsupported DMD network {rail.network!r}")
+            raise ValueError(f"unsupported DebitMyData network {rail.network!r}")
         self._chain, self._hrp = NETWORKS[rail.network]
         self._rpc = rpc
         self._ready = False
@@ -93,18 +93,18 @@ class DMDNativePaymentAdapter(PaymentAdapter):
         chain = self._call("getblockchaininfo")
         if chain.get("chain") != self._chain:
             raise AdapterUnavailable(
-                f"DMD node is on chain {chain.get('chain')!r}, rail {self.rail_id} "
+                f"DebitMyData node is on chain {chain.get('chain')!r}, rail {self.rail_id} "
                 f"expects {self._chain!r}"
             )
         if chain.get("initialblockdownload"):
-            raise AdapterUnavailable("DMD node is still syncing (initial block download)")
+            raise AdapterUnavailable("DebitMyData node is still syncing (initial block download)")
         wallet = self._call("getwalletinfo")
         if wallet.get("private_keys_enabled") is not False:
             raise AdapterUnavailable(
-                "the gateway's DMD wallet can spend funds; it must be a watch-only wallet"
+                "the gateway's receiving wallet can spend funds; it must be a watch-only wallet"
             )
         if wallet.get("descriptors") is not True:
-            raise AdapterUnavailable("the gateway's DMD wallet must be a descriptor wallet")
+            raise AdapterUnavailable("the gateway's receiving wallet must be a descriptor wallet")
         self._ready = True
 
     def _ensure_ready(self) -> None:
@@ -117,10 +117,14 @@ class DMDNativePaymentAdapter(PaymentAdapter):
         self._ensure_ready()
         address = self._call("getnewaddress", label=payment_intent_id, address_type="bech32")
         if not isinstance(address, str) or not address.startswith(self._hrp + "1"):
-            raise AdapterUnavailable("DMD node returned an address for an unexpected network")
+            raise AdapterUnavailable(
+                "DebitMyData node returned an address for an unexpected network"
+            )
         info = self._call("getaddressinfo", address=address)
         if info.get("ismine") is not True or info.get("ischange") is True:
-            raise AdapterUnavailable("DMD node returned an address the wallet does not watch")
+            raise AdapterUnavailable(
+                "DebitMyData node returned an address the wallet does not watch"
+            )
         return PaymentDestination(
             recipient=address,
             recipient_kind="per_intent_address",
@@ -135,7 +139,7 @@ class DMDNativePaymentAdapter(PaymentAdapter):
         chain = self._call("getblockchaininfo")
         if chain.get("chain") != self._chain:
             self._ready = False
-            raise AdapterUnavailable("DMD node changed chain; refusing to observe payments")
+            raise AdapterUnavailable("DebitMyData node changed chain; refusing to observe payments")
 
         listed = self._call(
             "listreceivedbyaddress", minconf=0, include_empty=True, address_filter=address

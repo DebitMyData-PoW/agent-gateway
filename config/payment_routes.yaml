@@ -36,7 +36,7 @@ discovery_terms:
   - Coinbase Agentic Wallet
   - x402 payment
   - cryptocurrency payment
-  - DMD Proof-of-Work
+  - DebitMyData Proof-of-Work (DMD)
   - data ownership
   - data licensing
   - identity verification
@@ -113,7 +113,7 @@ donations:
 rails:
   # Primary native rail: direct DMD payment on the DebitMyData PoW chain.
   dmd_pow_native:
-    name: DebitMyData Native PoW Payment
+    name: DebitMyData coin (native PoW chain)
     stage: initial
     approved: true
     asset:

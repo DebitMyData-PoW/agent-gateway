@@ -97,10 +97,10 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 | The gateway API is not ready / not answering | critical | Agents cannot get quotes or register. `systemctl status dmd-gateway-api`; `curl http://127.0.0.1:8000/readyz` shows which part fails. |
 | The payment worker has stopped | critical | Payments are not verified, so nothing is issued after payment. `systemctl status dmd-gateway-worker`, `journalctl -u dmd-gateway-worker`. |
 | The payment worker fails on some payments | warning | Some payments raise errors; see the worker's log. |
-| USDC/DMD payments cannot be verified | critical | The DMD node, the Base RPC or the x402 facilitator does not answer or is on the wrong chain. Payments with that option are not confirmed until it is fixed. To stop new quotes for it, set its kill switch (e.g. `DMD_RAIL_X402_USDC_BASE_KILL=true`) and restart the API. |
-| The DMD price is not being updated | warning | DMD quotes are refused until it is. Check the worker and the DMD node or explorer. |
+| USDC/DMD payments cannot be verified | critical | The DebitMyData node, the Base RPC or the x402 facilitator does not answer or is on the wrong chain. Payments with that option are not confirmed until it is fixed. To stop new quotes for it, set its kill switch (e.g. `DMD_RAIL_X402_USDC_BASE_KILL=true`) and restart the API. |
+| The DMD price is not being updated | warning | DMD quotes are refused until it is. Check the worker and the DebitMyData node or explorer. |
 | The DMD price parameters are due for their quarterly review | warning | Review the electricity price and machine efficiency in `config/payment_routes.yaml`. |
-| The gateway's DMD node is N blocks behind / ahead of the explorer | warning | The node is syncing, stuck, or on another chain than the public explorer. |
+| The gateway's DebitMyData node is N blocks behind / ahead of the explorer | warning | The node is syncing, stuck, or on another chain than the public explorer. |
 | A DID's / donation's payment left the chain after it was issued | critical | A chain reorganization removed the payment. The worker keeps watching it; if it does not come back, the DID or receipt was given without payment. |
 | A payment needs a refund | warning | An overpayment, a late payment or a second payment arrived. Refund it as the refund policy says. |
 | USDC payments with an unknown settlement outcome | warning | Sent to the facilitator more than 30 minutes ago and still not found on chain. |

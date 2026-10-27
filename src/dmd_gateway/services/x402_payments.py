@@ -271,7 +271,7 @@ def resource_info(public_base_url: str, path: str, title: str) -> dict[str, Any]
             "dmd_did_holder entitlement for a registration whose controller key or wallet "
             "has been proven. Fixed fee 25.00 USD, paid here in USDC on Base. The "
             "registration_intent_id comes from POST /v1/dids/registration-quotes, which "
-            "also offers payment in native DMD."
+            "also offers payment in DMD, the native DebitMyData coin."
         ),
         "mimeType": "application/json",
         "serviceName": "DebitMyData",

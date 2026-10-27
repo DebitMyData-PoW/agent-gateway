@@ -152,7 +152,9 @@ DESCRIPTION = (
     "verification, controller proofs and DebitMyData DID issuance with signed credentials. "
     "Payment options appear only once their payment rail is enabled. AI agents can use the "
     "same steps through the MCP server at /mcp. Terms, privacy, payment, refund, DID and "
-    "security policies: [/policies](/policies)."
+    "security policies: [/policies](/policies). DMD is the ticker of the DebitMyData coin, "
+    "the native coin of the DebitMyData Proof-of-Work chain (addresses start with dm1); it "
+    "is unrelated to other tokens that use the same ticker."
 )
 
 
@@ -162,8 +164,8 @@ def _openapi_tags(settings: Settings) -> list[dict[str, str]]:
         {
             "name": "staging",
             "description": "Staging only: test tools that stand in for an agent's own key and "
-            "wallet, on test networks whose coins have no value (a private DMD chain, and Base "
-            "Sepolia for USDC). Not available in production.",
+            "wallet, on test networks whose coins have no value (a private DebitMyData chain, and "
+            "Base Sepolia for USDC). Not available in production.",
         },
         {
             "name": "registration",
@@ -194,7 +196,8 @@ TRY_IT_STEPS = [
         "/v1/dids/registration-quotes",
         "/v1/dids/registration-quotes",
         "paste your `controller_public_key`, and pick how to pay in "
-        "`preferred_payment_option`: `dmd_pow_native` (DMD) or `x402_usdc_base` (USDC). "
+        "`preferred_payment_option`: `dmd_pow_native` (DMD, the DebitMyData coin) or "
+        "`x402_usdc_base` (USDC). "
         "Keep `registration_intent_id` (starts with `dmd_did_intent_`) and "
         "`payment_intent_id` (starts with `dmd_payment_intent_`).",
     ),
@@ -294,8 +297,9 @@ def _add_try_it_guide(app: FastAPI) -> None:
             f"{len(TRY_IT_STEPS) + 1}. Open the `did_document_url` from step "
             f"{len(TRY_IT_STEPS)} in your browser.",
             "",
-            "**Paying with DMD** (`dmd_pow_native`): steps **1 → 2 → 3 → 4 → 5 → 6 → 7 → 8**. "
-            "Do step 3 within 15 minutes of step 2, and steps 5 to 7 within 5 minutes.",
+            "**Paying with DMD, the DebitMyData coin** (`dmd_pow_native`): steps "
+            "**1 → 2 → 3 → 4 → 5 → 6 → 7 → 8**. Do step 3 within 15 minutes of step 2, and "
+            "steps 5 to 7 within 5 minutes.",
             "",
             "**Paying with USDC through x402** (`x402_usdc_base`, Base Sepolia test USDC): "
             "steps **1 → 2 → 5 → 6 → 7 → 3 → 8**, without step 4, all within 15 minutes of "

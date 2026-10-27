@@ -126,7 +126,7 @@ class QuoteRequest(BaseModel):
         min_length=1,
         max_length=64,
         description="How the agent pays: an id from GET /v1/payment-options, such as "
-        "dmd_pow_native (DMD) or x402_usdc_base (USDC through x402).",
+        "dmd_pow_native (DMD, the DebitMyData coin) or x402_usdc_base (USDC through x402).",
     )
     metadata: dict[str, MetadataValue] = Field(default_factory=dict)
 

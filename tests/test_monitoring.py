@@ -149,12 +149,12 @@ def test_email_goes_to_the_right_people() -> None:
         "ops@example.com",
         "manager@example.com",
     ]
-    notifier.send(Message("[DMD Gateway staging] CRITICAL: x", "body", critical=True))
+    notifier.send(Message("[DebitMyData Gateway staging] CRITICAL: x", "body", critical=True))
     (smtp,) = FakeSmtp.instances
     assert smtp.calls == ["starttls", "login:alerts@example.com:pw", "quit"]
     (sent,) = smtp.sent
     assert sent["To"] == "ops@example.com, manager@example.com"
-    assert sent["Subject"] == "[DMD Gateway staging] CRITICAL: x"
+    assert sent["Subject"] == "[DebitMyData Gateway staging] CRITICAL: x"
 
 
 def test_email_over_ssl_and_failures() -> None:
@@ -317,7 +317,7 @@ def test_a_condition_is_sent_repeated_and_resolved(db: Session) -> None:
 
     first = alerts.apply(db, [stopped], {"worker"}, NOW)
     assert first is not None and first.critical
-    assert first.subject == "[DMD Gateway staging] CRITICAL: The payment worker has stopped"
+    assert first.subject == "[DebitMyData Gateway staging] CRITICAL: The payment worker has stopped"
     assert "Last: never" in first.body
     assert alerts.apply(db, [stopped], {"worker"}, NOW + timedelta(minutes=30)) is None
     again = alerts.apply(db, [stopped], {"worker"}, NOW + timedelta(minutes=61))
@@ -345,7 +345,7 @@ def test_events_are_sent_once_and_findings_go_out_together(db: Session) -> None:
     ]
     message = alerts.apply(db, findings, {"audit", "price"}, NOW)
     assert message is not None and message.critical
-    assert message.subject == "[DMD Gateway staging] CRITICAL: 3 alerts"
+    assert message.subject == "[DebitMyData Gateway staging] CRITICAL: 3 alerts"
     assert message.body.index("CRITICAL: A DID's payment") < message.body.index("WARNING")
     assert alerts.apply(db, findings[:1] + findings[2:], {"audit"}, NOW) is None  # events: once
     assert len(notifier.messages) == 1
@@ -515,7 +515,7 @@ def test_dmd_chain_check(db: Session) -> None:
     assert mc.check_dmd_chain(near, db, NOW) == []
     far = context(adapters, rpc=StubRpc(height=90), explorer_height=100, environ=environ)
     (finding,) = mc.check_dmd_chain(far, db, NOW)
-    assert finding.title == "The gateway's DMD node is 10 blocks behind the explorer"
+    assert finding.title == "The gateway's DebitMyData node is 10 blocks behind the explorer"
     assert mc.check_dmd_chain(context(), db, NOW) == []  # no DMD rail
 
 
@@ -750,7 +750,7 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
         assert "checked again on chain, all found" in body
         message = report.message("staging")
         assert message.report and message.subject.endswith("all checks passed")
-        assert message.subject.startswith("[DMD Gateway staging] Daily report")
+        assert message.subject.startswith("[DebitMyData Gateway staging] Daily report")
 
         # The blocks holding both payments leave the chain.
         CHAIN.reorg()
@@ -801,7 +801,8 @@ def test_check_command_sends_once_and_survives_a_lost_database(
     )
     assert run("check", settings, environ, alerts, http=http, now=NOW) == 0
     subjects = [m.subject for m in notifier.messages]
-    assert subjects == ["[DMD Gateway staging] CRITICAL: 2 alerts"], notifier.messages[0].body
+    expected = ["[DebitMyData Gateway staging] CRITICAL: 2 alerts"]
+    assert subjects == expected, notifier.messages[0].body
     assert run("check", settings, environ, alerts, http=http, now=NOW) == 0
     assert len(notifier.messages) == 1
 
@@ -844,4 +845,4 @@ def test_test_command_needs_a_channel(capsys: pytest.CaptureFixture[str]) -> Non
     assert "No alert channel" in capsys.readouterr().out
     notifier = FakeNotifier()
     assert _test(settings, dispatcher(notifier)) == 0
-    assert notifier.messages[0].subject == "[DMD Gateway development] Test message"
+    assert notifier.messages[0].subject == "[DebitMyData Gateway development] Test message"

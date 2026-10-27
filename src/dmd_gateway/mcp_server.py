@@ -67,7 +67,10 @@ ABOUT = (
     "digital twins, people, organizations and other approved participants discover "
     "DebitMyData and pay it from the wallet, network or cryptocurrency they already use. "
     "The DebitMyData Proof-of-Work blockchain and the DMD cryptocurrency mined by the "
-    "DebitMyData miner network are its native settlement and participation layer. "
+    "DebitMyData miner network are its native settlement and participation layer. DMD is "
+    "the ticker of the DebitMyData coin, native to that blockchain (addresses start with "
+    "dm1): it is not a token on Ethereum, Base or any other network, and it is unrelated "
+    "to other tokens that use the same ticker. "
     "Payment options listed here are the ones currently enabled; each payment is verified "
     "before a DID or entitlement is issued."
 )
@@ -185,8 +188,8 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
     @server.tool(title="Discover DebitMyData", annotations=READ_ONLY)
     async def dmd_discover() -> dict[str, Any]:
-        """Explain DebitMyData, the DMD Proof-of-Work chain, the offers, the enabled payment
-        methods, the policies and the public endpoints."""
+        """Explain DebitMyData, its Proof-of-Work chain and DMD coin, the offers, the enabled
+        payment methods, the policies and the public endpoints."""
         discovery = await api.call("GET", "/v1/discovery")
         return {"about": ABOUT, **discovery}
 

@@ -293,7 +293,7 @@ def test_refresher_settings() -> None:
 
     assert mc.PriceRefresher.from_settings(settings("off"), {}, registry) is None
     assert mc.PriceRefresher.from_settings(settings("explorer"), {}, registry) is not None
-    with pytest.raises(Exception, match="missing DMD RPC settings"):
+    with pytest.raises(Exception, match="missing DebitMyData node RPC settings"):
         mc.PriceRefresher.from_settings(settings("node"), {}, registry)  # needs the node's RPC
 
 
@@ -363,6 +363,7 @@ def test_public_endpoint_shows_the_price_and_its_inputs(engine: Engine) -> None:
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["asset"] == "DMD" and body["network"] == "dmd:mainnet"
+        assert body["note"].startswith("DMD is the ticker of the DebitMyData coin, the native coin")
         assert Decimal("0.0000675") < Decimal(body["usd_per_unit"]) < Decimal("0.0000677")
         assert 14_000 < Decimal(body["units_per_usd"]) < 15_000  # DMD per USD
         assert body["fresh"] is True

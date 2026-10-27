@@ -1,7 +1,7 @@
 # Staging server
 
 The staging server runs the whole gateway on one VPS at `https://staging-api.debitmydata.io`,
-on test networks whose coins have no value: a **private DMD regtest chain**, and **Base
+on test networks whose coins have no value: a **private DebitMyData regtest chain**, and **Base
 Sepolia** for USDC through x402. It exists for demos and
 end-to-end tests. Production (`api.debitmydata.io`) will be a separate server, set up after
 the security review.
@@ -12,7 +12,7 @@ Internet ── Cloudflare proxy (TLS, WAF) ──► VPS :443, open to Cloudfla
                                                └► gateway API + MCP (127.0.0.1:8000)
                                                     ├► payment worker
                                                     ├► PostgreSQL 16 (local)
-                                                    ├► DMD node, regtest (RPC on 127.0.0.1 only)
+                                                    ├► DebitMyData node, regtest (RPC on 127.0.0.1 only)
                                                     └► Base Sepolia: x402.org facilitator and
                                                        sepolia.base.org (read only), over HTTPS
 ```
@@ -34,7 +34,7 @@ active. The setup never changes SSH or other existing UFW rules.
    Security Level and Super Bot Fight Mode, placed first. Agents are not browsers.
 5. Security → Bots: **Bot Fight Mode off** (it cannot be skipped by a rule).
 
-**DMD Core:** copy your working `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
+**DebitMyData Core:** copy your working `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
 the VPS and make them executable (`chmod 755`). Use the build whose regtest chain starts
 correctly.
 
@@ -67,10 +67,10 @@ Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
 | --- | --- |
 | Settings and secrets (root only) | `/etc/dmd-gateway/gateway.env` |
 | Credential signing key | `/etc/dmd-gateway/keys/issuer-key.pem` |
-| DMD node settings / data | `/etc/debitmydata/debitmydata.conf` / `/var/lib/debitmydata` |
+| DebitMyData node settings / data | `/etc/debitmydata/debitmydata.conf` / `/var/lib/debitmydata` |
 | Services | `debitmydata`, `dmd-gateway-api`, `dmd-gateway-worker`, `nginx`, `postgresql` |
 | Logs | `journalctl -u dmd-gateway-api -f` (same for the others) |
-| DMD command line | `dmd-cli ...` (for example `dmd-cli getblockchaininfo`) |
+| DebitMyData command line | `dmd-cli ...` (for example `dmd-cli getblockchaininfo`) |
 
 ## 3. Try it from the docs page
 
@@ -327,11 +327,11 @@ cd /opt/agent-gateway
 
 `reads` is discovery, payment options and payment status; `quotes` creates DMD quotes (one
 database transaction and one new DMD address each; `--payment-option x402_usdc_base` skips
-the DMD node); `mixed` is 9 reads for every quote. It prints, per kind of request, how many
+the DebitMyData node); `mixed` is 9 reads for every quote. It prints, per kind of request, how many
 were answered, refused for going too fast (429) or failed, the requests per second, and the
 response times (median, 95th and 99th percentile, slowest).
 
-For reference, on a 2-core test machine running the API, PostgreSQL, the DMD node and the
+For reference, on a 2-core test machine running the API, PostgreSQL, the DebitMyData node and the
 load test together, one API process answered about **130 quotes** or **430 reads** a
 second, limited by the processors. The total of 50 writes a second is set well below that;
 if the server measures fewer than about 80 quotes a second, lower `dmd_writes_total` in
@@ -354,7 +354,7 @@ nothing until the email and Discord settings are in `/etc/dmd-gateway/gateway.en
 
 | | Staging | Production (to come) |
 | --- | --- | --- |
-| Chain | private regtest, coins without value | DMD mainnet |
+| Chain | private regtest, coins without value | DebitMyData mainnet |
 | USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |

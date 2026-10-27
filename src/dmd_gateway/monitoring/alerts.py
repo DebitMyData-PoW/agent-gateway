@@ -378,7 +378,7 @@ class AlertDispatcher:
         )
         active = [i for i in items if i.state != "resolved"]
         resolved = [i for i in items if i.state == "resolved"]
-        prefix = f"[DMD Gateway {self.environment}]"
+        prefix = f"[DebitMyData Gateway {self.environment}]"
         if len(items) == 1:
             item = items[0]
             label = (

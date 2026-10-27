@@ -1,4 +1,8 @@
-"""Public DMD/USD reference price, with every input it was computed from."""
+"""Public DMD/USD reference price, with every input it was computed from.
+
+DMD is the ticker of the DebitMyData coin, the native coin of the DebitMyData Proof-of-Work
+chain.
+"""
 
 from __future__ import annotations
 
@@ -18,12 +22,17 @@ router = APIRouter(prefix="/v1", tags=["discovery"])
 
 DMD_RAIL = "dmd_pow_native"
 DEFAULT_MAX_AGE_SECONDS = 900
-NOTE = (
+ABOUT_DMD = (
+    "DMD is the ticker of the DebitMyData coin, the native coin of the DebitMyData "
+    "Proof-of-Work chain (addresses start with dm1); it is unrelated to other tokens that "
+    "use the same ticker. "
+)
+NOTE = ABOUT_DMD + (
     "Reference price from the cost of mining DMD: the electricity it takes to mine a block "
     "(the block's work at the approved machine efficiency and electricity price) divided by "
     "the DMD the block creates. It is not a market price."
 )
-NOTE_WITH_MINIMUM = (
+NOTE_WITH_MINIMUM = ABOUT_DMD + (
     "Reference price for DebitMyData Gateway payments until DMD has a market price: the "
     "higher of DebitMyData's minimum rate and the cost of mining DMD (the electricity it "
     "takes to mine a block, at the approved machine efficiency and electricity price, divided "
@@ -40,7 +49,9 @@ class DmdPrice(BaseModel):
     price_from: str = Field(
         description="mining_cost, or minimum when the minimum rate is higher than the mining cost."
     )
-    mining_cost_usd_per_unit: str = Field(description="What it costs to mine 1 DMD.")
+    mining_cost_usd_per_unit: str = Field(
+        description="What it costs to mine 1 DMD (DebitMyData coin)."
+    )
     minimum_usd_per_unit: str | None = Field(
         description="DebitMyData's minimum rate until DMD has a market price; null if none."
     )
@@ -60,7 +71,7 @@ class DmdPrice(BaseModel):
 @router.get(
     "/prices/dmd-usd",
     response_model=DmdPrice,
-    summary="DMD/USD reference price and how it was computed",
+    summary="DMD/USD reference price (DMD: the DebitMyData coin) and how it was computed",
     responses={503: {"description": "No price has been computed yet."}},
 )
 def dmd_price(request: Request, response: Response) -> DmdPrice:
