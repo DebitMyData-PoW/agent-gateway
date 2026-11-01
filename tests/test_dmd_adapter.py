@@ -30,7 +30,7 @@ def regtest_rail() -> RailConfig:
 
 
 class FakeNode:
-    """Answers JSON-RPC like DMD Core v1.3.3 for one watch-only wallet."""
+    """Answers JSON-RPC like DebitMyData Core v1.3.5 for one watch-only wallet."""
 
     def __init__(self) -> None:
         self.chain = "regtest"

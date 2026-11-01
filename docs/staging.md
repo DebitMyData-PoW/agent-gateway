@@ -34,9 +34,8 @@ active. The setup never changes SSH or other existing UFW rules.
    Security Level and Super Bot Fight Mode, placed first. Agents are not browsers.
 5. Security → Bots: **Bot Fight Mode off** (it cannot be skipped by a rule).
 
-**DebitMyData Core:** copy your working `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
-the VPS and make them executable (`chmod 755`). Use the build whose regtest chain starts
-correctly.
+**DebitMyData Core v1.3.5:** copy `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
+the VPS and make them executable (`chmod 755`), after checking their SHA-256 against the release.
 
 ## 2. Install
 

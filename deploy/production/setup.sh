@@ -44,7 +44,7 @@ step "Checking prerequisites"
 [ "$(id -u)" -eq 0 ] || fail "run as root"
 grep -q 'VERSION_ID="24.04"' /etc/os-release || fail "this script targets Ubuntu 24.04"
 for bin in debitmydatad debitmydata-cli; do
-    [ -x "/usr/local/bin/$bin" ] || fail "/usr/local/bin/$bin is missing: copy the DebitMyData Core v1.3.3 binaries there first (chmod 755)"
+    [ -x "/usr/local/bin/$bin" ] || fail "/usr/local/bin/$bin is missing: copy the DebitMyData Core v1.3.5 binaries there first (chmod 755)"
 done
 if [ ! -s "$CERT" ] || [ ! -s "$CERT_KEY" ]; then
     fail "Cloudflare origin certificate missing: save it as $CERT and its key as $CERT_KEY"

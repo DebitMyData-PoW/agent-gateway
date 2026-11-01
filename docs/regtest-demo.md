@@ -15,7 +15,7 @@ demo at a mainnet node or a real wallet.
 
 ## 1. DebitMyData node (once)
 
-Requires DebitMyData Core v1.3.3 (`debitmydatad`, `debitmydata-cli`).
+Requires DebitMyData Core v1.3.5 (`debitmydatad`, `debitmydata-cli`).
 
 `~/.debitmydata/debitmydata.conf`:
 

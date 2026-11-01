@@ -34,7 +34,7 @@ Nightly: database + settings, encrypted with an offline key ──► Vultr Obje
   `*.debitmydata.io` certificate works if it is a wildcard): save it as
   `/etc/ssl/cloudflare/origin.pem` and its key as `/etc/ssl/cloudflare/origin.key`. SSL/TLS
   mode: Full (strict).
-- **DebitMyData Core v1.3.3:** copy the official `debitmydatad` and `debitmydata-cli` to
+- **DebitMyData Core v1.3.5:** copy the official `debitmydatad` and `debitmydata-cli` to
   `/usr/local/bin/` (`chmod 755`), after checking their SHA-256 against the release.
 
 ## 2. Install
@@ -197,6 +197,24 @@ Only with a version that already runs well on staging:
 
 It keeps every secret, key, wallet and setting, and refuses to run on a server whose
 settings are not production's.
+
+**A new DebitMyData Core release** (staging first, then production). Check the SHA-256 of the
+new `debitmydatad` and `debitmydata-cli` against the release, then:
+
+```bash
+dmd-cli listwallets          # note the wallets loaded now
+systemctl stop dmd-gateway-worker debitmydata
+install -m 755 debitmydatad debitmydata-cli /usr/local/bin/
+systemctl start debitmydata
+dmd-cli -rpcwait getnetworkinfo | jq -r .subversion   # the version now running
+dmd-cli listwallets          # the same list as before
+systemctl start dmd-gateway-worker
+```
+
+If a wallet is missing from the list, load it with `dmd-cli loadwallet <name> true` (`true`
+makes the node load it at every start from now on) before starting the worker. The wallets
+and the chain data stay as they are: from v1.3.3 to v1.3.5, the main chain's rules and the
+data formats did not change. The monitor may send one node alert during the restart.
 
 ## 9. Go-live checklist
 
