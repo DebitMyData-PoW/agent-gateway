@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.adapters.base import (
@@ -57,9 +57,13 @@ log = logging.getLogger(__name__)
 S = PaymentStatus
 
 # How long settled / expired / underpaid intents keep being watched for reorgs and late or
-# extra payments before only periodic reconciliation looks at them.
+# extra payments before only periodic reconciliation looks at them. A rail can watch its
+# settled payments longer (``confirmation_policy.watch_after_settlement_hours``).
 WATCH_WINDOW = timedelta(hours=24)
 BATCH_SIZE = 100
+# Places in each pass kept for watched intents, so a flood of open quotes cannot stop
+# the worker from noticing a reorganized payment.
+WATCHED_RESERVE = 20
 
 
 class DoubleCreditError(RuntimeError):
@@ -74,23 +78,83 @@ class PassResult:
     errors: int = 0
 
 
-def due_intent_ids(session: Session, rail_ids: list[str], now: datetime) -> list[str]:
+def settled_watch_windows(adapters: Mapping[str, PaymentAdapter]) -> dict[str, timedelta]:
+    """Rails that watch their settled payments for longer than ``WATCH_WINDOW``."""
+    windows: dict[str, timedelta] = {}
+    for rail_id, adapter in adapters.items():
+        hours = adapter.rail.confirmation_policy.watch_after_settlement_hours
+        if hours and timedelta(hours=hours) > WATCH_WINDOW:
+            windows[rail_id] = timedelta(hours=hours)
+    return windows
+
+
+def due_intent_ids(
+    session: Session,
+    rail_ids: list[str],
+    now: datetime,
+    settled_windows: Mapping[str, timedelta] | None = None,
+) -> list[str]:
+    """The intents to check in this pass, at most ``BATCH_SIZE``.
+
+    Open payments (someone is waiting for them) come first, then closed ones still watched
+    for reorganizations and late payments, which always keep ``WATCHED_RESERVE`` places when
+    there are enough of them. In each group the least recently checked come first, so every
+    intent is checked in turn, however many there are.
+    """
     if not rail_ids:
         return []
-    query = (
-        select(PaymentIntent.id)
-        .where(PaymentIntent.rail_id.in_(rail_ids))
-        .where(
-            or_(
-                PaymentIntent.status.in_([s.value for s in ACTIVE_STATUSES]),
-                (PaymentIntent.status.in_([s.value for s in WATCHED_AFTER_COMPLETION]))
-                & (PaymentIntent.updated_at > now - WATCH_WINDOW),
-            )
-        )
-        .order_by(PaymentIntent.updated_at)
-        .limit(BATCH_SIZE)
+    order = (
+        PaymentIntent.last_checked_at.asc().nulls_first(),
+        PaymentIntent.updated_at,
+        PaymentIntent.id,
     )
-    return list(session.scalars(query))
+    open_ids = list(
+        session.scalars(
+            select(PaymentIntent.id)
+            .where(PaymentIntent.rail_id.in_(rail_ids))
+            .where(PaymentIntent.status.in_([s.value for s in ACTIVE_STATUSES]))
+            .order_by(*order)
+            .limit(BATCH_SIZE)
+        )
+    )
+    watched = [
+        PaymentIntent.status.in_([s.value for s in WATCHED_AFTER_COMPLETION])
+        & (PaymentIntent.updated_at > now - WATCH_WINDOW)
+    ]
+    for rail_id, window in (settled_windows or {}).items():
+        if rail_id in rail_ids:
+            watched.append(
+                (PaymentIntent.rail_id == rail_id)
+                & (PaymentIntent.status == S.SETTLED.value)
+                & (PaymentIntent.updated_at > now - window)
+            )
+    watched_ids = list(
+        session.scalars(
+            select(PaymentIntent.id)
+            .where(PaymentIntent.rail_id.in_(rail_ids))
+            .where(or_(*watched))
+            .order_by(*order)
+            .limit(max(BATCH_SIZE - len(open_ids), WATCHED_RESERVE))
+        )
+    )
+    return open_ids[: BATCH_SIZE - len(watched_ids)] + watched_ids
+
+
+def _mark_checked(factory: sessionmaker[Session], payment_intent_id: str, now: datetime) -> None:
+    """Send an intent that could not be checked to the back of the queue, so it cannot
+    hold up the others (its rail is down, or checking it fails)."""
+    try:
+        with transaction(factory) as session:
+            session.execute(
+                update(PaymentIntent)
+                .where(PaymentIntent.id == payment_intent_id)
+                .values(last_checked_at=now)
+            )
+    except Exception:
+        log.exception(
+            "could not record a payment check",
+            extra={"event": {"payment_intent_id": payment_intent_id}},
+        )
 
 
 def _last_event(session: Session, payment_intent_id: str) -> PaymentEvent | None:
@@ -192,6 +256,7 @@ def process_intent(
     adapter = adapters.get(intent.rail_id)
     if adapter is None:
         return False
+    intent.last_checked_at = now  # saved with the rest, or by run_pass if this check fails
 
     current = S(intent.status)
     expected_units = int(intent.amount_base_units)
@@ -414,7 +479,7 @@ def run_pass(
     now: datetime,
 ) -> PassResult:
     with transaction(factory) as session:
-        ids = due_intent_ids(session, list(adapters), now)
+        ids = due_intent_ids(session, list(adapters), now, settled_watch_windows(adapters))
     processed = changed = unavailable = errors = 0
     for payment_intent_id in ids:
         try:
@@ -428,10 +493,12 @@ def run_pass(
                 "payment rail unavailable",
                 extra={"event": {"payment_intent_id": payment_intent_id, "error": str(exc)}},
             )
+            _mark_checked(factory, payment_intent_id, now)
         except Exception:
             errors += 1
             log.exception(
                 "payment processing failed",
                 extra={"event": {"payment_intent_id": payment_intent_id}},
             )
+            _mark_checked(factory, payment_intent_id, now)
     return PassResult(processed, changed, unavailable, errors)

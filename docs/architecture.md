@@ -365,7 +365,12 @@ there is no key; with both, the wallet's proof is in the `identity.issued` audit
 and one payment output can be
 credited to at most one intent (`credited_outputs` primary key). If a payment behind an
 issued identity is later reorganized away, the worker records the alert
-`alert.issued_identity_payment_reorged` for an operator.
+`alert.issued_identity_payment_reorged` for an operator. Settled payments stay watched for
+24 hours, or longer when their rail sets `confirmation_policy.watch_after_settlement_hours`
+(DebitMyData coin: 7 days, since the chain's low mining power makes recent blocks cheap to
+rewrite). Each worker pass checks open payments first, then the watched ones, which always
+keep part of the pass; within each group the least recently checked come first
+(`payment_intents.last_checked_at`), so no payment can be crowded out by others.
 
 ## Identifiers, DID documents and credentials
 

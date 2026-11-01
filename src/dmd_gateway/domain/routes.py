@@ -92,6 +92,9 @@ class RecipientConfig(_Strict):
 class ConfirmationPolicy(_Strict):
     required_confirmations: int | None = Field(default=None, ge=1)
     finality: str | None = None
+    # How long the worker keeps checking a settled payment for chain reorganizations.
+    # Unset: the worker's default (24 hours). Longer on chains with little mining power.
+    watch_after_settlement_hours: int | None = Field(default=None, ge=1, le=720)
 
     @property
     def is_set(self) -> bool:

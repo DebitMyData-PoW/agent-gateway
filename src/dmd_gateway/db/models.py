@@ -244,6 +244,9 @@ class PaymentIntent(Base):
     finality_policy: Mapped[str | None] = mapped_column(Text)
     quote_expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    # When the payment worker last checked this intent. It checks the least recently
+    # checked first, so every intent gets its turn however many there are.
+    last_checked_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 

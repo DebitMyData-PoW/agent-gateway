@@ -129,6 +129,7 @@ rails:
       source: per_intent_address     # unique DMD payment address per intent
     confirmation_policy:
       required_confirmations: 6      # DEC-02: as in the directive's example quote
+      watch_after_settlement_hours: 168  # a settled payment is re-checked for reorgs for 7 days
     price_policy:                    # DEC-01: mining-cost reference price (approved interim
       source: dmd_mining_cost        # method until DMD has a market price; computed by the
       max_price_age_seconds: 900     # worker every 5 minutes, see pricing/mining_cost.py)
