@@ -154,6 +154,7 @@ def create_app(
         _add_try_it_guide(app)
     else:
         app.include_router(docs_pages.swagger_router)
+        _add_how_to_guide(app)
     app.state.mcp = mount_mcp(app, settings)
     return app
 
@@ -252,6 +253,116 @@ TRY_IT_STEPS = [
         "`dmd_did_holder` entitlement.",
     ),
 ]
+
+
+# Outside staging, the docs page explains how to register a DID by hand. Paying and signing
+# happen outside the page, in the agent's own wallet and tools; each step that is a request
+# links to its endpoint (method, path, label), the others have none.
+STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
+HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
+    (("get", "/v1/payment-options", "/v1/payment-options"), "how you can pay right now."),
+    (
+        ("post", "/v1/dids/registration-quotes", "/v1/dids/registration-quotes"),
+        "your agent's `display_name`, its `controller_public_key` (or "
+        "`controller_wallet_address`), and how it pays in `preferred_payment_option`. Keep "
+        "`registration_intent_id` and `payment_intent_id`.",
+    ),
+    (
+        None,
+        "**Pay, outside this page.** DMD: from your wallet, send exactly "
+        "`selected_payment_option.amount` to `selected_payment_option.recipient` within "
+        "{quote} minutes of step 2. USDC: nothing yet, the payment is made in step 8.",
+    ),
+    (
+        ("get", "/v1/payments/{payment_intent_id}", "/v1/payments/{payment_intent_id}"),
+        "DMD: your `payment_intent_id`. Once the payment has the confirmations it needs "
+        "(`required_confirmations`), `status` is `settled`.",
+    ),
+    (
+        (
+            "post",
+            "/v1/dids/registrations/{registration_intent_id}/controller-challenges",
+            "/v1/dids/registrations/{id}/controller-challenges",
+        ),
+        "your `registration_intent_id`. Keep `challenge_id` and `message`.",
+    ),
+    (
+        None,
+        "**Sign `message`, outside this page,** with the agent's key (`signature_algorithm` "
+        "and `signature_encoding` in the answer say how) or its wallet (`personal_sign`), "
+        "within {challenge} minutes of step 5.",
+    ),
+    (
+        (
+            "post",
+            "/v1/dids/registrations/{registration_intent_id}/controller-proofs",
+            "/v1/dids/registrations/{id}/controller-proofs",
+        ),
+        "your `registration_intent_id`, `challenge_id` and the `signature`. The status is "
+        "`verified`.",
+    ),
+    (
+        ("post", "/v1/dids/registrations", "/v1/dids/registrations"),
+        "your `registration_intent_id`. DMD: you get the DID, its signed credential and the "
+        "`dmd_did_holder` entitlement. USDC: the first answer is `402` with the payment terms; "
+        "an x402 client (the agent's wallet) signs them and sends the same request again with "
+        "the `PAYMENT-SIGNATURE` header.",
+    ),
+]
+
+
+def _add_how_to_guide(app: FastAPI) -> None:
+    """Outside staging: how to register a DID by hand from the docs page, each request step
+    linked to its endpoint, and where to try the whole flow with test coins first."""
+    build = app.openapi
+    settings: Settings = app.state.settings
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        schema = build()
+        minutes = {
+            "quote": settings.quote_ttl_seconds // 60,
+            "challenge": settings.controller_challenge_ttl_seconds // 60,
+        }
+        lines = [
+            "### Register a DID from this page",
+            "",
+            f"**Want to see the whole flow first?** [Try it with test coins on the guided "
+            f"staging page]({STAGING_GUIDED_PAGE}): it runs every step for you.",
+            "",
+            "On this server every step is real: quotes, payments and DIDs. AI agents usually "
+            "do these steps themselves, through this API or the MCP server at `/mcp`. Paying "
+            "and signing happen outside this page, in the agent's own wallet and tools. "
+            "**Never paste a private key or a wallet's recovery phrase into this page: the "
+            "gateway never asks for one.**",
+            "",
+            "On [/docs](/docs), the **Values from your responses** panel (bottom right) keeps "
+            "each value the answers give you, with a **Copy** button and the step it goes "
+            "into.",
+            "",
+        ]
+        for number, (request, text) in enumerate(HOW_TO_STEPS, start=1):
+            text = text.format(**minutes)
+            if request is None:
+                lines.append(f"{number}. {text}")
+                continue
+            method, path, label = request
+            operation = schema["paths"][path][method]
+            tag = operation["tags"][0]
+            link = f"#/{tag}/{operation['operationId']}"
+            lines.append(f"{number}. **{tag}** › [{method.upper()} {label}]({link}): {text}")
+        lines += [
+            f"{len(HOW_TO_STEPS) + 1}. Open the `did_document_url` from step "
+            f"{len(HOW_TO_STEPS)} in your browser.",
+            "",
+            "`GET /v1/dids/registrations/{id}` shows at any time what a registration still "
+            "needs (`blockers`).",
+        ]
+        schema["info"]["description"] += "\n\n" + "\n".join(lines)
+        return schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 # The staging docs page forms: the payment options to pick from are added when the page is

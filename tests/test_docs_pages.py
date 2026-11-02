@@ -1,0 +1,121 @@
+"""The API docs pages: Swagger UI and ReDoc at exact versions checked by fingerprint, nothing
+else allowed to run, the how-to guide outside staging, and the values panel."""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import re
+
+from fastapi.testclient import TestClient
+
+from dmd_gateway.api import docs_pages
+from dmd_gateway.main import HOW_TO_STEPS, STAGING_GUIDED_PAGE
+
+from .test_staging_tools import staging_client  # noqa: F401
+
+
+def _sha256(text: str) -> str:
+    return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
+
+
+def _inline(html: str, tag: str) -> str:
+    return re.search(rf"<{tag}>(.*?)</{tag}>", html, re.S).group(1)
+
+
+def test_swagger_ui_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
+    page = client.get("/docs").text
+    for url, integrity in (docs_pages.SWAGGER_UI_JS, docs_pages.SWAGGER_UI_CSS):
+        assert f"@{docs_pages.SWAGGER_UI_VERSION}/" in url
+        assert re.fullmatch(r"sha384-[A-Za-z0-9+/]{64}", integrity)
+        assert f'"{url}" integrity="{integrity}" crossorigin="anonymous"' in page
+    assert "swagger-ui-dist@5/" not in page  # no longer "whatever 5.x is newest"
+    assert "validator.swagger.io" not in page
+
+
+def test_only_swagger_ui_and_the_page_own_code_may_run(client: TestClient) -> None:
+    response = client.get("/docs")
+    csp = response.headers["content-security-policy"]
+    script, style = _inline(response.text, "script"), _inline(response.text, "style")
+    assert f"script-src {docs_pages.SWAGGER_UI_JS[0]} 'sha256-{_sha256(script)}';" in csp
+    assert f"style-src {docs_pages.SWAGGER_UI_CSS[0]} 'sha256-{_sha256(style)}';" in csp
+    for rule in ("default-src 'none'", "connect-src 'self'", "frame-ancestors 'none'"):
+        assert rule in csp
+    assert "unsafe" not in csp
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_swagger_ui_settings_are_data_not_code(client: TestClient) -> None:
+    page = client.get("/docs").text
+    data = re.search(
+        r'<script type="application/json" id="swagger-config">(.*?)</script>', page, re.S
+    )
+    config = json.loads(data.group(1))
+    assert config["url"] == "/openapi.json"
+    assert config["validatorUrl"] is None
+    assert config["tryItOutEnabled"] is True and config["deepLinking"] is True
+
+
+def test_redoc_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
+    response = client.get("/redoc")
+    url, integrity = docs_pages.REDOC_JS
+    assert f"redoc@{docs_pages.REDOC_VERSION}/" in url
+    assert f'"{url}" integrity="{integrity}" crossorigin="anonymous"' in response.text
+    csp = response.headers["content-security-policy"]
+    assert f"script-src {url};" in csp and "default-src 'none'" in csp
+    assert "fonts.googleapis.com" not in response.text
+
+
+def test_the_values_panel_keeps_values_in_the_page_only() -> None:
+    script = docs_pages._HELPER_JS
+    for field in (
+        "registration_intent_id",
+        "payment_intent_id",
+        "challenge_id",
+        "message",
+        "payment_signature",
+        "did_document_url",
+    ):
+        assert f'"{field}"' in script
+    for storage in (
+        "localStorage",
+        "sessionStorage",
+        "indexedDB",
+        "document.cookie",
+        "sendBeacon",
+        "XMLHttpRequest",
+        "fetch(",
+    ):
+        assert storage not in script
+    # Private keys from the staging test tools are only taken from those tools' answers.
+    assert script.count("staging: true") == 2
+
+
+def test_the_docs_page_explains_how_to_register_by_hand(client: TestClient) -> None:
+    schema = client.get("/openapi.json").json()
+    guide = schema["info"]["description"]
+    assert "### Register a DID from this page" in guide
+    assert f"]({STAGING_GUIDED_PAGE})" in guide
+    assert "Never paste a private key" in guide
+    assert "Values from your responses" in guide
+    assert "15 minutes of step 2" in guide and "5 minutes of step 5" in guide
+    operations = {
+        (operation["tags"][0], operation["operationId"])
+        for methods in schema["paths"].values()
+        for operation in methods.values()
+    }
+    links = re.findall(r"\]\(#/([a-z]+)/([A-Za-z0-9_]+)\)", guide)
+    assert len(links) == sum(1 for request, _ in HOW_TO_STEPS if request)
+    assert set(links) <= operations  # every link opens a real endpoint
+
+
+def test_staging_keeps_its_own_guide_and_the_panel_on_the_advanced_page(
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    guide = staging_client.get("/openapi.json").json()["info"]["description"]
+    assert "### Register a DID from this page" not in guide
+    assert "Try the whole registration from this page" in guide
+    advanced = staging_client.get("/docs/advanced")
+    assert advanced.headers["content-security-policy"] == docs_pages.SWAGGER_CSP
+    assert _inline(advanced.text, "script") == docs_pages._HELPER_JS

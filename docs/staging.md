@@ -104,7 +104,10 @@ The page's **Advanced** link opens the Swagger UI page at
 <https://staging-api.debitmydata.io/docs/advanced>, with every endpoint. (Outside staging,
 that page is `/docs` itself; there is no guided page.) The top of that page lists
 the nine steps, each linked to its endpoint (it opens in a new tab): fill in the fields, click
-**Execute**, and copy the values named into the next step.
+**Execute**, and copy the values named into the next step. The panel **Values from your
+responses** (bottom right) keeps each value the answers give (IDs, keys, signatures, the DID
+links), with its own **Copy** button and the step it goes into; it keeps them in the open page
+only.
 
 On staging, each request body is shown as fields to fill in, with a list to pick from where
 the values are fixed (such as `preferred_payment_option`). The page sends them as a form, and
