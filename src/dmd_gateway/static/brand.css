@@ -14,7 +14,7 @@ color-scheme:light}
 .topbar .in,.site-footer .in{max-width:880px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;
 flex-wrap:wrap}
 .topbar .in{gap:12px}
-.topbar.wide .in,.site-footer.wide .in{max-width:1460px;padding-left:20px;padding-right:20px}
+.topbar.wide .in,.site-footer.wide .in{max-width:1140px;padding-left:20px;padding-right:20px}
 .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-weight:700;font-size:1.15rem}
 .brand img{width:32px;height:32px}
 .brand:hover{color:#fff}

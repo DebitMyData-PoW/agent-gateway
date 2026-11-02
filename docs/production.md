@@ -207,9 +207,12 @@ debitmydata.com colours and font (`src/dmd_gateway/static/brand.css` and
 `src/dmd_gateway/api/brand.py`). On the advanced API docs, the endpoints that act (POST) are
 red and those that only read (GET) grey.
 
-**The advanced API docs.** `/docs/advanced` is the Swagger UI page. It explains how to
-register a DID by hand (paying and signing happen in the agent's own wallet and tools, never
-in the page) and links to the guided test page on staging. Each step's endpoint is marked
+**The advanced API docs.** `/docs/advanced` is the Swagger UI page, with bigger text, fields
+and buttons than Swagger UI's own. It opens like the guided pages: the registration's steps
+as cards, in the order of the payment option picked (DMD, or USDC once it is open), the next
+one with what to paste into it and an **Open step N** button; the full written guide (how to
+register a DID by hand: paying and signing happen in the agent's own wallet and tools, never
+in the page) is folded under them, and every endpoint is below. Each step's endpoint is marked
 **Step N**, and the panel at the bottom right shows the next step with a **Go** button that
 opens it (or, for paying and signing, what to do outside the page) and what to paste into it,
 and keeps the values each answer gives, each with a **Copy** button, in the open page only.

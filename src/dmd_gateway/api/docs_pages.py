@@ -20,7 +20,10 @@ only: nothing is stored or sent anywhere.
 
 The Swagger UI page has the debitmydata.com look of the gateway's other pages (``brand``):
 their top bar and footer, the Mada font, and red for the endpoints that act (POST), grey for
-those that only read (GET).
+those that only read (GET). It opens like the guided pages: what the page is for, then the
+registration's steps as cards (the next one with what to paste into it and a button that
+opens its endpoint), the full written guide folded away, and every endpoint below, with
+bigger text, fields and buttons than Swagger UI's own.
 """
 
 from __future__ import annotations
@@ -118,8 +121,67 @@ def _external(tag: str, url: str, integrity: str) -> str:
     )
 
 
+def _intro(staging: bool, version: str) -> str:
+    """The top of the page: what it is for, the easier pages, and the steps' cards (drawn by
+    docs-helper.js in #adv-steps)."""
+    if staging:
+        note = (
+            "<p class=adv-note><strong>Staging server.</strong> Test networks whose coins have "
+            "no value, and test DIDs. The three <strong>staging</strong> endpoints stand in for "
+            "what a real agent does with its own key and wallet.</p>"
+        )
+        buttons = (
+            f'<a class="adv-button" href="{brand.GUIDED_PATH}">Easiest: the guided test</a>'
+            f'<a class="adv-button secondary" href="{brand.GET_DID_PATH}">Get a DID with your '
+            "wallet</a>"
+        )
+    else:
+        note = (
+            "<p class=adv-safe><strong>Every step here is real:</strong> quotes, payments and "
+            "DIDs. Paying and signing happen outside this page, in your own wallet and tools. "
+            "Never paste a private key or a recovery phrase into this page: the gateway never "
+            "asks for one.</p>"
+        )
+        buttons = (
+            f'<a class="adv-button" href="{brand.GET_DID_PATH}">Easiest: Get a DID</a>'
+            f'<a class="adv-button secondary" href="{brand.STAGING_GUIDED_PAGE}">Try it first '
+            "with test coins</a>"
+        )
+    return f"""<main class=adv>
+<section class=adv-hero>
+<h1>Advanced: API docs</h1>
+<p class=adv-lead>Every endpoint of the DebitMyData Agent Gateway, to call by hand: open one,
+fill in its fields and click <strong>Execute</strong>. AI agents use the same API, or the MCP
+server at <code>/mcp</code>.</p>
+{note}
+<div class=adv-actions>{buttons}</div>
+<p class=adv-meta>Version {escape(version)} · <a href="/openapi.json">OpenAPI (JSON)</a> ·
+<a href="/redoc">ReDoc</a> · <a href="{brand.POLICIES_PATH}">Policies</a></p>
+</section>
+<section class=adv-section aria-labelledby=adv-steps-title>
+<h2 id=adv-steps-title>Register a DID, step by step</h2>
+<p class=adv-sub>The next step is in red: open it, paste what it needs, click
+<strong>Execute</strong>. The panel at the bottom right keeps every value the answers give, with
+a <strong>Copy</strong> button.</p>
+<div id=adv-steps></div>
+<details class=adv-guide id=adv-guide><summary>The full written guide: every detail</summary>
+<div class=adv-guide-body><p class=adv-sub>Loading…</p></div></details>
+</section>
+<section class=adv-section aria-labelledby=adv-all-title>
+<h2 id=adv-all-title>All endpoints</h2>
+<p class=adv-sub><span class="adv-method get">GET</span> only reads,
+<span class="adv-method post">POST</span> does something. Click an endpoint to open it, fill in
+its fields, then click <strong>Execute</strong>.</p>
+</section>
+</main>"""
+
+
 def swagger_html(
-    openapi_url: str, title: str, steps: dict[str, Any] | None = None, staging: bool = False
+    openapi_url: str,
+    title: str,
+    steps: dict[str, Any] | None = None,
+    staging: bool = False,
+    version: str = "",
 ) -> str:
     settings = {"swagger": {"url": openapi_url, **SWAGGER_UI_PARAMETERS}, **(steps or {})}
     config = json.dumps(settings, indent=1)
@@ -130,7 +192,8 @@ def swagger_html(
         f"<title>{escape(title)}</title>"
         f'<link rel="icon" href="{FAVICON_URL}">'
         f"{_external('link', *SWAGGER_UI_CSS)}<style>{_HELPER_CSS}</style></head>"
-        f'<body>{brand.header("advanced", staging, wide=True)}<div id="swagger-ui"></div>'
+        f"<body>{brand.header('advanced', staging, wide=True)}{_intro(staging, version)}"
+        '<div id="swagger-ui"></div>'
         f"{brand.footer(wide=True)}"
         f'<script type="application/json" id="swagger-config">{config}</script>'
         f"{_external('script', *SWAGGER_UI_JS)}<script>{_HELPER_JS}</script></body></html>"
@@ -144,6 +207,7 @@ def swagger_ui(request: Request) -> HTMLResponse:
         f"{request.app.title} - API docs",
         steps() if steps else None,
         staging=bool(request.app.state.settings.staging_test_tools),
+        version=request.app.version,
     )
     return HTMLResponse(html, headers={**_HEADERS, "Content-Security-Policy": SWAGGER_CSP})
 

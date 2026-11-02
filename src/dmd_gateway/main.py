@@ -21,6 +21,7 @@ from sqlalchemy import Engine
 from dmd_gateway import __version__
 from dmd_gateway.adapters import PaymentAdapter
 from dmd_gateway.api import (
+    brand,
     discovery,
     docs_pages,
     donations,
@@ -206,7 +207,8 @@ TRY_IT_STEPS = [
         "/v1/staging/test-agent-keys",
         "/v1/staging/test-agent-keys",
         "a test agent key and wallet. Keep `controller_public_key` and `private_key` (and "
-        "`controller_wallet_address` and `wallet_private_key` to try a wallet, see below).",
+        "`controller_wallet_address` and `wallet_private_key` to try a wallet: see "
+        "**A wallet as the controller**).",
     ),
     (
         "post",
@@ -223,7 +225,7 @@ TRY_IT_STEPS = [
         "/v1/staging/test-payments",
         "/v1/staging/test-payments",
         "your `payment_intent_id`. DMD: test coins pay the quote and 6 blocks confirm "
-        "it. USDC: see below.",
+        "it. USDC: the test wallet signs the payment, for step 8.",
     ),
     (
         "get",
@@ -263,7 +265,7 @@ TRY_IT_STEPS = [
 # Outside staging, the docs page explains how to register a DID by hand. Paying and signing
 # happen outside the page, in the agent's own wallet and tools; each step that is a request
 # links to its endpoint (method, path, label), the others have none.
-STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
+STAGING_GUIDED_PAGE = brand.STAGING_GUIDED_PAGE
 HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
     (("get", "/v1/payment-options", "/v1/payment-options"), "how you can pay right now."),
     (
@@ -371,6 +373,24 @@ PANEL_TITLES = {
 # USDC (x402) is paid when registering, so its steps come in another order: on staging, the
 # test wallet signs the payment (step 3) right before registering.
 PANEL_X402_ORDER = {"production": [1, 2, 5, 6, 7, 8, 9], "staging": [1, 2, 5, 6, 7, 3, 8, 9]}
+# The advanced docs page's step cards: what each payment option's order means.
+PANEL_ORDER_NOTES = {
+    "production": {
+        "dmd": "Steps 1 to 9 in order. Send the payment (step 3) within {quote} minutes of "
+        "step 2, and sign (step 6) within {challenge} minutes of step 5.",
+        "x402": "No separate payment step: in step 8 the first answer is `402` with the "
+        "payment terms; an x402 client (the agent's wallet) signs them and sends the same "
+        "request again with the `PAYMENT-SIGNATURE` header.",
+    },
+    "staging": {
+        "dmd": "Steps 1 to 8 in order. Do step 3 within {quote} minutes of step 2, and steps "
+        "5 to 7 within {challenge} minutes.",
+        "x402": "Without step 4, all within {quote} minutes of step 2. Step 3 comes just "
+        "before step 8: it returns a long `payment_signature` (it starts with `eyJ`). Paste it "
+        "into the `PAYMENT-SIGNATURE` field of step 8 right away: it is valid for 5 minutes.",
+    },
+}
+_OPEN_DID_TEXT = "Open the `did_document_url` from step {last} in your browser."
 # A proof is verified but the quote names another controller (a key and a wallet): the
 # challenge, signature and proof steps are done again for it.
 PANEL_AGAIN_WHEN = {
@@ -422,17 +442,33 @@ PANEL_DONE_WHEN = {
 def panel_steps(app: FastAPI) -> dict[str, Any]:
     """The steps of the docs page's panel: for each, its endpoint (section, operation id,
     method and a path pattern to recognise its answers), or what to do outside the page."""
-    page = "staging" if app.state.settings.staging_test_tools else "production"
+    settings: Settings = app.state.settings
+    page = "staging" if settings.staging_test_tools else "production"
+    minutes = {
+        "quote": settings.quote_ttl_seconds // 60,
+        "challenge": settings.controller_challenge_ttl_seconds // 60,
+    }
     if page == "staging":
         requests = [(method, path) for method, path, _, _ in TRY_IT_STEPS]
+        labels = [label for _, _, label, _ in TRY_IT_STEPS]
+        texts = [text for *_, text in TRY_IT_STEPS]
     else:
         requests = [request[:2] if request else None for request, _ in HOW_TO_STEPS]
+        labels = [request[2] if request else None for request, _ in HOW_TO_STEPS]
+        texts = [text for _, text in HOW_TO_STEPS]
+    texts.append(_OPEN_DID_TEXT.format(last=len(requests)))
     schema = app.openapi()
     steps = []
     for number, (request, (title, outside)) in enumerate(
         zip([*requests, None], PANEL_TITLES[page], strict=True), start=1
     ):
-        step: dict[str, Any] = {"number": number, "title": title}
+        step: dict[str, Any] = {
+            "number": number,
+            "title": title,
+            "about": _card_text(texts[number - 1].format(**minutes)),
+        }
+        if number <= len(labels) and labels[number - 1]:
+            step["label"] = labels[number - 1]
         if request is None:
             step["outside"] = outside
             if title in PANEL_OUTSIDE_NEEDS:
@@ -458,7 +494,21 @@ def panel_steps(app: FastAPI) -> dict[str, Any]:
             if request in PANEL_AGAIN_WHEN:
                 step["again_when"] = PANEL_AGAIN_WHEN[request]
         steps.append(step)
-    return {"steps": steps, "x402_order": PANEL_X402_ORDER[page]}
+    notes = {name: note.format(**minutes) for name, note in PANEL_ORDER_NOTES[page].items()}
+    options = [rail_id for rail_id, _ in app.state.registry.enabled_rails(DID_REGISTRATION)]
+    return {
+        "steps": steps,
+        "x402_order": PANEL_X402_ORDER[page],
+        "x402_open": any(option.startswith("x402_") for option in options),
+        "order_notes": notes,
+    }
+
+
+def _card_text(text: str) -> str:
+    """A step's text for its card: without the bold lead the card's title already says
+    ("**Pay, outside this page.** DMD: ..."), and starting with a capital letter."""
+    text = re.sub(r"^\*\*.+?\*\*\s*", "", text)
+    return text[:1].upper() + text[1:]
 
 
 def _add_how_to_guide(app: FastAPI) -> None:

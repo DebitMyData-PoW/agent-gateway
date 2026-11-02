@@ -109,10 +109,12 @@ sends nothing, so any wallet works on staging.
 
 The page's **Advanced** link opens the Swagger UI page at
 <https://staging-api.debitmydata.io/docs/advanced>, with every endpoint (the same address
-outside staging, where there is no guided page and `/docs` leads to `/get-did`). The top of
-that page lists
-the nine steps, each linked to its endpoint (it opens in a new tab): fill in the fields, click
-**Execute**, and copy the values named into the next step. Each step's endpoint is marked
+outside staging, where there is no guided page and `/docs` leads to `/get-did`). It opens
+like the guided pages: the nine steps as cards, in the order of the payment option you pick
+(DMD or USDC), the next one in red with what to paste into it and an **Open step N** button
+that opens its endpoint on the page. Fill in the fields, click **Execute**, and the cards
+move on to the next step. The full written guide is folded under the cards (**The full
+written guide: every detail**), with every endpoint below. Each step's endpoint is marked
 **Step 1** to **Step 8**. The panel at the bottom right shows the next step, with a **Go**
 button that opens it (USDC has its own order, which the panel follows after the quote), and
 what to paste into it, each value with a **Copy** button (at step 6, the private key the

@@ -1,4 +1,118 @@
-body{margin:0;background:#fff}
+body{margin:0;background:#fff;color:var(--text)}
+/* The top of the page, in the guided pages' look */
+.adv{max-width:1140px;margin:0 auto;padding:30px 20px 0;font:17px/1.55 var(--sans);color:var(--text)}
+.adv *{box-sizing:border-box}
+.adv h1{font-size:2.3rem;line-height:1.15;margin:0 0 10px}
+.adv h2{font-size:1.6rem;line-height:1.2;margin:0 0 6px}
+.adv a{color:var(--red)}
+.adv a:hover{color:var(--red-hover)}
+.adv code{font:.88em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--code);border:1px solid var(--line);
+border-radius:5px;padding:1px 5px;overflow-wrap:anywhere;color:var(--red-deep)}
+.adv-lead{font-size:1.1rem;color:#3d3b3b;margin:0 0 14px;max-width:62rem}
+.adv-note,.adv-safe{border-radius:8px;padding:12px 16px;margin:0 0 16px;max-width:62rem}
+.adv-note{background:#fff7e0;border-left:4px solid #f6c000}
+.adv-safe{background:var(--pink);border-left:4px solid var(--red)}
+.adv-actions{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 12px}
+.adv-button{display:inline-block;font:700 1rem/1.3 var(--sans);border-radius:10px;padding:12px 22px;cursor:pointer;
+border:1px solid var(--red);background:var(--red);color:#fff!important;text-decoration:none;white-space:nowrap}
+.adv-button:hover{background:var(--red-hover);border-color:var(--red-hover)}
+.adv-button.secondary{background:#fff;color:var(--red)!important}
+.adv-button.secondary:hover{background:var(--pink)}
+.adv-button.small{padding:7px 16px;font-size:.95rem}
+.adv-button.big{background:var(--green);border-color:var(--green);font-size:1.1rem;padding:14px 26px}
+.adv-button.big:hover{background:var(--green-hover);border-color:var(--green-hover)}
+.adv-button:focus-visible,.adv summary:focus-visible,.adv input:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+.adv-meta{color:var(--muted);font-size:.95rem;margin:0}
+.adv-section{border-top:1px solid var(--line);margin-top:28px;padding-top:24px}
+.adv-sub{color:#3d3b3b;margin:0 0 14px}
+.adv-toolbar{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 8px}
+.adv-choice{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.adv-choice legend{font-weight:700;padding:0;margin:0 0 6px;float:left;width:100%}
+.adv-pill{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:999px;padding:7px 16px;
+cursor:pointer;font-weight:600;background:#fff}
+.adv-pill:has(input:checked){border:2px solid var(--red);padding:6px 15px;background:#fffafa}
+.adv-pill input{accent-color:var(--red);margin:0 4px 0 0}
+.adv-pill.off{opacity:.6;cursor:not-allowed}
+.adv-pill small{color:var(--muted);font-weight:400}
+.adv-order-note{color:#3d3b3b;font-size:.97rem;margin:6px 0 14px}
+ol.adv-steps{list-style:none;padding:0;margin:0 0 18px}
+.adv-step{border:1px solid var(--line);border-radius:14px;background:#fff;margin:0 0 10px;padding:12px 16px}
+.adv-step.waiting{background:var(--grey)}
+.adv-step.current{border:2px solid var(--red);padding:15px 19px;box-shadow:0 2px 12px rgba(33,31,31,.08);background:#fff}
+.adv-step.all-done{border:2px solid var(--green);color:var(--green);font-weight:600}
+.adv-step.all-done p{margin:0}
+.adv-step-head{display:flex;align-items:center;gap:14px}
+.adv-num{flex:0 0 auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+background:#e6e6e6;color:var(--muted)}
+.adv-step.current .adv-num{background:var(--red);color:#fff}
+.adv-step.done .adv-num{background:var(--green);color:#fff}
+.adv-step-title{flex:1;min-width:0}
+.adv-step h3{font-size:1.1rem;margin:0}
+.adv-step.waiting h3{color:#4b4f58}
+.adv-done{color:var(--green);font-weight:600;font-size:.95rem}
+.adv-endpoint{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px}
+.adv-endpoint code{background:transparent;border:0;padding:0;color:var(--text);font-size:.92rem}
+.adv-method{display:inline-block;font:700 .78rem/1 var(--sans);letter-spacing:.03em;color:#fff;border-radius:5px;padding:4px 7px}
+.adv-method.post{background:var(--red)}
+.adv-method.get{background:#4b4f58}
+.adv-outside{display:inline-block;margin-top:3px;font-size:.88rem;font-weight:600;color:var(--warn);background:#fff7e0;
+border-radius:999px;padding:1px 10px}
+.adv-step-body{margin:10px 0 0 50px}
+.adv-step-body>p{margin:0 0 8px}
+.adv-tip{color:#3d3b3b;font-size:.95rem}
+.adv-notice{background:#fff3c4;color:#5c3d00;border-radius:8px;padding:8px 12px;font-weight:600;font-size:.95rem}
+.adv-step .vp-fill{border-top:1px dashed #cfcfcf;margin-top:10px;padding-top:8px}
+.adv-step .vp-fill-title{font-size:.92rem;font-weight:600;color:#3d3b3b}
+.adv-step .vp-fill-row{gap:10px;margin:6px 0}
+.adv-step .vp-field{font-size:.85rem;padding:2px 7px}
+.adv-step .vp-fill-value{font-size:.9rem}
+.adv-step .vp-fill-main small{font-size:.85rem}
+.adv-step .vp-copy{font-size:.95rem;padding:4px 14px}
+.adv-guide{border:1px solid var(--line);border-radius:14px;padding:0 18px;margin:0 0 6px}
+.adv-guide summary{cursor:pointer;font-weight:700;color:var(--red);padding:14px 0}
+.adv-guide[open] summary{border-bottom:1px solid var(--line);margin-bottom:12px}
+.adv-guide-body{padding-bottom:14px;max-width:62rem}
+.adv-guide-body h3{font-size:1.2rem;margin:18px 0 8px}
+.adv-guide-body li{margin:0 0 6px}
+.adv-guide-body p{margin:0 0 10px}
+/* Swagger UI's own top block (title, description) is the top of this page instead. */
+.swagger-ui .information-container{display:none}
+/* Bigger text, fields and buttons in Swagger UI */
+.swagger-ui .wrapper{max-width:1140px}
+.swagger-ui .opblock-tag{font-size:26px;padding:12px 10px 12px 0}
+.swagger-ui .opblock-tag small{font-size:16px}
+.swagger-ui .opblock{border-radius:12px;margin:0 0 12px;box-shadow:none}
+.swagger-ui .opblock .opblock-summary{padding:9px 12px}
+.swagger-ui .opblock .opblock-summary-method{font-size:15px;min-width:78px;padding:9px 0;border-radius:7px}
+.swagger-ui .opblock .opblock-summary-path,.swagger-ui .opblock .opblock-summary-path__deprecated{font-size:17px}
+.swagger-ui .opblock .opblock-summary-description{font-size:15px}
+.swagger-ui .opblock .opblock-section-header{padding:12px 20px}
+.swagger-ui .opblock .opblock-section-header h4,.swagger-ui .opblock .opblock-section-header>label{font-size:16px}
+.swagger-ui .opblock-description-wrapper p,.swagger-ui .opblock-external-docs-wrapper p,
+.swagger-ui .opblock-title_normal p,.swagger-ui .renderedMarkdown p{font-size:16px;line-height:1.55}
+.swagger-ui .btn{font-size:16px;font-weight:700;padding:9px 24px;border-radius:8px}
+.swagger-ui .btn.execute{font-size:17px;padding:13px 24px}
+.swagger-ui .parameter__name{font-size:16px}
+.swagger-ui .parameter__type,.swagger-ui .parameter__in{font-size:13px}
+.swagger-ui table thead tr td,.swagger-ui table thead tr th{font-size:14px}
+.swagger-ui input[type=text],.swagger-ui input[type=password],.swagger-ui input[type=search],
+.swagger-ui input[type=email],.swagger-ui input[type=file]{font-size:16px;padding:10px 12px;border-radius:8px;border-color:#cfcfcf}
+.swagger-ui select{font-size:15px;border:1px solid #cfcfcf;border-radius:8px;padding:8px 40px 8px 12px;box-shadow:none}
+.swagger-ui textarea{font-size:14px;border-radius:8px}
+.swagger-ui .tab li{font-size:15px}
+.swagger-ui .responses-inner h4,.swagger-ui .responses-inner h5{font-size:15px}
+.swagger-ui .response-col_status{font-size:16px}
+.swagger-ui .opblock-body pre.microlight,.swagger-ui .highlight-code>.microlight{font-size:13.5px;border-radius:8px}
+.swagger-ui .model-title,.swagger-ui section.models h4{font-size:18px}
+@media (max-width:700px){
+.adv{padding-top:22px}
+.adv h1{font-size:1.8rem}
+.adv-step-head{flex-wrap:wrap}
+.adv-step-title{flex:1 1 calc(100% - 52px)}
+.adv-step-head>.adv-button{margin-left:50px}
+.adv-step-body{margin-left:0}
+.swagger-ui .opblock .opblock-summary-path{font-size:15px}
+}
 /* Opening a step draws its form a moment later: keep the page where Go put it. */
 html,body{overflow-anchor:none}
 /* Swagger UI in the debitmydata.com look: the Mada font (Swagger UI's own rules that set its

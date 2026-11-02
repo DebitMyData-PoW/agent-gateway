@@ -15,6 +15,7 @@ CSS = (files("dmd_gateway") / "static" / "brand.css").read_text(encoding="utf-8"
 
 GET_DID_PATH = "/get-did"
 GUIDED_PATH = "/docs"  # staging
+STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
 ADVANCED_PATH = "/docs/advanced"
 POLICIES_PATH = "/policies"
 

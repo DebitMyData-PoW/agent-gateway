@@ -191,3 +191,36 @@ def test_staging_keeps_its_own_guide_and_the_panel_on_the_advanced_page(
     advanced = staging_client.get("/docs/advanced")
     assert advanced.headers["content-security-policy"] == docs_pages.SWAGGER_CSP
     assert _inline(advanced.text, "script") == docs_pages._HELPER_JS
+
+
+def test_the_advanced_page_opens_like_the_guided_pages(
+    client: TestClient,
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    production = client.get("/docs/advanced").text
+    assert "<h1>Advanced: API docs</h1>" in production
+    assert "Every step here is real:" in production
+    assert 'href="/get-did">Easiest: Get a DID' in production
+    assert f'href="{STAGING_GUIDED_PAGE}"' in production
+    for section in ("id=adv-steps", "id=adv-guide", "All endpoints"):
+        assert section in production
+    staging = staging_client.get("/docs/advanced").text
+    assert "Staging server." in staging and 'href="/docs">Easiest: the guided test' in staging
+    assert 'href="/get-did">Get a DID with your wallet' in staging
+
+
+def test_each_step_card_has_its_text_and_endpoint(
+    client: TestClient,
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    for server in (client, staging_client):
+        data = server.app.state.docs_steps()
+        for step in data["steps"]:
+            about = step["about"]
+            assert about[:1].isupper() and not about.startswith("**"), step
+            assert "{" not in about.replace("{payment_intent_id}", ""), step  # filled in
+            assert ("label" in step) is ("operation_id" in step), step
+        assert set(data["order_notes"]) == {"dmd", "x402"}
+        assert data["x402_open"] in (True, False)
+    # The test settings open no payment option: the page shows USDC as not open yet.
+    assert client.app.state.docs_steps()["x402_open"] is False

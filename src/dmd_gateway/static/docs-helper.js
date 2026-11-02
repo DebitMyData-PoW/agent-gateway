@@ -1,8 +1,10 @@
 "use strict";
 // The API docs page: starts Swagger UI with the settings in #swagger-config, marks each
-// step's endpoint "Step N", and shows a panel with the next step (Go opens it) and the values
-// each answer gives, each with its own Copy button and the step it goes into. Everything
-// lives in this open page only: nothing is stored or sent anywhere.
+// step's endpoint "Step N", draws the steps as cards at the top of the page (the next one
+// with what to paste into it and a button that opens its endpoint), and shows a panel with
+// the next step (Go opens it) and the values each answer gives, each with its own Copy
+// button and the step it goes into. Everything lives in this open page only: nothing is
+// stored or sent anywhere.
 (() => {
   const settings = JSON.parse(document.getElementById("swagger-config").textContent);
   const config = settings.swagger;
@@ -139,7 +141,8 @@
     }
     if (changed.length) {
       flash = new Set(changed);
-      if (!opened) setOpen(true);
+      // With the steps' cards, the next card shows what to paste: the panel stays as it is.
+      if (!opened && !document.getElementById("adv-steps")) setOpen(true);
       render();
     }
     renderSteps(); // after the values: the last step opens the DID document just kept
@@ -196,14 +199,15 @@
     opened = true;
     setOpen(body.hidden);
   });
-  clear.addEventListener("click", () => {
+  function startOver() {
     kept.clear();
     done.clear();
     notice = "";
     order = allSteps;
     render();
     renderSteps();
-  });
+  }
+  clear.addEventListener("click", startOver);
 
   async function copy(button, value, target) {
     try {
@@ -475,7 +479,173 @@
     }
     parts.push(chips);
     nextBar.replaceChildren(...parts);
+    renderCards(step);
   }
+
+  // ------------------------------------------------------------------ the steps' cards
+
+  // A step's text: `code` and **bold** become elements; the text is never read as HTML.
+  function rich(text) {
+    const nodes = [];
+    let last = 0;
+    for (const match of String(text || "").matchAll(/`([^`]+)`|\*\*([^*]+)\*\*/g)) {
+      if (match.index > last) nodes.push(text.slice(last, match.index));
+      nodes.push(match[1] !== undefined ? element("code", {}, match[1]) : element("strong", {}, match[2]));
+      last = match.index + match[0].length;
+    }
+    if (last < String(text || "").length) nodes.push(text.slice(last));
+    return nodes;
+  }
+
+  const cardsBox = document.getElementById("adv-steps");
+  const lastNumber = allSteps[allSteps.length - 1];
+  const orderNote = element("p", { class: "adv-order-note" });
+  const cardList = element("ol", { class: "adv-steps" });
+  const orderChoices = [];
+  if (cardsBox && steps.length) {
+    const pills = [];
+    for (const [value, label, open] of [
+      ["dmd", "DMD, the DebitMyData coin", true],
+      ["x402", "USDC through x402", settings.x402_open !== false],
+    ]) {
+      if (value === "x402" && !settings.x402_order) continue;
+      const radio = element("input", { type: "radio", name: "adv-order", value });
+      if (!open) radio.disabled = true;
+      radio.addEventListener("change", () => {
+        order = value === "x402" ? settings.x402_order : allSteps;
+        renderSteps();
+      });
+      orderChoices.push(radio);
+      pills.push(
+        element(
+          "label",
+          { class: `adv-pill${open ? "" : " off"}` },
+          radio,
+          ` ${label}`,
+          open ? null : element("small", {}, " (not open on this server yet)")
+        )
+      );
+    }
+    const restart = element("button", { type: "button", class: "adv-button secondary small" }, "Start over");
+    restart.addEventListener("click", startOver);
+    cardsBox.append(
+      element(
+        "div",
+        { class: "adv-toolbar" },
+        element("fieldset", { class: "adv-choice" }, element("legend", {}, "How the agent pays"), ...pills),
+        restart
+      ),
+      orderNote,
+      cardList
+    );
+  }
+
+  function cardAction(step, isNext) {
+    const size = isNext ? "adv-button" : "adv-button secondary small";
+    if (step.pattern) {
+      const open = element("button", { type: "button", class: size }, isNext ? `Open step ${step.number} ↓` : "Open ↓");
+      open.setAttribute("aria-label", `Open step ${step.number}: ${step.title}`);
+      open.addEventListener("click", () => goTo(step));
+      return open;
+    }
+    if (!isNext) return null;
+    if (step.number === lastNumber && kept.has("did_document_url")) {
+      const link = element(
+        "a",
+        { class: "adv-button big", href: kept.get("did_document_url").value, target: "_blank", rel: "noopener" },
+        "Open your DID document"
+      );
+      link.addEventListener("click", () => {
+        done.add(step.number);
+        renderSteps();
+      });
+      return link;
+    }
+    const finished = element("button", { type: "button", class: size }, "Done ✓");
+    finished.addEventListener("click", () => {
+      done.add(step.number);
+      renderSteps();
+    });
+    return finished;
+  }
+
+  function renderCards(next) {
+    if (!cardsBox || !steps.length) return;
+    const x402 = order === settings.x402_order;
+    for (const radio of orderChoices) radio.checked = (radio.value === "x402") === x402;
+    const note = settings.order_notes && settings.order_notes[x402 ? "x402" : "dmd"];
+    orderNote.replaceChildren(...rich(note));
+    orderNote.hidden = !note;
+    const cards = [];
+    for (const number of order) {
+      const step = byNumber.get(number);
+      const isDone = done.has(number);
+      const isNext = Boolean(next) && next.number === number;
+      const where = step.pattern
+        ? element(
+            "span",
+            { class: "adv-endpoint" },
+            element("span", { class: `adv-method ${step.method.toLowerCase()}` }, step.method),
+            element("code", {}, step.label || "")
+          )
+        : element("span", { class: "adv-outside" }, number === lastNumber ? "In your browser" : "Outside this page");
+      const card = element(
+        "li",
+        { class: `adv-step ${isDone ? "done" : isNext ? "current" : "waiting"}` },
+        element(
+          "div",
+          { class: "adv-step-head" },
+          element("span", { class: "adv-num", "aria-hidden": "true" }, isDone ? "✓" : String(number)),
+          element(
+            "div",
+            { class: "adv-step-title" },
+            element("h3", {}, `Step ${number}: ${step.title}`, isDone ? element("span", { class: "adv-done" }, " · done") : null),
+            where
+          ),
+          cardAction(step, isNext)
+        )
+      );
+      if (isNext) {
+        card.setAttribute("aria-current", "step");
+        const details = element("div", { class: "adv-step-body" }, element("p", {}, ...rich(step.about)));
+        if (notice) details.append(element("p", { class: "adv-notice" }, notice));
+        if (step.pattern && step.help) details.append(element("p", { class: "adv-tip" }, ...rich(step.help)));
+        const fill = fillRows(step);
+        if (fill) details.append(fill);
+        card.append(details);
+      }
+      cards.push(card);
+    }
+    if (!next) {
+      cards.push(element("li", { class: "adv-step all-done" }, element("p", {}, "✓ All steps done. ", element("strong", {}, "Start over"), " to register another DID.")));
+    }
+    cardList.replaceChildren(...cards);
+  }
+
+  // The full written guide (the API description) goes into its folded section at the top;
+  // its links to endpoints open them on this page.
+  function copyGuide(tries = 0) {
+    const target = document.querySelector("#adv-guide .adv-guide-body");
+    const source = document.querySelector(".swagger-ui .info .description");
+    if (!target) return;
+    if (!source) {
+      if (tries < 120) requestAnimationFrame(() => copyGuide(tries + 1));
+      return;
+    }
+    const guide = source.cloneNode(true);
+    guide.removeAttribute("class");
+    for (const link of guide.querySelectorAll('a[href^="#/"]')) link.removeAttribute("target");
+    target.replaceChildren(guide);
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target instanceof Element ? event.target.closest('.adv a[href^="#/"]') : null;
+    if (!link) return;
+    const [, tag, operation] = link.getAttribute("href").split("/");
+    if (!tag || !operation) return;
+    event.preventDefault();
+    goTo({ tag: decodeURIComponent(tag), operation_id: decodeURIComponent(operation) });
+  });
 
   // "Step N" before the path of each step's endpoint, through Swagger UI's plugin system so
   // it stays when Swagger UI draws the list again.
@@ -519,6 +689,7 @@
     ...config,
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
     plugins: [StepBadges],
+    onComplete: () => copyGuide(),
     requestInterceptor: (request) => {
       try {
         methods.set(new URL(request.url, location.href).href, String(request.method || "GET").toUpperCase());
