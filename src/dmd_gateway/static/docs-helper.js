@@ -469,13 +469,6 @@
         const value = keptValue("selected_payment_option.amount");
         return value && { value, note: kept.get("selected_payment_option.amount").unit };
       }
-      case "controller_wallet_address":
-        return (
-          keptValue(field) && {
-            value: keptValue(field),
-            note: "optional, to add a wallet: steps 5 to 7 then come twice",
-          }
-        );
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
       default:

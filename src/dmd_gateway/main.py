@@ -409,11 +409,9 @@ PANEL_AGAIN_WHEN = {
 # them, with a Copy button. On staging's signing step, private_key is the key the
 # challenge is for (the agent key, or the wallet key).
 PANEL_NEEDS = {
-    # The wallet is optional: with both, each is proven (steps 5 to 7 once for each).
-    ("post", "/v1/dids/registration-quotes"): [
-        "controller_public_key",
-        "controller_wallet_address",
-    ],
+    # The key alone: the usual way. A wallet is optional (its address stays in the panel's
+    # values); with both, each is proven (steps 5 to 7 once for each).
+    ("post", "/v1/dids/registration-quotes"): ["controller_public_key"],
     ("post", "/v1/staging/test-payments"): ["payment_intent_id"],
     ("get", "/v1/payments/{payment_intent_id}"): ["payment_intent_id"],
     # controller_type stays empty: the gateway picks the controller still to prove.
