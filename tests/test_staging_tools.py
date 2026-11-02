@@ -178,8 +178,12 @@ def test_docs_page_shows_request_bodies_as_fields(staging_client: TestClient) ->
     assert fields["properties"]["controller_public_key"]["example"] == ""
     assert fields["properties"]["participant_type"]["description"].startswith("What kind")
     assert "autonomous_agent" in fields["properties"]["participant_type"]["enum"]
-    # The wallet's network is picked from a list.
+    # The wallet's network is picked from a list, which starts on its empty choice ("--"): a
+    # network sent without a wallet is refused, so a quote with a key alone sends none.
     assert fields["properties"]["controller_network"]["enum"] == ["eip155:8453"]
+    assert fields["properties"]["controller_network"]["default"] == ""
+    # A list the quote cannot do without starts on its first choice.
+    assert "default" not in fields["properties"]["preferred_payment_option"]
     assert "examples" in body["application/json"]
     path = "/v1/dids/registrations/{registration_intent_id}/controller-challenges"
     challenge = schema["paths"][path]["post"]["requestBody"]["content"][FORM]["schema"]

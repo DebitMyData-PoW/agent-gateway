@@ -176,6 +176,12 @@ def _form_schema(
             field_schema["enum"] = list(hints.choices[name])
         if name in hints.defaults:
             field_schema["default"] = hints.defaults[name]
+        optional = name not in model.get("required", []) and name not in hints.required
+        if "enum" in field_schema and optional and "default" not in field_schema:
+            # An optional list starts on its empty choice, so it sends nothing unless one is
+            # picked (Swagger UI would otherwise pick the first: a wallet network sent with a
+            # quote that has no wallet is refused).
+            field_schema["default"] = ""
         if "default" not in field_schema and "enum" not in field_schema:
             # Starts empty. Otherwise Swagger UI fills the field with a made-up value that
             # matches its pattern, such as an ID that looks real but belongs to nothing.
