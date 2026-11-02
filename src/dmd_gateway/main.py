@@ -329,7 +329,13 @@ _CHALLENGE_TIP = (
 PANEL_TITLES = {
     "production": [
         ("See how you can pay", ""),
-        ("Get a quote", ""),
+        (
+            "Get a quote",
+            "Replace the example's `<your agent public key>` with your agent's own public key "
+            "(`ed25519:z6Mk…`), or give your wallet's `0x…` address in "
+            "`controller_wallet_address` instead: with the placeholder left in, the answer is "
+            "`422`.",
+        ),
         (
             "Pay, outside this page",
             "DMD: from your wallet, send the exact amount to the address below. USDC: nothing "
@@ -392,25 +398,27 @@ PANEL_ORDER_NOTES = {
 }
 _OPEN_DID_TEXT = "Open the `did_document_url` from step {last} in your browser."
 # A proof is verified but the quote names another controller (a key and a wallet): the
-# challenge, signature and proof steps are done again for it.
+# challenge, signature and proof steps follow once more for it (5b to 7b on the docs page).
 PANEL_AGAIN_WHEN = {
     ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): {
         "field": "next_action",
         "value": "prove_wallet_control",
-        "note": "One more controller to prove: the quote names a key and a wallet. Get a new "
-        "challenge, sign it with the other one, and send that proof too.",
     },
 }
 # What to paste into each step, by field name: the panel shows each value it has kept for
 # them, with a Copy button. On staging's signing step, private_key is the key the
 # challenge is for (the agent key, or the wallet key).
 PANEL_NEEDS = {
-    ("post", "/v1/dids/registration-quotes"): ["controller_public_key"],
+    # The wallet is optional: with both, each is proven (steps 5 to 7 once for each).
+    ("post", "/v1/dids/registration-quotes"): [
+        "controller_public_key",
+        "controller_wallet_address",
+    ],
     ("post", "/v1/staging/test-payments"): ["payment_intent_id"],
     ("get", "/v1/payments/{payment_intent_id}"): ["payment_intent_id"],
+    # controller_type stays empty: the gateway picks the controller still to prove.
     ("post", "/v1/dids/registrations/{registration_intent_id}/controller-challenges"): [
         "registration_intent_id",
-        "controller_type",
     ],
     ("post", "/v1/staging/test-signatures"): ["challenge_id", "private_key"],
     ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): [

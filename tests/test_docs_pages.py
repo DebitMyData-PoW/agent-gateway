@@ -109,7 +109,8 @@ def test_the_staging_steps_are_numbered_with_their_endpoints(
     assert steps[0]["operation_id"].startswith("create_test_agent_key")
     assert steps[2]["operation_id"].startswith("create_test_payment")
     assert "private_key below" in steps[5]["help"] and "PAYMENT-SIGNATURE empty" in steps[7]["help"]
-    assert steps[4]["needs"] == ["registration_intent_id", "controller_type"]
+    assert steps[1]["needs"] == ["controller_public_key", "controller_wallet_address"]
+    assert steps[4]["needs"] == ["registration_intent_id"]  # controller_type left empty
     assert steps[5]["needs"] == ["challenge_id", "private_key"]
     assert steps[6]["needs"] == ["registration_intent_id", "challenge_id", "signature"]
     assert steps[6]["again_when"]["field"] == "next_action"
@@ -207,6 +208,7 @@ def test_the_advanced_page_opens_like_the_guided_pages(
     staging = staging_client.get("/docs/advanced").text
     assert "Staging server." in staging and 'href="/docs">Easiest: the guided test' in staging
     assert 'href="/get-did">Get a DID with your wallet' in staging
+    assert 'href="https://api.debitmydata.io/docs/advanced">The real API (production)' in staging
 
 
 def test_each_step_card_has_its_text_and_endpoint(
@@ -224,3 +226,17 @@ def test_each_step_card_has_its_text_and_endpoint(
         assert data["x402_open"] in (True, False)
     # The test settings open no payment option: the page shows USDC as not open yet.
     assert client.app.state.docs_steps()["x402_open"] is False
+
+
+def test_a_key_and_a_wallet_are_proven_one_round_after_the_other() -> None:
+    script = docs_pages._HELPER_JS
+    # The quote request is read only for how many controllers it names, kept as a number.
+    assert script.count("request.body") == 1
+    assert "quoteControllers.set(url.href, countControllers(request.body))" in script
+    assert '[[1, "a"], [2, "b"]]' in script  # 5a to 7a, then 5b to 7b
+    assert "leave controller_type empty" in script
+
+
+def test_production_step_2_says_to_replace_the_example_placeholder(client: TestClient) -> None:
+    step2 = client.app.state.docs_steps()["steps"][1]
+    assert "<your agent public key>" in step2["help"] and "422" in step2["help"]

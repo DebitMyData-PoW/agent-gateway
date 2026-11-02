@@ -129,4 +129,5 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
             assert brand.CSS in page, path  # the shared font and colours
             assert "font-src 'self'" in response.headers["content-security-policy"], path
             assert ('href="/docs">Guided test' in page) is staging, path
+            assert ('href="https://api.debitmydata.io/' in page) is staging, path  # Real API
             assert page.count("aria-current=page") >= 1, path

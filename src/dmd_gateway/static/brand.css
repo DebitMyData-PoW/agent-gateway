@@ -22,6 +22,7 @@ flex-wrap:wrap}
 .modes a{padding:5px 14px;border-radius:999px;color:#fff;text-decoration:none}
 .modes a:hover{background:rgba(255,255,255,.15);color:#fff}
 .modes a.on,.modes a.on:hover{background:#fff;color:var(--red-deep);font-weight:700}
+.modes a.real{border:1px solid rgba(255,255,255,.55)}
 .site-footer{color:#f5ced0;font-size:.92rem}
 .site-footer .in{padding-top:18px;padding-bottom:18px;gap:6px 18px}
 .site-footer a{color:#fff}

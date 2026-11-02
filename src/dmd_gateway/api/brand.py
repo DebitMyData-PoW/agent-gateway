@@ -16,6 +16,7 @@ CSS = (files("dmd_gateway") / "static" / "brand.css").read_text(encoding="utf-8"
 GET_DID_PATH = "/get-did"
 GUIDED_PATH = "/docs"  # staging
 STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
+PRODUCTION_SITE = "https://api.debitmydata.io"
 ADVANCED_PATH = "/docs/advanced"
 POLICIES_PATH = "/policies"
 
@@ -42,15 +43,31 @@ def _pages(staging: bool) -> list[tuple[str, str, str]]:
     return pages
 
 
+# On staging, the same page on the real (production) server; the guided test has none.
+_PRODUCTION_PAGE = {
+    "get-did": GET_DID_PATH,
+    "guided": GET_DID_PATH,
+    "advanced": ADVANCED_PATH,
+    "policies": POLICIES_PATH,
+}
+
+
 def header(current: str, staging: bool, wide: bool = False) -> str:
     """The top bar: the DebitMyData name (to debitmydata.com) and the gateway's pages, with
-    ``current`` (get-did, guided, advanced or policies) marked."""
+    ``current`` (get-did, guided, advanced or policies) marked; on staging, a link to the
+    same page on the real API."""
     links = "".join(
         f'<a class=on aria-current=page href="{path}">{label}</a>'
         if key == current
         else f'<a href="{path}">{label}</a>'
         for key, path, label in _pages(staging)
     )
+    if staging:
+        page = _PRODUCTION_PAGE.get(current, GET_DID_PATH)
+        links += (
+            f'<a class=real href="{PRODUCTION_SITE}{page}" title="The same page on the real API, '
+            'api.debitmydata.io (production)">Real API ↗</a>'
+        )
     return (
         f'<header class="topbar{" wide" if wide else ""}"><div class=in>'
         '<a class=brand href="https://debitmydata.com/"><img src="/favicon.png" alt="">'

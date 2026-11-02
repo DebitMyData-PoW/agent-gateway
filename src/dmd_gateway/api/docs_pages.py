@@ -134,6 +134,8 @@ def _intro(staging: bool, version: str) -> str:
             f'<a class="adv-button" href="{brand.GUIDED_PATH}">Easiest: the guided test</a>'
             f'<a class="adv-button secondary" href="{brand.GET_DID_PATH}">Get a DID with your '
             "wallet</a>"
+            f'<a class="adv-button secondary" href="{brand.PRODUCTION_SITE}{brand.ADVANCED_PATH}">'
+            "The real API (production)</a>"
         )
     else:
         note = (

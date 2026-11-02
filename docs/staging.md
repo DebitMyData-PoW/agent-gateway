@@ -61,7 +61,8 @@ with `{"status":"ready",...}`.
 
 Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery>,
 <https://staging-api.debitmydata.io/docs> (the guided test page) and
-<https://staging-api.debitmydata.io/docs/advanced> (every endpoint, by hand).
+<https://staging-api.debitmydata.io/docs/advanced> (every endpoint, by hand). The top bar of
+every staging page also has **Real API ↗**: the same page on <https://api.debitmydata.io>.
 
 | What | Where |
 | --- | --- |
@@ -118,8 +119,9 @@ written guide: every detail**), with every endpoint below. Each step's endpoint 
 **Step 1** to **Step 8**. The panel at the bottom right shows the next step, with a **Go**
 button that opens it (USDC has its own order, which the panel follows after the quote), and
 what to paste into it, each value with a **Copy** button (at step 6, the private key the
-challenge is for). With a key and a wallet in the quote, it takes you through steps 5 to 7
-once for each. It also keeps each value the answers give (IDs, keys, signatures, the DID links), with its own
+challenge is for). With a key and a wallet in the quote, steps 5 to 7 come twice, one after
+the other: 5a to 7a for the first controller, then 5b to 7b for the second, with
+`controller_type` left empty both times (the gateway picks the one still to prove). It also keeps each value the answers give (IDs, keys, signatures, the DID links), with its own
 **Copy** button and the step it goes into; it keeps them in the open page only.
 
 On staging, each request body is shown as fields to fill in, with a list to pick from where

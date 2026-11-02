@@ -203,7 +203,10 @@
     kept.clear();
     done.clear();
     notice = "";
-    order = allSteps;
+    paying = "dmd";
+    controllers = 1;
+    rounds = ["key", "wallet"];
+    quoteControllers.clear();
     render();
     renderSteps();
   }
@@ -276,50 +279,174 @@
   // ------------------------------------------------------------------ steps
 
   // Each step: its number and title, and either its endpoint (section, operation id, method,
-  // a pattern for its path) or what to do outside this page. USDC has its own order.
+  // a pattern for its path) or what to do outside this page. USDC has its own order. With a
+  // key and a wallet in the quote, the steps from the challenge to the proof come twice, one
+  // round for each controller, one after the other: 5a to 7a, then 5b to 7b.
   const steps = settings.steps || [];
   const byNumber = new Map(steps.map((step) => [step.number, step]));
   const allSteps = steps.map((step) => step.number);
-  let order = allSteps;
-  const done = new Set();
+  const lastNumber = allSteps[allSteps.length - 1];
+  const challengeStep = steps.find((step) => step.pattern && step.pattern.includes("controller-challenges"));
+  const proofStep = steps.find((step) => step.pattern && step.pattern.includes("controller-proofs"));
+  const roundSteps = new Set(
+    challengeStep && proofStep ? allSteps.filter((n) => n >= challengeStep.number && n <= proofStep.number) : []
+  );
+  const ROUND_LABELS = { key: "the agent key", wallet: "the wallet" };
+  const other = (kind) => (kind === "key" ? "wallet" : "key");
+  const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+  let paying = "dmd"; // or "x402", which has its own order
+  let controllers = 1; // 2 when the quote names a key and a wallet
+  let rounds = ["key", "wallet"]; // the controller of each round, in the order the gateway picks them
+  const done = new Set(); // "5", or "5a" and "5b" when there are two rounds
   const methods = new Map(); // request URL -> method, to recognise each step's answers
-  let notice = ""; // why a step is to be done again
+  const quoteControllers = new Map(); // quote request URL -> how many controllers it names
+  let notice = ""; // what just changed, shown with the next step
 
-  function nextStep() {
+  // The steps in the order they are done: one entry per step, and per round.
+  function entries() {
+    const base = paying === "x402" && settings.x402_order ? settings.x402_order : allSteps;
+    const list = [];
+    for (const number of base) {
+      if (controllers === 2 && roundSteps.has(number)) {
+        if (number !== challengeStep.number) continue; // the rounds are added at the challenge
+        const inRound = base.filter((n) => roundSteps.has(n));
+        for (const [round, letter] of [[1, "a"], [2, "b"]]) {
+          for (const n of inRound) list.push({ key: `${n}${letter}`, label: `${n}${letter}`, step: byNumber.get(n), round });
+        }
+        continue;
+      }
+      list.push({ key: String(number), label: String(number), step: byNumber.get(number), round: 0 });
+    }
+    return list;
+  }
+
+  function nextIndex(list) {
     let last = -1;
-    order.forEach((number, index) => {
-      if (done.has(number)) last = index;
+    list.forEach((entry, index) => {
+      if (done.has(entry.key)) last = index;
     });
-    return last + 1 < order.length ? byNumber.get(order[last + 1]) : null;
+    return last + 1;
+  }
+
+  function nextEntry() {
+    const list = entries();
+    const index = nextIndex(list);
+    return index < list.length ? list[index] : null;
+  }
+
+  const forRound = (entry) => (entry.round ? ` · for ${ROUND_LABELS[rounds[entry.round - 1]]}` : "");
+
+  function setControllers(count) {
+    if (count === controllers || !roundSteps.size) return;
+    for (const number of roundSteps) {
+      if (count === 2 && done.delete(String(number))) done.add(`${number}a`);
+      if (count === 1) {
+        const first = done.delete(`${number}a`);
+        done.delete(`${number}b`);
+        if (first) done.add(String(number));
+      }
+    }
+    controllers = count;
+  }
+
+  // How many controllers a quote request names: read from the request as it is sent, and
+  // kept as a number only.
+  function countControllers(body) {
+    let fields = null;
+    try {
+      if (typeof body === "string") {
+        try {
+          fields = JSON.parse(body);
+        } catch {
+          fields = Object.fromEntries(new URLSearchParams(body));
+        }
+      } else if (body instanceof URLSearchParams || (typeof FormData !== "undefined" && body instanceof FormData)) {
+        fields = Object.fromEntries(body);
+      } else if (body && typeof body === "object") {
+        fields = body;
+      }
+    } catch {
+      return 0;
+    }
+    if (!fields || typeof fields !== "object") return 0;
+    return ["controller_public_key", "controller_wallet_address"].filter(
+      (name) => typeof fields[name] === "string" && fields[name].trim() !== ""
+    ).length;
+  }
+
+  // The entry an answer belongs to: for a step done in both rounds, the round being worked on.
+  function entryFor(step, list) {
+    let frontier = nextIndex(list);
+    while (frontier < list.length && !list[frontier].step.pattern) frontier++;
+    let chosen = -1;
+    list.forEach((entry, index) => {
+      if (entry.step === step && index <= frontier) chosen = index;
+    });
+    return chosen >= 0 ? chosen : list.findIndex((entry) => entry.step === step);
+  }
+
+  function markDone(list, position) {
+    // What had to be done outside this page before it is done too.
+    for (const entry of list.slice(0, position)) if (!entry.step.pattern) done.add(entry.key);
+    done.add(list[position].key);
   }
 
   function progress(url, method, answer) {
     if (answer.selected_payment_option && settings.x402_order) {
-      order = answer.selected_payment_option.payment_protocol === "x402" ? settings.x402_order : allSteps;
+      paying = answer.selected_payment_option.payment_protocol === "x402" ? "x402" : "dmd";
     }
     for (const step of steps) {
       if (!step.pattern || step.method !== method || !new RegExp(step.pattern).test(url.pathname)) continue;
       if (step.done_when && read(answer, step.done_when.field) !== step.done_when.value) continue;
-      const position = order.indexOf(step.number);
+      if (step.pattern.includes("registration-quotes")) {
+        const count = quoteControllers.get(url.href);
+        if (count) setControllers(count);
+        rounds = ["key", "wallet"];
+      }
+      let list = entries();
+      let position = entryFor(step, list);
       if (position < 0) continue;
+      const entry = list[position];
+      if (step === challengeStep && typeof answer.controller === "string") {
+        // The gateway says which controller this challenge is for: the other round is the other.
+        const kind = answer.controller.startsWith("eip155:") ? "wallet" : "key";
+        rounds = entry.round === 2 ? [other(kind), kind] : [kind, other(kind)];
+      }
       const again = step.again_when;
       if (again && read(answer, again.field) === again.value) {
-        // Proven, but another controller is left: from its challenge on, everything again.
-        const challenge = order
-          .slice(0, position)
-          .reverse()
-          .find((number) => byNumber.get(number).restarts && !byNumber.get(number).pattern.includes("quotes"));
-        if (challenge) for (const number of order.slice(order.indexOf(challenge))) done.delete(number);
-        notice = again.note;
+        // Proven, and the quote names another controller: its round comes next.
+        if (entry.round === 2) {
+          // The same controller proven twice: the other one's round again.
+          const start = list.findIndex((item) => item.round === 2);
+          for (const item of list.slice(start)) done.delete(item.key);
+          notice = `One controller is still to prove: do step ${list[start].label} again, with controller_type left empty.`;
+          continue;
+        }
+        if (controllers !== 2) {
+          setControllers(2);
+          list = entries();
+          position = list.findIndex((item) => item.step === step && item.round === 1);
+        }
+        markDone(list, position);
+        notice = `✓ ${cap(ROUND_LABELS[rounds[0]])} is proven. Now the same steps for ${ROUND_LABELS[rounds[1]]}, from step ${challengeStep.number}b.`;
         continue;
       }
       notice = "";
       // A new quote or a new challenge starts what follows it again.
-      if (step.restarts) for (const number of order.slice(position + 1)) done.delete(number);
-      // What had to be done outside this page before it is done too.
-      for (const number of order.slice(0, position)) if (!byNumber.get(number).pattern) done.add(number);
-      done.add(step.number);
+      if (step.restarts) for (const item of list.slice(position + 1)) done.delete(item.key);
+      markDone(list, position);
     }
+  }
+
+  // With two controllers, what the challenge needs: nothing to choose, the gateway picks.
+  function roundTip(entry) {
+    if (!entry.round || entry.step !== challengeStep) return "";
+    const n = challengeStep.number;
+    const last = proofStep.number;
+    if (entry.round === 1) {
+      return `Your quote names an agent key and a wallet, so steps ${n} to ${last} are done once for each: ${n}a to ${last}a for ${ROUND_LABELS[rounds[0]]}, then ${n}b to ${last}b for ${ROUND_LABELS[rounds[1]]}. Leave controller_type empty: the gateway picks the right one each time.`;
+    }
+    return `Nothing to change from step ${n}a: leave controller_type empty and click Execute again. The gateway picks ${ROUND_LABELS[rounds[1]]}, the controller still to prove.`;
   }
 
   // The value kept for a field of the next step, and what it is when that helps.
@@ -333,7 +460,7 @@
         return value && { value, note: wallet ? "the test wallet's key" : "the test agent's key" };
       }
       case "PAYMENT-SIGNATURE": {
-        const value = order === settings.x402_order ? keptValue("payment_signature") : null;
+        const value = paying === "x402" ? keptValue("payment_signature") : null;
         return value && { value };
       }
       case "recipient":
@@ -342,13 +469,13 @@
         const value = keptValue("selected_payment_option.amount");
         return value && { value, note: kept.get("selected_payment_option.amount").unit };
       }
-      case "controller_type": {
-        // Only when the quote's other controller is left: the gateway picks it anyway.
-        const proven = keptValue("challenge_controller");
-        if (!notice || !proven) return null;
-        const wallet = !proven.startsWith("eip155:");
-        return { value: wallet ? "eip155" : "ed25519", note: `${wallet ? "the wallet" : "the public key"}, or leave the field empty` };
-      }
+      case "controller_wallet_address":
+        return (
+          keptValue(field) && {
+            value: keptValue(field),
+            note: "optional, to add a wallet: steps 5 to 7 then come twice",
+          }
+        );
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
       default:
@@ -415,71 +542,74 @@
     requestAnimationFrame(find);
   }
 
+  // The button that does a step: Go / Open for an endpoint, Done or Open for the others.
+  function finishOutside(entry) {
+    done.add(entry.key);
+    renderSteps();
+  }
+
   function renderSteps() {
     if (!steps.length) {
       nextBar.hidden = true;
       return;
     }
-    const step = nextStep();
+    const entry = nextEntry();
     const parts = [];
-    if (!step) {
+    if (!entry) {
       parts.push(element("div", { class: "vp-next-line" }, element("span", { class: "vp-next-text" }, "✓ All steps done")));
     } else {
+      const step = entry.step;
       let action;
       if (step.pattern) {
         action = element("button", { type: "button", class: "vp-go" }, "Go ↓");
         action.addEventListener("click", () => goTo(step));
-      } else if (step.number === allSteps[allSteps.length - 1] && kept.has("did_document_url")) {
+      } else if (step.number === lastNumber && kept.has("did_document_url")) {
         action = element(
           "a",
           { class: "vp-go", href: kept.get("did_document_url").value, target: "_blank", rel: "noopener" },
           "Open"
         );
-        action.addEventListener("click", () => {
-          done.add(step.number);
-          renderSteps();
-        });
+        action.addEventListener("click", () => finishOutside(entry));
       } else {
         action = element("button", { type: "button", class: "vp-go" }, "Done ✓");
-        action.addEventListener("click", () => {
-          done.add(step.number);
-          renderSteps();
-        });
+        action.addEventListener("click", () => finishOutside(entry));
       }
       parts.push(
         element(
           "div",
           { class: "vp-next-line" },
-          element("span", { class: "vp-next-text" }, "Next: ", element("strong", {}, `Step ${step.number}`), ` · ${step.title}`),
+          element("span", { class: "vp-next-text" }, "Next: ", element("strong", {}, `Step ${entry.label}`), ` · ${step.title}${forRound(entry)}`),
           action
         )
       );
-      if (notice) parts.push(element("div", { class: "vp-notice" }, notice));
-      const tip = step.outside || step.help;
-      if (tip) parts.push(element("div", { class: "vp-next-help" }, tip));
+      // What to paste first, right under the step, to copy it quickly; then the explanations.
       const fill = fillRows(step);
       if (fill) parts.push(fill);
+      if (notice) parts.push(element("div", { class: "vp-notice" }, notice));
+      const tip = roundTip(entry) || step.outside || step.help;
+      if (tip) parts.push(element("div", { class: "vp-next-help" }, ...rich(tip)));
     }
     const chips = element("div", { class: "vp-chips" });
-    for (const number of order) {
-      const item = byNumber.get(number);
-      const state = done.has(number) ? " done" : step && step.number === number ? " next" : "";
+    for (const item of entries()) {
+      const isDone = done.has(item.key);
+      const state = isDone ? " done" : entry && entry.key === item.key ? " next" : "";
+      const name = `Step ${item.label}: ${item.step.title}${forRound(item)}`;
       const chip = element(
         "button",
         {
           type: "button",
-          class: `vp-chip${state}${item.pattern ? "" : " outside"}`,
-          title: `Step ${number}: ${item.title}${done.has(number) ? " (done)" : ""}`,
-          "aria-label": `Step ${number}: ${item.title}${done.has(number) ? ", done" : ""}`,
+          class: `vp-chip${state}${item.step.pattern ? "" : " outside"}`,
+          title: `${name}${isDone ? " (done)" : ""}`,
+          "aria-label": `${name}${isDone ? ", done" : ""}`,
         },
-        done.has(number) ? `${number} ✓` : String(number)
+        isDone ? `${item.label} ✓` : item.label
       );
-      chip.addEventListener("click", () => goTo(item));
+      chip.addEventListener("click", () => goTo(item.step));
       chips.append(chip);
     }
     parts.push(chips);
     nextBar.replaceChildren(...parts);
-    renderCards(step);
+    renderCards(entry);
   }
 
   // ------------------------------------------------------------------ the steps' cards
@@ -498,7 +628,6 @@
   }
 
   const cardsBox = document.getElementById("adv-steps");
-  const lastNumber = allSteps[allSteps.length - 1];
   const orderNote = element("p", { class: "adv-order-note" });
   const cardList = element("ol", { class: "adv-steps" });
   const orderChoices = [];
@@ -512,7 +641,7 @@
       const radio = element("input", { type: "radio", name: "adv-order", value });
       if (!open) radio.disabled = true;
       radio.addEventListener("change", () => {
-        order = value === "x402" ? settings.x402_order : allSteps;
+        paying = value;
         renderSteps();
       });
       orderChoices.push(radio);
@@ -540,11 +669,12 @@
     );
   }
 
-  function cardAction(step, isNext) {
+  function cardAction(entry, isNext) {
+    const step = entry.step;
     const size = isNext ? "adv-button" : "adv-button secondary small";
     if (step.pattern) {
-      const open = element("button", { type: "button", class: size }, isNext ? `Open step ${step.number} ↓` : "Open ↓");
-      open.setAttribute("aria-label", `Open step ${step.number}: ${step.title}`);
+      const open = element("button", { type: "button", class: size }, isNext ? `Open step ${entry.label} ↓` : "Open ↓");
+      open.setAttribute("aria-label", `Open step ${entry.label}: ${step.title}`);
       open.addEventListener("click", () => goTo(step));
       return open;
     }
@@ -555,32 +685,26 @@
         { class: "adv-button big", href: kept.get("did_document_url").value, target: "_blank", rel: "noopener" },
         "Open your DID document"
       );
-      link.addEventListener("click", () => {
-        done.add(step.number);
-        renderSteps();
-      });
+      link.addEventListener("click", () => finishOutside(entry));
       return link;
     }
     const finished = element("button", { type: "button", class: size }, "Done ✓");
-    finished.addEventListener("click", () => {
-      done.add(step.number);
-      renderSteps();
-    });
+    finished.addEventListener("click", () => finishOutside(entry));
     return finished;
   }
 
   function renderCards(next) {
     if (!cardsBox || !steps.length) return;
-    const x402 = order === settings.x402_order;
+    const x402 = paying === "x402";
     for (const radio of orderChoices) radio.checked = (radio.value === "x402") === x402;
     const note = settings.order_notes && settings.order_notes[x402 ? "x402" : "dmd"];
     orderNote.replaceChildren(...rich(note));
     orderNote.hidden = !note;
     const cards = [];
-    for (const number of order) {
-      const step = byNumber.get(number);
-      const isDone = done.has(number);
-      const isNext = Boolean(next) && next.number === number;
+    for (const item of entries()) {
+      const step = item.step;
+      const isDone = done.has(item.key);
+      const isNext = Boolean(next) && next.key === item.key;
       const where = step.pattern
         ? element(
             "span",
@@ -588,28 +712,35 @@
             element("span", { class: `adv-method ${step.method.toLowerCase()}` }, step.method),
             element("code", {}, step.label || "")
           )
-        : element("span", { class: "adv-outside" }, number === lastNumber ? "In your browser" : "Outside this page");
+        : element("span", { class: "adv-outside" }, step.number === lastNumber ? "In your browser" : "Outside this page");
       const card = element(
         "li",
-        { class: `adv-step ${isDone ? "done" : isNext ? "current" : "waiting"}` },
+        { class: `adv-step ${isDone ? "done" : isNext ? "current" : "waiting"}${item.round ? " round" : ""}` },
         element(
           "div",
           { class: "adv-step-head" },
-          element("span", { class: "adv-num", "aria-hidden": "true" }, isDone ? "✓" : String(number)),
+          element("span", { class: "adv-num", "aria-hidden": "true" }, isDone ? "✓" : item.label),
           element(
             "div",
             { class: "adv-step-title" },
-            element("h3", {}, `Step ${number}: ${step.title}`, isDone ? element("span", { class: "adv-done" }, " · done") : null),
+            element(
+              "h3",
+              {},
+              `Step ${item.label}: ${step.title}`,
+              item.round ? element("span", { class: "adv-round" }, forRound(item)) : null,
+              isDone ? element("span", { class: "adv-done" }, " · done") : null
+            ),
             where
           ),
-          cardAction(step, isNext)
+          cardAction(item, isNext)
         )
       );
       if (isNext) {
         card.setAttribute("aria-current", "step");
         const details = element("div", { class: "adv-step-body" }, element("p", {}, ...rich(step.about)));
         if (notice) details.append(element("p", { class: "adv-notice" }, notice));
-        if (step.pattern && step.help) details.append(element("p", { class: "adv-tip" }, ...rich(step.help)));
+        const tip = roundTip(item) || (step.pattern && step.help);
+        if (tip) details.append(element("p", { class: "adv-tip" }, ...rich(tip)));
         const fill = fillRows(step);
         if (fill) details.append(fill);
         card.append(details);
@@ -692,7 +823,12 @@
     onComplete: () => copyGuide(),
     requestInterceptor: (request) => {
       try {
-        methods.set(new URL(request.url, location.href).href, String(request.method || "GET").toUpperCase());
+        const url = new URL(request.url, location.href);
+        const method = String(request.method || "GET").toUpperCase();
+        methods.set(url.href, method);
+        if (method === "POST" && url.pathname.endsWith("/v1/dids/registration-quotes")) {
+          quoteControllers.set(url.href, countControllers(request.body));
+        }
       } catch {
         // an address Swagger UI could not have sent either
       }

@@ -50,6 +50,9 @@ background:#e6e6e6;color:var(--muted)}
 .adv-step h3{font-size:1.1rem;margin:0}
 .adv-step.waiting h3{color:#4b4f58}
 .adv-done{color:var(--green);font-weight:600;font-size:.95rem}
+.adv-round{color:var(--red-deep);font-weight:600}
+.adv-step.round .adv-num{font-size:.92rem}
+.adv-step.waiting .adv-round{color:#7d5a5a}
 .adv-endpoint{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px}
 .adv-endpoint code{background:transparent;border:0;padding:0;color:var(--text);font-size:.92rem}
 .adv-method{display:inline-block;font:700 .78rem/1 var(--sans);letter-spacing:.03em;color:#fff;border-radius:5px;padding:4px 7px}
