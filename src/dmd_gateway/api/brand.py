@@ -1,0 +1,67 @@
+"""The debitmydata.com look shared by the gateway's pages for people: the "Get a DID" page,
+the staging guided test page, the advanced API docs (Swagger UI) and the policy pages.
+
+``CSS`` (the Mada font, served by this gateway, and the brand colours) goes at the start of
+each page's own inline style, and ``header`` and ``footer`` give every page the same top bar
+and footer. The links are the same on every page: "Get a DID" at /get-did, the guided test
+(staging only) at /docs, the advanced API docs at /docs/advanced and the policies.
+"""
+
+from __future__ import annotations
+
+from importlib.resources import files
+
+CSS = (files("dmd_gateway") / "static" / "brand.css").read_text(encoding="utf-8")
+
+GET_DID_PATH = "/get-did"
+GUIDED_PATH = "/docs"  # staging
+ADVANCED_PATH = "/docs/advanced"
+POLICIES_PATH = "/policies"
+
+FOOTER_LINKS = (
+    ("/policies/terms", "Terms"),
+    ("/policies/privacy", "Privacy"),
+    ("/policies/refunds", "Refunds"),
+    ("/policies/payment-methods", "Payment methods"),
+    ("/policies/did", "DIDs"),
+    ("/policies/security", "Security"),
+    (ADVANCED_PATH, "API docs (advanced)"),
+    ("https://debitmydata.com/", "debitmydata.com"),
+)
+
+
+def _pages(staging: bool) -> list[tuple[str, str, str]]:
+    pages = [("get-did", GET_DID_PATH, "Get a DID")]
+    if staging:
+        pages.append(("guided", GUIDED_PATH, "Guided test"))
+    pages += [
+        ("advanced", ADVANCED_PATH, "Advanced: API docs"),
+        ("policies", POLICIES_PATH, "Policies"),
+    ]
+    return pages
+
+
+def header(current: str, staging: bool, wide: bool = False) -> str:
+    """The top bar: the DebitMyData name (to debitmydata.com) and the gateway's pages, with
+    ``current`` (get-did, guided, advanced or policies) marked."""
+    links = "".join(
+        f'<a class=on aria-current=page href="{path}">{label}</a>'
+        if key == current
+        else f'<a href="{path}">{label}</a>'
+        for key, path, label in _pages(staging)
+    )
+    return (
+        f'<header class="topbar{" wide" if wide else ""}"><div class=in>'
+        '<a class=brand href="https://debitmydata.com/"><img src="/favicon.png" alt="">'
+        f'DebitMyData</a><nav class=modes aria-label="Gateway pages">{links}</nav>'
+        "</div></header>"
+    )
+
+
+def footer(wide: bool = False) -> str:
+    links = "".join(f'<a href="{path}">{label}</a>' for path, label in FOOTER_LINKS)
+    return (
+        f'<footer class="site-footer{" wide" if wide else ""}"><div class=in>{links}'
+        '<span>Questions: <a href="mailto:info@debitmydata.com">info@debitmydata.com</a>'
+        "</span></div></footer>"
+    )

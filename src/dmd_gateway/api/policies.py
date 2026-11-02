@@ -5,7 +5,8 @@
     GET /policies/{name}.md       the same text as Markdown, for agents
     GET /v1/policies              the list as JSON: version, status and SHA-256 of each text
 
-The texts and how they are filled in are in ``dmd_gateway.services.policy_pages``.
+The texts and how they are filled in are in ``dmd_gateway.services.policy_pages``. The pages
+have the debitmydata.com look of the gateway's other pages (``brand``) and run no script.
 """
 
 from __future__ import annotations
@@ -14,11 +15,13 @@ import base64
 import hashlib
 from datetime import date
 from html import escape
+from importlib.resources import files
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
+from dmd_gateway.api import brand
 from dmd_gateway.errors import ApiError
 from dmd_gateway.services.policy_pages import PolicyPage
 
@@ -28,44 +31,11 @@ router = APIRouter()
 # hiding email addresses behind a script, which these pages (no scripts allowed) cannot run.
 CACHE = "public, max-age=300, no-transform"
 
-_STYLE = """
-:root{--bg:#fff;--fg:#1d2330;--muted:#5b6475;--line:#e3e6ec;--accent:#0b5cad;--note:#fff5d6;
---note-line:#e8c55a;--code:#f3f5f8}
-@media (prefers-color-scheme:dark){:root{--bg:#11151c;--fg:#e6e9ef;--muted:#9aa3b2;
---line:#2a313d;--accent:#7ab8ff;--note:#3a3216;--note-line:#8a7428;--code:#1b212b}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,
-"Segoe UI",Roboto,sans-serif}
-header,main,footer{max-width:46rem;margin:0 auto;padding:0 16px}
-header{padding-top:24px;border-bottom:1px solid var(--line)}
-header a.home{display:flex;gap:10px;align-items:center;color:var(--fg);text-decoration:none;
-font-weight:600}
-header img{width:28px;height:28px}
-nav{display:flex;flex-wrap:wrap;gap:4px 16px;padding:12px 0;font-size:.95rem}
-nav a{color:var(--muted);text-decoration:none}
-nav a[aria-current]{color:var(--fg);font-weight:600}
-a{color:var(--accent)}
-.note{margin:20px 0 0;padding:10px 14px;background:var(--note);
-border-left:4px solid var(--note-line);border-radius:4px}
-.meta{color:var(--muted);font-size:.9rem;margin:0}
-h1{font-size:1.8rem;line-height:1.25;margin:28px 0 4px}
-h2{font-size:1.25rem;margin:32px 0 8px}
-h3{font-size:1.05rem;margin:24px 0 6px}
-code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.88em;
-overflow-wrap:anywhere}
-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.95rem;display:block;
-overflow-x:auto}
-th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
-th{background:var(--code)}
-ul.pages{list-style:none;padding:0}
-ul.pages li{padding:12px 0;border-bottom:1px solid var(--line)}
-footer{margin-top:40px;padding-top:12px;padding-bottom:32px;border-top:1px solid var(--line);
-color:var(--muted);font-size:.9rem}
-""".strip()
+_STYLE = brand.CSS + (files("dmd_gateway") / "static" / "policies.css").read_text(encoding="utf-8")
 _STYLE_HASH = base64.b64encode(hashlib.sha256(_STYLE.encode()).digest()).decode()
-# Nothing but the page's own style and the gateway's icon may load; no scripts at all.
+# Nothing but the page's own style, the gateway's icon and font may load; no scripts at all.
 CSP = (
-    f"default-src 'none'; style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; "
+    f"default-src 'none'; style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; font-src 'self'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 HTML_HEADERS = {
@@ -107,12 +77,9 @@ def _document(request: Request, title: str, current: str | None, body: str) -> s
         f"<title>{escape(title)} · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
         f"<style>{_STYLE}</style></head><body>"
-        '<header><a class=home href="/policies"><img src="/favicon.png" alt="">'
-        "DebitMyData Agent Gateway</a>"
-        f"<nav>{links}</nav></header>"
-        f"<main>{body}</main>"
-        '<footer>Questions: <a href="mailto:info@debitmydata.com">info@debitmydata.com</a>'
-        ' · <a href="/docs">API docs</a></footer>'
+        f"{brand.header('policies', bool(request.app.state.settings.staging_test_tools))}"
+        f'<main><nav class=policies aria-label="Policies">{links}</nav>'
+        f"<article>{body}</article></main>{brand.footer()}"
         "</body></html>"
     )
 

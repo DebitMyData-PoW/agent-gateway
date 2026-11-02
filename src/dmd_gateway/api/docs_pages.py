@@ -17,6 +17,10 @@ The Swagger UI page also keeps the values each answer gives (IDs, the payment ad
 amount, the message to sign, signatures, the DID links) in a panel, each with its own Copy
 button and the step it goes into (``static/docs-helper.js``). It keeps them in the open page
 only: nothing is stored or sent anywhere.
+
+The Swagger UI page has the debitmydata.com look of the gateway's other pages (``brand``):
+their top bar and footer, the Mada font, and red for the endpoints that act (POST), grey for
+those that only read (GET).
 """
 
 from __future__ import annotations
@@ -30,6 +34,8 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
+
+from dmd_gateway.api import brand
 
 router = APIRouter(include_in_schema=False)
 
@@ -73,7 +79,7 @@ SWAGGER_UI_PARAMETERS = {
 }
 
 _HELPER_JS = (_STATIC / "docs-helper.js").read_text(encoding="utf-8")
-_HELPER_CSS = (_STATIC / "docs-helper.css").read_text(encoding="utf-8")
+_HELPER_CSS = brand.CSS + (_STATIC / "docs-helper.css").read_text(encoding="utf-8")
 _REDOC_CSS = "body{margin:0;padding:0}"
 
 
@@ -87,7 +93,8 @@ _COMMON_CSP = (
 )
 SWAGGER_CSP = (
     f"script-src {SWAGGER_UI_JS[0]} 'sha256-{_sha256(_HELPER_JS)}'; "
-    f"style-src {SWAGGER_UI_CSS[0]} 'sha256-{_sha256(_HELPER_CSS)}'; {_COMMON_CSP}"
+    f"style-src {SWAGGER_UI_CSS[0]} 'sha256-{_sha256(_HELPER_CSS)}'; font-src 'self'; "
+    f"{_COMMON_CSP}"
 )
 # ReDoc styles itself with <style> elements it writes at run time, searches in a worker, and
 # shows the small Redocly logo from Redocly's site.
@@ -111,7 +118,9 @@ def _external(tag: str, url: str, integrity: str) -> str:
     )
 
 
-def swagger_html(openapi_url: str, title: str, steps: dict[str, Any] | None = None) -> str:
+def swagger_html(
+    openapi_url: str, title: str, steps: dict[str, Any] | None = None, staging: bool = False
+) -> str:
     settings = {"swagger": {"url": openapi_url, **SWAGGER_UI_PARAMETERS}, **(steps or {})}
     config = json.dumps(settings, indent=1)
     config = config.replace("<", "\\u003c")  # data block: nothing in it can close the tag
@@ -121,7 +130,8 @@ def swagger_html(openapi_url: str, title: str, steps: dict[str, Any] | None = No
         f"<title>{escape(title)}</title>"
         f'<link rel="icon" href="{FAVICON_URL}">'
         f"{_external('link', *SWAGGER_UI_CSS)}<style>{_HELPER_CSS}</style></head>"
-        '<body><div id="swagger-ui"></div>'
+        f'<body>{brand.header("advanced", staging, wide=True)}<div id="swagger-ui"></div>'
+        f"{brand.footer(wide=True)}"
         f'<script type="application/json" id="swagger-config">{config}</script>'
         f"{_external('script', *SWAGGER_UI_JS)}<script>{_HELPER_JS}</script></body></html>"
     )
@@ -130,7 +140,10 @@ def swagger_html(openapi_url: str, title: str, steps: dict[str, Any] | None = No
 def swagger_ui(request: Request) -> HTMLResponse:
     steps = getattr(request.app.state, "docs_steps", None)  # set by create_app
     html = swagger_html(
-        request.app.openapi_url, f"{request.app.title} - API docs", steps() if steps else None
+        request.app.openapi_url,
+        f"{request.app.title} - API docs",
+        steps() if steps else None,
+        staging=bool(request.app.state.settings.staging_test_tools),
     )
     return HTMLResponse(html, headers={**_HEADERS, "Content-Security-Policy": SWAGGER_CSP})
 

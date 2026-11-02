@@ -7,11 +7,12 @@ another wallet or the agent's own tools). The page never asks for a private key 
 phrase and never sends money. It keeps the registration's IDs in the browser so that a reload
 continues where it stopped.
 
-On production it is the docs page (/docs), with the Swagger UI page as the advanced option
-(/docs/advanced); on every server it is also at /get-did, for links from DebitMyData's sites.
-On staging it adds a "Pay with test coins" button. Only its own script and style run (hashes
-in the Content-Security-Policy), its font is served here (Mada, SIL Open Font License), and it
-may only call this server.
+It is at /get-did on every server, the address to link from DebitMyData's sites; on
+production the docs address (/docs) and the site root lead there too, and the Swagger UI page
+is the advanced option (/docs/advanced). On staging it adds a "Pay with test coins" button.
+Only its own script and style run (hashes in the Content-Security-Policy), its font is served
+here (Mada, SIL Open Font License; the look is shared with the other pages, ``brand``), and
+it may only call this server.
 """
 
 from __future__ import annotations
@@ -24,16 +25,16 @@ from importlib.resources import files
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from dmd_gateway.api import docs_pages
+from dmd_gateway.api import brand, docs_pages
 
 router = APIRouter(include_in_schema=False)  # every server
-production_router = APIRouter(include_in_schema=False)  # outside staging: /docs is this page
+production_router = APIRouter(include_in_schema=False)  # outside staging: /docs leads here
 
-PAGE_PATH = "/get-did"
+PAGE_PATH = brand.GET_DID_PATH
 DOCS_PATH = "/docs"
-ADVANCED_PATH = "/docs/advanced"
+ADVANCED_PATH = brand.ADVANCED_PATH
 _STATIC = files("dmd_gateway") / "static"
-_STYLE = (_STATIC / "get-did.css").read_text(encoding="utf-8")
+_STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
 _SCRIPT = (_STATIC / "get-did.js").read_text(encoding="utf-8")
 FONTS = (
     "mada-latin-400-normal.woff2",
@@ -76,11 +77,6 @@ def _body(staging: bool) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
     )
-    modes = (
-        '<span class=on aria-current=page>Get a DID</span><a href="/docs">Guided test</a>'
-        if staging
-        else "<span class=on aria-current=page>Get a DID</span>"
-    ) + f'<a href="{ADVANCED_PATH}">Advanced: API docs</a>'
     staging_note = (
         "<p class=staging><strong>Staging server.</strong> Test networks and test DIDs: pay "
         "with the <strong>Pay with test coins</strong> button, and sign with your own wallet "
@@ -90,10 +86,7 @@ def _body(staging: bool) -> str:
     )
     return f"""
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
-<header class=topbar><div class=in>
-<a class=brand href="https://debitmydata.com/"><img src="/favicon.png" alt="">DebitMyData</a>
-<nav class=modes aria-label="Ways to register">{modes}</nav>
-</div></header>
+{brand.header("get-did", staging)}
 <main>
 <section class=hero>
 <h1>Get your DebitMyData DID</h1>
@@ -163,12 +156,7 @@ DID registration is <a href="/policies/refunds" target=_blank>not refundable</a>
 </section>
 <p id=announcer class=sr-only aria-live=polite></p>
 </main>
-<footer><div class=in>
-<a href="/policies/terms">Terms</a><a href="/policies/privacy">Privacy</a>
-<a href="/policies/refunds">Refunds</a><a href="/policies/payment-methods">Payment methods</a>
-<a href="/policies/security">Security</a><a href="{ADVANCED_PATH}">API docs (advanced)</a>
-<a href="https://debitmydata.com/">debitmydata.com</a>
-</div></footer>
+{brand.footer()}
 """.strip()
 
 
@@ -204,10 +192,12 @@ def font(name: str) -> Response:
     )
 
 
-production_router.add_api_route(DOCS_PATH, _page, methods=["GET"])
 production_router.add_api_route(ADVANCED_PATH, docs_pages.swagger_ui, methods=["GET"])
 
 
-@production_router.get("/")
-def to_docs() -> RedirectResponse:
-    return RedirectResponse(DOCS_PATH, status_code=307)
+def _to_page() -> RedirectResponse:
+    return RedirectResponse(PAGE_PATH, status_code=307)
+
+
+for _path in ("/", DOCS_PATH):
+    production_router.add_api_route(_path, _to_page, methods=["GET"])

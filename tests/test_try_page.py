@@ -51,9 +51,9 @@ def test_the_old_address_and_the_root_lead_to_the_guided_page(
 
 
 def test_outside_staging_there_is_no_guided_test_page(client: TestClient) -> None:
-    # /docs is the "Get a DID" page there (tests/test_get_did_page.py), Swagger the advanced one.
-    docs = client.get("/docs")
-    assert docs.status_code == 200 and "Try a DID registration" not in docs.text
+    # /docs leads to the "Get a DID" page there (tests/test_get_did_page.py).
+    docs = client.get("/docs", follow_redirects=False)
+    assert docs.status_code == 307 and docs.headers["location"] == "/get-did"
     assert '"tryItOutEnabled": true' in client.get("/docs/advanced").text
     assert client.get("/try", follow_redirects=False).status_code == 404
 

@@ -25,16 +25,17 @@ def _config(page: str) -> dict:
     return json.loads(re.search(block, page, re.S).group(1))
 
 
-def test_on_production_the_docs_page_is_get_a_did(client: TestClient) -> None:
-    for path in ("/docs", "/get-did"):
-        response = client.get(path)
-        assert response.status_code == 200
-        assert "Get your DebitMyData DID" in response.text
-        assert _config(response.text) == {"staging": False}
-        assert 'href="/docs/advanced"' in response.text  # the advanced option
-        assert "Staging server." not in response.text  # the test-coin button is staging's
-    root = client.get("/", follow_redirects=False)
-    assert root.status_code == 307 and root.headers["location"] == "/docs"
+def test_on_production_the_docs_address_leads_to_get_a_did(client: TestClient) -> None:
+    response = client.get("/get-did")
+    assert response.status_code == 200
+    assert "Get your DebitMyData DID" in response.text
+    assert _config(response.text) == {"staging": False}
+    assert 'href="/docs/advanced"' in response.text  # the advanced option
+    assert "Staging server." not in response.text  # the test-coin button is staging's
+    assert "Guided test" not in response.text  # staging only
+    for path in ("/", "/docs"):
+        moved = client.get(path, follow_redirects=False)
+        assert moved.status_code == 307 and moved.headers["location"] == "/get-did"
 
 
 def test_on_staging_it_is_at_get_did_with_test_coins(staging_client: TestClient) -> None:  # noqa: F811
@@ -45,7 +46,7 @@ def test_on_staging_it_is_at_get_did_with_test_coins(staging_client: TestClient)
 
 
 def test_only_the_page_own_script_style_and_font_may_run(client: TestClient) -> None:
-    response = client.get("/docs")
+    response = client.get("/get-did")
     csp = response.headers["content-security-policy"]
     script = re.search(r"<script>(.*)</script>", response.text, re.S).group(1)
     style = re.search(r"<style>(.*)</style>", response.text, re.S).group(1)
@@ -107,3 +108,25 @@ def test_a_dmd_address_in_the_wallet_box_is_explained() -> None:
     assert set(prefixes) == {hrp for _, hrp in NETWORKS.values()}
     assert "This is a DMD address: you don't need one here." in script
     assert "id=wallet-hint" in get_did_page.page_html(staging=False)
+
+
+def test_every_page_for_people_has_the_same_top_bar_and_footer(
+    client: TestClient,
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    from dmd_gateway.api import brand
+
+    pages = {
+        client: ("/get-did", "/docs/advanced", "/policies", "/policies/refunds"),
+        staging_client: ("/get-did", "/docs", "/docs/advanced", "/policies/terms"),
+    }
+    for server, paths in pages.items():
+        staging = server is staging_client
+        for path in paths:
+            response = server.get(path)
+            page = response.text
+            assert '<header class="topbar' in page and '<footer class="site-footer' in page, path
+            assert brand.CSS in page, path  # the shared font and colours
+            assert "font-src 'self'" in response.headers["content-security-policy"], path
+            assert ('href="/docs">Guided test' in page) is staging, path
+            assert page.count("aria-current=page") >= 1, path

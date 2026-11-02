@@ -1,28 +1,10 @@
-@font-face{font-family:Mada;font-style:normal;font-weight:400;font-display:swap;
-src:url(/fonts/mada-latin-400-normal.woff2) format("woff2")}
-@font-face{font-family:Mada;font-style:normal;font-weight:600;font-display:swap;
-src:url(/fonts/mada-latin-600-normal.woff2) format("woff2")}
-@font-face{font-family:Mada;font-style:normal;font-weight:700;font-display:swap;
-src:url(/fonts/mada-latin-700-normal.woff2) format("woff2")}
-:root{--red:#c80815;--red-hover:#e12330;--red-deep:#640000;--red-brand:#bf030c;--pink:#fff0f1;
---grey:#f5f5f5;--line:#e6e6e6;--text:#211f1f;--muted:#7d8797;--green:#098551;--green-hover:#0ead6a;
---warn:#b35900;--code:#f6f6f6;color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{scroll-padding-top:20px}
-body{margin:0;background:#fff;color:var(--text);font:17px/1.55 Mada,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:#fff;color:var(--text);font:17px/1.55 var(--sans)}
 a{color:var(--red)}
 a:hover{color:var(--red-hover)}
 code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-.topbar{background:var(--red-deep);color:#fff}
-.topbar .in{max-width:880px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-weight:700;font-size:1.15rem}
-.brand img{width:32px;height:32px}
-.brand:hover{color:#fff}
-.modes{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;font-size:.95rem}
-.modes>*{padding:5px 14px;border-radius:999px;color:#fff;text-decoration:none}
-.modes .on{background:#fff;color:var(--red-deep);font-weight:700}
-.modes a:hover{background:rgba(255,255,255,.15);color:#fff}
 main{max-width:880px;margin:0 auto;padding:28px 16px 120px}
 .hero h1{font-size:2.1rem;line-height:1.15;margin:0 0 8px}
 .hero p{margin:0 0 10px;color:#3d3b3b}
@@ -110,15 +92,10 @@ padding:8px 14px;background:#fff;border:2px solid var(--red);box-shadow:0 4px 18
 #countdown.warn{border-color:var(--warn)}
 #countdown.warn .time{color:var(--warn)}
 #countdown.expired .time{color:var(--red-brand)}
-footer{background:var(--red-deep);color:#f5ced0;font-size:.92rem}
-footer .in{max-width:880px;margin:0 auto;padding:18px 16px;display:flex;flex-wrap:wrap;gap:6px 18px}
-footer a{color:#fff}
-footer a:hover{color:#f5ced0}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 @media (max-width:1240px){#countdown{top:auto;bottom:14px}}
 @media (max-width:600px){
 .hero h1{font-size:1.7rem}
-.modes{margin-left:0}
 #countdown{left:12px;right:12px;bottom:12px;min-width:0;display:flex;justify-content:space-between;align-items:center}
 #countdown[hidden]{display:none}
 #countdown .time{font-size:1.3rem}

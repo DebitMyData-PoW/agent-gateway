@@ -100,16 +100,17 @@ style run, and only toward this server.
 
 ### With your own wallet
 
-<https://staging-api.debitmydata.io/get-did> is the page people use on production (there it
-is `/docs`), with one more button: **Pay with test coins**. Connect your own browser wallet
+<https://staging-api.debitmydata.io/get-did> is the page people use on production (at the
+same address there), with one more button: **Pay with test coins**. Connect your own browser wallet
 (or give an agent key), pay with that button, and sign with **Sign with my wallet**: signing
 sends nothing, so any wallet works on staging.
 
 ### Advanced: step by step
 
 The page's **Advanced** link opens the Swagger UI page at
-<https://staging-api.debitmydata.io/docs/advanced>, with every endpoint. (Outside staging,
-that page is `/docs` itself; there is no guided page.) The top of that page lists
+<https://staging-api.debitmydata.io/docs/advanced>, with every endpoint (the same address
+outside staging, where there is no guided page and `/docs` leads to `/get-did`). The top of
+that page lists
 the nine steps, each linked to its endpoint (it opens in a new tab): fill in the fields, click
 **Execute**, and copy the values named into the next step. Each step's endpoint is marked
 **Step 1** to **Step 8**. The panel at the bottom right shows the next step, with a **Go**

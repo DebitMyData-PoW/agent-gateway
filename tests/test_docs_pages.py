@@ -169,7 +169,7 @@ def test_the_docs_page_explains_how_to_register_by_hand(client: TestClient) -> N
     assert "### Register a DID from this page" in guide
     assert f"]({STAGING_GUIDED_PAGE})" in guide
     assert "Never paste a private key" in guide
-    assert "[Get a DID](/docs)" in guide
+    assert "[Get a DID](/get-did)" in guide
     assert "Values from your responses" in guide
     assert "15 minutes of step 2" in guide and "5 minutes of step 5" in guide
     operations = {
