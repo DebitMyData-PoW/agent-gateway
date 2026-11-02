@@ -2,8 +2,8 @@
 
 FastAPI's built-in docs pages are switched off in ``create_app`` and served here instead,
 so that they carry the DebitMyData logo and open with "Try it out" already enabled. The
-Swagger UI page is at /docs, except on staging, where /docs is the guided test page and this
-page is the advanced option at /docs/advanced (see ``try_page``).
+Swagger UI page is the advanced option at /docs/advanced: /docs is the guided test page on
+staging (``try_page``) and the "Get a DID" page elsewhere (``get_did_page``).
 
 Both pages load Swagger UI or ReDoc from jsDelivr at an exact version, and the browser checks
 each file against its SHA-384 fingerprint before running it (Subresource Integrity). Their
@@ -32,7 +32,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
 router = APIRouter(include_in_schema=False)
-swagger_router = APIRouter(include_in_schema=False)  # GET /docs, outside staging
 
 _STATIC = files("dmd_gateway") / "static"
 _ICONS = {
@@ -134,9 +133,6 @@ def swagger_ui(request: Request) -> HTMLResponse:
         request.app.openapi_url, f"{request.app.title} - API docs", steps() if steps else None
     )
     return HTMLResponse(html, headers={**_HEADERS, "Content-Security-Policy": SWAGGER_CSP})
-
-
-swagger_router.add_api_route("/docs", swagger_ui, methods=["GET"])
 
 
 @router.get("/redoc")

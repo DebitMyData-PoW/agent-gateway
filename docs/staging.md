@@ -98,6 +98,13 @@ key never leaves the page and is not shown. Like the test tools, the page only e
 `DMD_GW_STAGING_TEST_TOOLS=true`; its Content-Security-Policy lets only its own script and
 style run, and only toward this server.
 
+### With your own wallet
+
+<https://staging-api.debitmydata.io/get-did> is the page people use on production (there it
+is `/docs`), with one more button: **Pay with test coins**. Connect your own browser wallet
+(or give an agent key), pay with that button, and sign with **Sign with my wallet**: signing
+sends nothing, so any wallet works on staging.
+
 ### Advanced: step by step
 
 The page's **Advanced** link opens the Swagger UI page at

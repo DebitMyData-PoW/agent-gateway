@@ -1,0 +1,665 @@
+"use strict";
+// Get a DebitMyData DID: a registration for people, step by step. The page fills each step in
+// from the previous answers; the visitor pays and signs in their own wallet. It never asks for
+// a private key or a recovery phrase, and never sends money. It keeps the registration's IDs
+// (no secrets) in this browser, so that a reload continues where it stopped.
+(() => {
+  const config = JSON.parse(document.getElementById("page-config").textContent);
+  const $ = (selector) => document.querySelector(selector);
+  const POLL_MS = 10000;
+  const WARN_SECONDS = 60;
+  const STORE = "dmd-get-did";
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const WALLET_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+  const PUBLIC_KEY = /^ed25519:z[1-9A-HJ-NP-Za-km-z]{40,60}$/;
+
+  const form = $("#details");
+  const nameInput = $("#name");
+  const kindSelect = $("#kind");
+  const walletBox = $("#wallet-box");
+  const walletAddress = $("#wallet-address");
+  const keyBox = $("#key-box");
+  const publicKey = $("#public-key");
+  const optionsBox = $("#options");
+  const terms = $("#terms");
+  const detailsError = $("#details-error");
+  const quoteButton = $("#get-quote");
+  const steps = [1, 2, 3, 4].map((n) => $(`#s${n}`));
+  const countdown = $("#countdown");
+  const announcer = $("#announcer");
+  const resumeBox = $("#resume");
+
+  let state = null; // the registration in progress (saved in this browser)
+  let wallet = null; // { provider, address, name } once a wallet is connected
+  const wallets = new Map(); // wallets found in this browser (EIP-6963)
+  let clockOffset = 0;
+  let deadlines = {};
+  let pollTimer = null;
+  let busy = false;
+
+  // ------------------------------------------------------------------ helpers
+
+  function element(tag, attributes = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [name, value] of Object.entries(attributes)) {
+      if (value === undefined || value === null || value === false) continue;
+      if (name === "class") node.className = value;
+      else node.setAttribute(name, value === true ? "" : value);
+    }
+    for (const child of children) if (child != null && child !== false) node.append(child);
+    return node;
+  }
+
+  async function call(method, path, body, headers = {}) {
+    const init = { method, headers: { Accept: "application/json", ...headers } };
+    if (body !== undefined) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const response = await fetch(path, init);
+    const serverDate = Date.parse(response.headers.get("Date") || "");
+    if (Number.isFinite(serverDate)) clockOffset = serverDate + 500 - Date.now();
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { text };
+    }
+    return { status: response.status, data };
+  }
+
+  function problem(result) {
+    const error = result.data && result.data.error;
+    if (error && typeof error === "object") return error.message || `The request was refused (${error.code}).`;
+    if (result.status === 429) return "Too many requests: wait a minute and try again.";
+    return `The gateway answered ${result.status}. Try again in a moment.`;
+  }
+
+  const errorCode = (result) => result.data && result.data.error && result.data.error.code;
+  const short = (text) => (text && text.length > 18 ? `${text.slice(0, 8)}…${text.slice(-6)}` : text);
+
+  function amountText(amount) {
+    const [whole, fraction] = String(amount).split(".");
+    return `${Number(whole).toLocaleString("en-US")}${fraction ? `.${fraction}` : ""}`;
+  }
+
+  function copyButton(value, label = "Copy") {
+    const button = element("button", { type: "button", class: "secondary small" }, label);
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(value);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Select and copy it";
+      }
+      setTimeout(() => (button.textContent = label), 2000);
+    });
+    return button;
+  }
+
+  function announce(text) {
+    announcer.textContent = text;
+  }
+
+  function save() {
+    try {
+      if (state) localStorage.setItem(STORE, JSON.stringify(state));
+      else localStorage.removeItem(STORE);
+    } catch {
+      // private window or storage blocked: the page still works, without resuming
+    }
+  }
+
+  function saved() {
+    try {
+      const value = JSON.parse(localStorage.getItem(STORE) || "null");
+      return value && value.registrationId ? value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ------------------------------------------------------------------ steps and countdown
+
+  function show(number) {
+    // A finished step keeps what it showed, without its buttons.
+    steps.slice(0, number - 1).forEach((step) => step.querySelectorAll(".act").forEach((node) => (node.hidden = true)));
+    steps.forEach((step, index) => {
+      step.classList.toggle("current", index + 1 === number);
+      step.classList.toggle("done", index + 1 < number);
+      step.classList.toggle("waiting", index + 1 > number);
+    });
+    const target = steps[number - 1];
+    requestAnimationFrame(() => target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" }));
+  }
+
+  function body(number) {
+    return steps[number - 1].querySelector(".body");
+  }
+
+  function tick() {
+    const active = Object.values(deadlines).filter((d) => Number.isFinite(d.at));
+    if (!active.length) {
+      countdown.hidden = true;
+      countdown.classList.remove("warn", "expired");
+      return;
+    }
+    const soonest = active.reduce((a, b) => (a.at <= b.at ? a : b));
+    const seconds = Math.max(0, Math.floor((soonest.at - Date.now() - clockOffset) / 1000));
+    countdown.hidden = false;
+    countdown.querySelector(".label").textContent = seconds ? soonest.label : "Time is up";
+    countdown.querySelector(".time").textContent = seconds
+      ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`
+      : "Expired";
+    countdown.classList.toggle("warn", seconds > 0 && seconds <= WARN_SECONDS);
+    countdown.classList.toggle("expired", seconds === 0);
+  }
+
+  // ------------------------------------------------------------------ wallets (EIP-6963)
+
+  window.addEventListener("eip6963:announceProvider", (event) => {
+    const detail = event.detail;
+    if (!detail || !detail.provider || !detail.info) return;
+    wallets.set(detail.info.uuid || detail.info.name, detail);
+    renderWallets();
+  });
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+  function walletList() {
+    const list = [...wallets.values()];
+    if (!list.length && window.ethereum) list.push({ info: { name: "Browser wallet" }, provider: window.ethereum });
+    return list;
+  }
+
+  async function connect(entry) {
+    const accounts = await entry.provider.request({ method: "eth_requestAccounts" });
+    if (!accounts || !accounts.length) throw new Error("The wallet gave no account.");
+    wallet = { provider: entry.provider, address: accounts[0], name: entry.info.name };
+    return wallet;
+  }
+
+  function renderWallets() {
+    if (!walletBox || (state && state.registrationId)) return;
+    const holder = walletBox.querySelector(".wallets-holder");
+    holder.replaceChildren();
+    if (wallet) {
+      const disconnect = element("button", { type: "button", class: "secondary small" }, "Use another wallet");
+      disconnect.addEventListener("click", () => {
+        wallet = null;
+        walletAddress.value = "";
+        walletAddress.disabled = false;
+        renderWallets();
+      });
+      holder.append(
+        element("div", { class: "connected" }, "✓ Connected: ", element("strong", { class: "mono" }, short(wallet.address)), ` (${wallet.name})`, disconnect)
+      );
+      return;
+    }
+    const list = walletList();
+    if (!list.length) {
+      holder.append(
+        element(
+          "p",
+          { class: "small" },
+          "No browser wallet found here. Open this page in your wallet app's browser, or type your wallet address below: you will then sign one message in your wallet app and paste the signature."
+        )
+      );
+      return;
+    }
+    const row = element("div", { class: "wallets" });
+    for (const entry of list) {
+      const icon = entry.info.icon && /^data:image\//.test(entry.info.icon) ? element("img", { src: entry.info.icon, alt: "" }) : null;
+      const button = element("button", { type: "button", class: "secondary" }, icon, `Connect ${entry.info.name}`);
+      button.addEventListener("click", async () => {
+        detailsError.hidden = true;
+        try {
+          await connect(entry);
+          walletAddress.value = wallet.address;
+          walletAddress.disabled = true;
+          renderWallets();
+        } catch (error) {
+          detailsError.textContent = walletError(error);
+          detailsError.hidden = false;
+        }
+      });
+      row.append(button);
+    }
+    holder.append(row);
+  }
+
+  function walletError(error) {
+    if (error && error.code === 4001) return "You cancelled it in your wallet.";
+    return `The wallet answered: ${(error && error.message) || error}`;
+  }
+
+  function toHex(text) {
+    return `0x${[...new TextEncoder().encode(text)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  // ------------------------------------------------------------------ step 1: details and quote
+
+  function controllerChoice() {
+    return form.querySelector("input[name=controller]:checked").value;
+  }
+
+  function syncController() {
+    const kind = controllerChoice();
+    walletBox.hidden = kind !== "wallet";
+    keyBox.hidden = kind !== "key";
+  }
+
+  async function loadOptions() {
+    const result = await call("GET", "/v1/payment-options?service=did_registration").catch(() => null);
+    const options = (result && result.data && result.data.supported_payment_options) || [];
+    const fee = result && result.data && result.data.commercial_fee;
+    if (fee && fee.amount) $("#price").textContent = `$${Number(fee.amount).toLocaleString("en-US")} ${fee.currency || "USD"}, paid once`;
+    optionsBox.replaceChildren();
+    let first = true;
+    for (const option of options) {
+      if (option.status !== "enabled") continue;
+      // USDC is paid by an x402 client when registering: not on this page yet.
+      const onPage = option.payment_protocol !== "x402";
+      const radio = element("input", { type: "radio", name: "option", value: option.id, disabled: !onPage, checked: onPage && first });
+      if (onPage) first = false;
+      const help = onPage
+        ? option.asset === "DMD"
+          ? "Send the coins from any DMD wallet."
+          : `Pay in ${option.asset}.`
+        : "Soon on this page: agents can already pay it through the API.";
+      optionsBox.append(
+        element("label", { class: `choice${onPage ? "" : " unavailable"}` }, radio, element("strong", {}, option.name || option.id), element("small", {}, help))
+      );
+    }
+    if (first) optionsBox.append(element("p", { class: "error" }, "No payment option is open on this page right now. Please come back later."));
+  }
+
+  function readDetails() {
+    const name = nameInput.value.trim();
+    if (!name) return { error: "Give the DID a name." };
+    const option = form.querySelector("input[name=option]:checked");
+    if (!option) return { error: "Choose how to pay." };
+    const request = { display_name: name, participant_type: kindSelect.value, preferred_payment_option: option.value };
+    let controller;
+    if (controllerChoice() === "wallet") {
+      const address = (wallet ? wallet.address : walletAddress.value).trim();
+      if (!WALLET_ADDRESS.test(address)) return { error: "Connect your wallet, or type its address (0x followed by 40 characters)." };
+      request.controller_wallet_address = address;
+      controller = { kind: "wallet", value: address };
+    } else {
+      const key = publicKey.value.trim();
+      if (!PUBLIC_KEY.test(key)) return { error: "The public key should look like ed25519:z6Mk… (from your agent)." };
+      request.controller_public_key = key;
+      controller = { kind: "key", value: key };
+    }
+    if (!terms.checked) return { error: "Please read and accept the terms first." };
+    return { request, controller };
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    const details = readDetails();
+    detailsError.hidden = !details.error;
+    if (details.error) {
+      detailsError.textContent = details.error;
+      return;
+    }
+    busy = true;
+    quoteButton.disabled = true;
+    quoteButton.textContent = "Getting your quote…";
+    try {
+      const key = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}-quote`;
+      const result = await call("POST", "/v1/dids/registration-quotes", details.request, { "Idempotency-Key": key });
+      if (result.status !== 201 && result.status !== 200) throw new Error(problem(result));
+      const quote = result.data;
+      const option = quote.selected_payment_option || {};
+      state = {
+        registrationId: quote.registration_intent_id,
+        paymentId: quote.payment_intent_id,
+        name: details.request.display_name,
+        recipient: option.recipient,
+        amount: option.amount,
+        asset: option.asset,
+        quoteExpiresAt: quote.expires_at,
+        controller: details.controller,
+        walletName: wallet ? wallet.name : null,
+      };
+      save();
+      lockDetails();
+      startPayment();
+    } catch (error) {
+      detailsError.textContent = error.message;
+      detailsError.hidden = false;
+      quoteButton.disabled = false;
+      quoteButton.textContent = "Get my quote";
+    } finally {
+      busy = false;
+    }
+  });
+
+  function lockDetails() {
+    for (const field of form.querySelectorAll("input,select,button")) field.disabled = true;
+    form.hidden = true;
+    const who = state.controller.kind === "wallet" ? `wallet ${short(state.controller.value)}` : `key ${short(state.controller.value)}`;
+    body(1).replaceChildren(
+      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID"), ` · controlled by your ${who} · paid in ${state.asset || "DMD"}`),
+      element("p", { class: "small" }, "Your registration ID (support can find your registration with it): ", element("code", {}, state.registrationId), " ", copyButton(state.registrationId))
+    );
+  }
+
+  // ------------------------------------------------------------------ step 2: pay
+
+  function startPayment() {
+    show(2);
+    if (state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
+    tick();
+    const status = element("p", { class: "status busy" }, "Waiting for your payment…");
+    const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
+    check.addEventListener("click", () => checkPayment(status));
+    const parts = [
+      element("p", {}, "Send exactly"),
+      element("div", { class: "copyline" }, element("span", { class: "amount" }, `${amountText(state.amount)} ${state.asset}`), copyButton(state.amount, "Copy amount")),
+      element("p", {}, "to this address:"),
+      element("div", { class: "copyline" }, element("code", {}, state.recipient), copyButton(state.recipient, "Copy address")),
+      element(
+        "ul",
+        { class: "rules" },
+        element("li", {}, "In one payment, from any DMD wallet."),
+        element("li", {}, "Exactly this amount: with less, the DID cannot be issued."),
+        element("li", {}, "Before the time runs out (see the countdown).")
+      ),
+      element("div", { class: "actions" }, status, check),
+    ];
+    if (config.staging) {
+      const testPay = element("button", { type: "button", class: "secondary act" }, "Pay with test coins (staging only)");
+      testPay.addEventListener("click", async () => {
+        testPay.disabled = true;
+        const result = await call("POST", "/v1/staging/test-payments", { payment_intent_id: state.paymentId });
+        if (result.status !== 201) {
+          status.textContent = problem(result);
+          status.className = "status bad";
+          testPay.disabled = false;
+        }
+        checkPayment(status);
+      });
+      parts.push(element("div", { class: "actions" }, testPay));
+    }
+    body(2).replaceChildren(...parts);
+    checkPayment(status);
+  }
+
+  async function checkPayment(status) {
+    clearTimeout(pollTimer);
+    let result;
+    try {
+      result = await call("GET", `/v1/payments/${state.paymentId}`);
+    } catch {
+      status.textContent = "Could not reach the gateway; trying again…";
+      pollTimer = setTimeout(() => checkPayment(status), POLL_MS);
+      return;
+    }
+    if (result.status !== 200) {
+      status.textContent = problem(result);
+      status.className = "status bad";
+      pollTimer = setTimeout(() => checkPayment(status), POLL_MS);
+      return;
+    }
+    const payment = result.data;
+    const needed = payment.required_confirmations;
+    const seen = payment.confirmations || 0;
+    const again = () => (pollTimer = setTimeout(() => checkPayment(status), POLL_MS));
+    status.className = "status busy";
+    switch (payment.status) {
+      case "created":
+      case "awaiting_payment":
+        status.textContent = "Waiting for your payment… (checked every 10 seconds)";
+        return again();
+      case "detected":
+      case "confirming":
+      case "verified":
+      case "reorged":
+        delete deadlines.quote;
+        tick();
+        status.textContent = `Payment received: ${seen} of ${needed || "the needed"} confirmations (about 2.5 minutes each)…`;
+        return again();
+      case "overpaid":
+        delete deadlines.quote;
+        tick();
+        status.textContent = `You sent more than the amount; it is confirming (${seen} of ${needed || "?"}). For the difference, contact support with your registration ID.`;
+        return again();
+      case "settled":
+        delete deadlines.quote;
+        tick();
+        status.textContent = "Paid ✓";
+        status.className = "status ok";
+        announce("Payment settled.");
+        return startProof();
+      case "underpaid":
+        delete deadlines.quote;
+        tick();
+        status.className = "status bad";
+        status.textContent = `The payment received (${payment.amount_received} ${state.asset}) is less than the amount due (${payment.amount_due} ${state.asset}), so the DID cannot be issued. Contact support with your registration ID for a refund (see the refund policy).`;
+        return;
+      case "expired": {
+        delete deadlines.quote;
+        tick();
+        status.className = "status bad";
+        const refund = payment.refund_due ? " A refund is due for a payment that arrived late: contact support with your registration ID." : " If you sent coins after the time ran out, contact support with your registration ID.";
+        status.textContent = `The quote expired before a payment arrived.${refund}`;
+        return offerRestart(body(2));
+      }
+      default:
+        status.className = "status bad";
+        status.textContent = `The payment is ${payment.status}. Contact support with your registration ID.`;
+        return offerRestart(body(2));
+    }
+  }
+
+  function offerRestart(container) {
+    const restart = element("button", { type: "button" }, "Start a new registration");
+    restart.addEventListener("click", startOver);
+    container.append(element("div", { class: "actions" }, restart));
+  }
+
+  function startOver() {
+    clearTimeout(pollTimer);
+    state = null;
+    save();
+    location.reload();
+  }
+
+  // ------------------------------------------------------------------ step 3: prove control
+
+  async function startProof() {
+    show(3);
+    const container = body(3);
+    container.replaceChildren(element("p", { class: "status busy" }, "Getting the message to sign…"));
+    const result = await call("POST", `/v1/dids/registrations/${state.registrationId}/controller-challenges`, {}).catch(() => null);
+    if (!result || (result.status !== 201 && result.status !== 200)) {
+      container.replaceChildren(element("p", { class: "status bad" }, result ? problem(result) : "Could not reach the gateway."));
+      const retry = element("button", { type: "button" }, "Try again");
+      retry.addEventListener("click", startProof);
+      container.append(element("div", { class: "actions" }, retry));
+      return;
+    }
+    const challenge = result.data;
+    deadlines.challenge = { at: Date.parse(challenge.expires_at), label: "Sign within" };
+    tick();
+    const status = element("p", { class: "status" });
+    const isWallet = challenge.controller.startsWith("eip155:");
+    const parts = [
+      element(
+        "p",
+        {},
+        isWallet
+          ? `Sign this message with your wallet ${short(state.controller.value)} to prove the DID is yours. Signing is free: it sends nothing.`
+          : "Sign this message with your agent's key (Ed25519) to prove the DID is yours."
+      ),
+      element("pre", { class: "message" }, challenge.message),
+      element("div", { class: "actions" }, copyButton(challenge.message, "Copy the message")),
+    ];
+    if (isWallet) {
+      const sign = element("button", { type: "button", class: "act" }, "Sign with my wallet");
+      sign.addEventListener("click", () => signWithWallet(challenge, sign, status));
+      parts.push(element("div", { class: "actions" }, sign));
+    } else {
+      parts.push(element("p", { class: "small" }, `The signature can be base64url, base64 or hex (${challenge.signature_encoding || "base64url"}).`));
+    }
+    const pasted = element("textarea", { rows: 3, placeholder: isWallet ? "0x…" : "The signature", "aria-label": "Signature" });
+    const send = element("button", { type: "button", class: isWallet ? "secondary act" : "act" }, "Send the signature");
+    send.addEventListener("click", () => sendProof(challenge, pasted.value.trim(), status));
+    const paste = element("div", { class: isWallet ? "" : "act" }, pasted, element("div", { class: "actions" }, send));
+    parts.push(isWallet ? element("details", { class: "paste act" }, element("summary", {}, "Or paste a signature made in another wallet"), paste) : paste);
+    parts.push(status);
+    container.replaceChildren(...parts);
+  }
+
+  async function signWithWallet(challenge, button, status) {
+    status.className = "status busy";
+    status.textContent = "Confirm the signature in your wallet…";
+    button.disabled = true;
+    try {
+      const address = state.controller.value;
+      if (!wallet || wallet.address.toLowerCase() !== address.toLowerCase()) {
+        const list = walletList();
+        if (!list.length) throw new Error("No browser wallet found here: paste a signature made in your wallet app instead.");
+        const preferred = list.find((entry) => entry.info.name === state.walletName) || list[0];
+        await connect(preferred);
+      }
+      if (wallet.address.toLowerCase() !== address.toLowerCase()) {
+        throw new Error(`Your wallet is on another account (${short(wallet.address)}). Switch to ${short(address)} in your wallet and try again.`);
+      }
+      const signature = await wallet.provider.request({ method: "personal_sign", params: [toHex(challenge.message), wallet.address] });
+      await sendProof(challenge, signature, status);
+    } catch (error) {
+      status.className = "status bad";
+      status.textContent = error instanceof Error && !("code" in error) ? error.message : walletError(error);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function sendProof(challenge, signature, status) {
+    if (!signature) {
+      status.className = "status bad";
+      status.textContent = "Paste the signature first.";
+      return;
+    }
+    status.className = "status busy";
+    status.textContent = "Checking the signature…";
+    const result = await call("POST", `/v1/dids/registrations/${state.registrationId}/controller-proofs`, { challenge_id: challenge.challenge_id, signature });
+    const code = errorCode(result);
+    if ((result.status === 201 || result.status === 200) && result.data.status === "verified") {
+      delete deadlines.challenge;
+      tick();
+      status.className = "status ok";
+      status.textContent = "Signature verified ✓";
+      announce("Signature verified.");
+      return register();
+    }
+    status.className = "status bad";
+    const messages = {
+      invalid_signature: "That signature does not match. The message is used up: get a new one and sign it again.",
+      challenge_expired: "The time to sign ran out: get a new message.",
+      challenge_already_used: "This message was already used: get a new one.",
+    };
+    status.textContent = messages[code] || problem(result);
+    if (messages[code]) {
+      const again = element("button", { type: "button", class: "act" }, "Get a new message");
+      again.addEventListener("click", startProof);
+      status.after(element("div", { class: "actions" }, again));
+    }
+  }
+
+  // ------------------------------------------------------------------ step 4: the DID
+
+  async function register() {
+    show(4);
+    const container = body(4);
+    container.replaceChildren(element("p", { class: "status busy" }, "Issuing your DID…"));
+    const result = await call("POST", "/v1/dids/registrations", { registration_intent_id: state.registrationId }).catch(() => null);
+    if (!result || (result.status !== 201 && result.status !== 200)) {
+      container.replaceChildren(element("p", { class: "status bad" }, result ? problem(result) : "Could not reach the gateway."));
+      const retry = element("button", { type: "button" }, "Try again");
+      retry.addEventListener("click", register);
+      container.append(element("div", { class: "actions" }, retry));
+      return;
+    }
+    const issued = result.data;
+    steps[3].classList.add("done");
+    steps[3].classList.remove("current");
+    deadlines = {};
+    tick();
+    state = null;
+    save();
+    const open = element("a", { class: "big", href: issued.did_document_url, target: "_blank", rel: "noopener" }, "Open your DID document");
+    container.replaceChildren(
+      element(
+        "div",
+        { class: "result" },
+        element("h2", {}, "✓ Your DID is ready"),
+        element("div", { class: "did" }, issued.did),
+        element("div", { class: "actions" }, copyButton(issued.did, "Copy the DID")),
+        open,
+        element(
+          "div",
+          { class: "links" },
+          element("a", { href: issued.credential_url, target: "_blank", rel: "noopener" }, "View the signed credential"),
+          element("a", { href: "/docs/advanced" }, "API docs")
+        )
+      )
+    );
+    announce("Your DID is ready.");
+    requestAnimationFrame(() => open.focus({ preventScroll: true }));
+  }
+
+  // ------------------------------------------------------------------ continuing after a reload
+
+  async function resume(previous) {
+    const result = await call("GET", `/v1/dids/registrations/${previous.registrationId}`).catch(() => null);
+    if (!result || result.status !== 200) return; // unknown or unreachable: start fresh, keep it saved
+    const registration = result.data;
+    const payment = (registration.payment && registration.payment.status) || "";
+    const finished = ["expired", "failed", "refunded", "reversed"].includes(payment) || registration.next_action === "request_new_quote";
+    if (finished && !registration.did) {
+      state = null;
+      save();
+      resumeBox.hidden = false;
+      resumeBox.replaceChildren(element("p", {}, `Your last quote (${short(previous.registrationId)}) ended: ${payment || registration.status}. If you sent coins for it, contact support with this ID: `, element("code", {}, previous.registrationId)));
+      return;
+    }
+    resumeBox.hidden = false;
+    const go = element("button", { type: "button" }, registration.did ? "Show my DID" : "Continue");
+    const fresh = element("button", { type: "button", class: "secondary" }, "Start a new one");
+    go.addEventListener("click", () => {
+      resumeBox.hidden = true;
+      state = previous;
+      lockDetails();
+      if (registration.did || registration.next_action === "register_did") return register();
+      if (payment === "settled") return startProof();
+      return startPayment();
+    });
+    fresh.addEventListener("click", () => {
+      state = null;
+      save();
+      resumeBox.hidden = true;
+    });
+    resumeBox.replaceChildren(
+      element("p", {}, registration.did ? "Your DID was issued: " : "You have a registration in progress: ", element("strong", {}, previous.name || ""), ` (${short(previous.registrationId)}).`),
+      element("div", { class: "actions" }, go, fresh)
+    );
+  }
+
+  // ------------------------------------------------------------------ start
+
+  for (const radio of form.querySelectorAll("input[name=controller]")) radio.addEventListener("change", syncController);
+  for (const kind of ["input", "change"]) form.addEventListener(kind, () => (detailsError.hidden = true));
+  syncController();
+  setTimeout(renderWallets, 300); // wallets announce themselves shortly after the page loads
+  renderWallets();
+  setInterval(tick, 1000);
+  loadOptions();
+  const previous = saved();
+  if (previous) resume(previous);
+})();

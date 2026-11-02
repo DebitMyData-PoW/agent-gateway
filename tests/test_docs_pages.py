@@ -25,7 +25,7 @@ def _inline(html: str, tag: str) -> str:
 
 
 def test_swagger_ui_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
-    page = client.get("/docs").text
+    page = client.get("/docs/advanced").text
     for url, integrity in (docs_pages.SWAGGER_UI_JS, docs_pages.SWAGGER_UI_CSS):
         assert f"@{docs_pages.SWAGGER_UI_VERSION}/" in url
         assert re.fullmatch(r"sha384-[A-Za-z0-9+/]{64}", integrity)
@@ -35,7 +35,7 @@ def test_swagger_ui_comes_at_an_exact_version_checked_by_fingerprint(client: Tes
 
 
 def test_only_swagger_ui_and_the_page_own_code_may_run(client: TestClient) -> None:
-    response = client.get("/docs")
+    response = client.get("/docs/advanced")
     csp = response.headers["content-security-policy"]
     script, style = _inline(response.text, "script"), _inline(response.text, "style")
     assert f"script-src {docs_pages.SWAGGER_UI_JS[0]} 'sha256-{_sha256(script)}';" in csp
@@ -52,7 +52,7 @@ def _settings(page: str) -> dict:
 
 
 def test_swagger_ui_settings_are_data_not_code(client: TestClient) -> None:
-    config = _settings(client.get("/docs").text)["swagger"]
+    config = _settings(client.get("/docs/advanced").text)["swagger"]
     assert config["url"] == "/openapi.json"
     assert config["validatorUrl"] is None
     assert config["tryItOutEnabled"] is True and config["deepLinking"] is True
@@ -87,7 +87,7 @@ def _check_steps(client: TestClient, path: str, outside: set[int], x402: list[in
 
 
 def test_the_production_steps_are_numbered_with_their_endpoints(client: TestClient) -> None:
-    steps = _check_steps(client, "/docs", outside={3, 6, 9}, x402=[1, 2, 5, 6, 7, 8, 9])
+    steps = _check_steps(client, "/docs/advanced", outside={3, 6, 9}, x402=[1, 2, 5, 6, 7, 8, 9])
     by_number = {step["number"]: step for step in steps}
     assert by_number[4]["done_when"] == {"field": "status", "value": "settled"}
     assert by_number[7]["done_when"] == {"field": "status", "value": "verified"}
@@ -169,6 +169,7 @@ def test_the_docs_page_explains_how_to_register_by_hand(client: TestClient) -> N
     assert "### Register a DID from this page" in guide
     assert f"]({STAGING_GUIDED_PAGE})" in guide
     assert "Never paste a private key" in guide
+    assert "[Get a DID](/docs)" in guide
     assert "Values from your responses" in guide
     assert "15 minutes of step 2" in guide and "5 minutes of step 5" in guide
     operations = {

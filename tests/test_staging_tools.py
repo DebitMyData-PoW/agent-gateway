@@ -101,7 +101,7 @@ def test_tools_are_absent_unless_enabled(client: TestClient) -> None:
 
 
 def test_docs_pages_carry_the_dmd_favicon(client: TestClient) -> None:
-    docs = client.get("/docs")
+    docs = client.get("/docs/advanced")
     assert docs.status_code == 200
     assert 'href="/favicon.png"' in docs.text
     assert '"tryItOutEnabled": true' in docs.text

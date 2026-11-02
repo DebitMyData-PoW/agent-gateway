@@ -50,14 +50,12 @@ def test_the_old_address_and_the_root_lead_to_the_guided_page(
     assert response.headers["location"] == "/docs"
 
 
-def test_outside_staging_the_docs_page_is_swagger_and_there_is_no_guided_page(
-    client: TestClient,
-) -> None:
+def test_outside_staging_there_is_no_guided_test_page(client: TestClient) -> None:
+    # /docs is the "Get a DID" page there (tests/test_get_did_page.py), Swagger the advanced one.
     docs = client.get("/docs")
-    assert docs.status_code == 200 and '"tryItOutEnabled": true' in docs.text
-    assert "Try a DID registration" not in docs.text
-    for path in ("/docs/advanced", "/try", "/"):
-        assert client.get(path, follow_redirects=False).status_code == 404
+    assert docs.status_code == 200 and "Try a DID registration" not in docs.text
+    assert '"tryItOutEnabled": true' in client.get("/docs/advanced").text
+    assert client.get("/try", follow_redirects=False).status_code == 404
 
 
 def test_only_the_page_own_script_and_style_may_run(staging_client: TestClient) -> None:  # noqa: F811

@@ -24,6 +24,7 @@ from dmd_gateway.api import (
     discovery,
     docs_pages,
     donations,
+    get_did_page,
     health,
     identities,
     payments,
@@ -150,12 +151,13 @@ def create_app(
     app.include_router(identities.router)
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
+    app.include_router(get_did_page.router)  # /get-did on every server
     if settings.staging_test_tools:
         app.include_router(staging.router)
-        app.include_router(try_page.router)  # /docs is the guided page, /docs/advanced Swagger
+        app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger
         _add_try_it_guide(app)
     else:
-        app.include_router(docs_pages.swagger_router)
+        app.include_router(get_did_page.production_router)  # /docs is "Get a DID"
         _add_how_to_guide(app)
     app.state.docs_steps = functools.cache(lambda: panel_steps(app))
     app.state.mcp = mount_mcp(app, settings)
@@ -476,6 +478,9 @@ def _add_how_to_guide(app: FastAPI) -> None:
         lines = [
             "### Register a DID from this page",
             "",
+            "**Easiest: [Get a DID](/docs)** takes you through these steps: you pay and sign in "
+            "your own wallet.",
+            "",
             f"**Want to see the whole flow first?** [Try it with test coins on the guided "
             f"staging page]({STAGING_GUIDED_PAGE}): it runs every step for you.",
             "",
@@ -485,10 +490,10 @@ def _add_how_to_guide(app: FastAPI) -> None:
             "**Never paste a private key or a wallet's recovery phrase into this page: the "
             "gateway never asks for one.**",
             "",
-            "On [/docs](/docs), each step's endpoint below is marked **Step 1** to **Step 8**. "
-            "The panel at the bottom right shows the next step with a **Go** button that opens "
-            "it, and keeps each value the answers give you (**Values from your responses**), "
-            "with a **Copy** button and the step it goes into.",
+            "On this page, each step's endpoint below is marked **Step 1** to **Step 8**. The "
+            "panel at the bottom right shows the next step with a **Go** button that opens it, "
+            "and keeps each value the answers give you (**Values from your responses**), with "
+            "a **Copy** button and the step it goes into.",
             "",
         ]
         for number, (request, text) in enumerate(HOW_TO_STEPS, start=1):

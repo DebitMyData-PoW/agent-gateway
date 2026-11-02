@@ -52,7 +52,8 @@ _BODY = """
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
 <main>
 <nav class=modes aria-label="Ways to try the API"><span class=on aria-current=page>Guided
-test</span><a href="/docs/advanced">Advanced: all endpoints, by hand</a></nav>
+test</span><a href="/get-did">With your own wallet</a><a href="/docs/advanced">Advanced: all
+endpoints, by hand</a></nav>
 <header class=top><img src="/favicon.png" alt=""><h1>Try a DID registration</h1></header>
 <p class=lead>This page runs every step of a registration for you, the way an AI agent does
 it through the API. Click <strong>Execute</strong> on each step, or <strong>Run all

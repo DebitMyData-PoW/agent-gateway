@@ -189,15 +189,26 @@ a dedicated Base RPC endpoint (`DMD_BASE_RPC_URL`).
 
 ## 8. Updates
 
-**The API docs page.** `/docs` explains how to register a DID by hand (paying and signing
-happen in the agent's own wallet and tools, never in the page) and links to the guided test
-page on staging. Each step's endpoint is marked **Step N**, and the panel at the bottom right
-shows the next step with a **Go** button that opens it (or, for paying and signing, what to do
-outside the page) and what to paste into it, and keeps the values each answer gives, each
-with a **Copy** button, in the open page only. `/docs` and `/redoc` load Swagger UI and
-ReDoc from jsDelivr at exact versions, and the browser checks each file's SHA-384 fingerprint
-before running it; their Content-Security-Policy lets nothing else run. To move to newer
-versions, see the top of `src/dmd_gateway/api/docs_pages.py`.
+**The "Get a DID" page.** `/docs` (also `/get-did`, for links from DebitMyData's sites, and
+the site's address) takes people through a registration in the debitmydata.com look: the
+DID's details and the quote, the payment (the exact amount and address, with the payment
+watched until it settles), one message signed with their wallet (a **Sign with my wallet**
+button for browser wallets, or a signature pasted from another wallet or the agent's tools),
+and the DID. It never asks for a private key or a recovery phrase and never sends money; it
+keeps the registration's IDs in the browser so that a reload continues where it stopped. USDC
+is not on the page yet (agents pay it through the API). Its font, Mada, is served by the
+gateway (SIL Open Font License, `src/dmd_gateway/static/fonts/OFL-Mada.txt`).
+
+**The advanced API docs.** `/docs/advanced` is the Swagger UI page. It explains how to
+register a DID by hand (paying and signing happen in the agent's own wallet and tools, never
+in the page) and links to the guided test page on staging. Each step's endpoint is marked
+**Step N**, and the panel at the bottom right shows the next step with a **Go** button that
+opens it (or, for paying and signing, what to do outside the page) and what to paste into it,
+and keeps the values each answer gives, each with a **Copy** button, in the open page only.
+It and `/redoc` load Swagger UI and ReDoc from jsDelivr at exact versions, and the browser
+checks each file's SHA-384 fingerprint before running it; their Content-Security-Policy lets
+nothing else run. To move to newer versions, see the top of
+`src/dmd_gateway/api/docs_pages.py`.
 
 Only with a version that already runs well on staging:
 

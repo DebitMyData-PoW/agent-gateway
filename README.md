@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.19.2`). The whole registration flow (quote,
+This is an early development release (`0.20.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -47,7 +47,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Area | State |
 | --- | --- |
 | FastAPI service, settings, structured JSON logs, request correlation IDs | done |
-| `/healthz`, `/readyz`, `/v1/discovery`, `/v1/payment-options`, OpenAPI at `/docs` | done |
+| `/healthz`, `/readyz`, `/v1/discovery`, `/v1/payment-options`, OpenAPI at `/docs/advanced` | done |
+| "Get a DID" page for people at `/docs` (production) and `/get-did`: quote, payment, a message signed with their wallet, the DID | done (DMD; USDC through the API) |
 | Payment route registry with per-rail enable flags and kill switches | done |
 | Normalized payment state machine and the DID-issuance rule | done |
 | Exact decimal / base-unit money arithmetic | done |
