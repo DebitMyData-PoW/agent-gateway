@@ -318,7 +318,10 @@ HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
 # for the steps done outside the page (no request), what to do; for the others, a tip. The
 # requests come from HOW_TO_STEPS / TRY_IT_STEPS; step 9 opens the DID document.
 _REGISTER_TIP = "DMD: leave PAYMENT-SIGNATURE empty."
-_CHALLENGE_TIP = "Leave controller_type empty: the answer names the controller still to prove."
+_CHALLENGE_TIP = (
+    "Leave controller_type empty: the gateway picks the controller still to prove (the "
+    "answer's controller says which)."
+)
 PANEL_TITLES = {
     "production": [
         ("See how you can pay", ""),
@@ -384,7 +387,8 @@ PANEL_NEEDS = {
     ("post", "/v1/staging/test-payments"): ["payment_intent_id"],
     ("get", "/v1/payments/{payment_intent_id}"): ["payment_intent_id"],
     ("post", "/v1/dids/registrations/{registration_intent_id}/controller-challenges"): [
-        "registration_intent_id"
+        "registration_intent_id",
+        "controller_type",
     ],
     ("post", "/v1/staging/test-signatures"): ["challenge_id", "private_key"],
     ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): [
@@ -543,7 +547,6 @@ def _add_try_it_guide(app: FastAPI) -> None:
         choices = {
             "preferred_payment_option": options,
             "controller_network": networks,
-            "controller_type": ["ed25519", "eip155"],
         }
         add_form_bodies(schema, replace(FORM_HINTS, choices=choices))
         lines = [

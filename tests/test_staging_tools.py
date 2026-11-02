@@ -178,12 +178,15 @@ def test_docs_page_shows_request_bodies_as_fields(staging_client: TestClient) ->
     assert fields["properties"]["controller_public_key"]["example"] == ""
     assert fields["properties"]["participant_type"]["description"].startswith("What kind")
     assert "autonomous_agent" in fields["properties"]["participant_type"]["enum"]
-    # The wallet's network and the controller to prove are picked from a list.
+    # The wallet's network is picked from a list.
     assert fields["properties"]["controller_network"]["enum"] == ["eip155:8453"]
     assert "examples" in body["application/json"]
     path = "/v1/dids/registrations/{registration_intent_id}/controller-challenges"
     challenge = schema["paths"][path]["post"]["requestBody"]["content"][FORM]["schema"]
-    assert challenge["properties"]["controller_type"]["enum"] == ["ed25519", "eip155"]
+    # The controller to prove starts empty, so the gateway picks the one still to prove: a list
+    # would send its first choice every time.
+    assert "enum" not in challenge["properties"]["controller_type"]
+    assert challenge["properties"]["controller_type"]["example"] == ""
     assert "required" not in challenge
 
 

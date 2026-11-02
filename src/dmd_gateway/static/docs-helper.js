@@ -157,7 +157,7 @@
     return node;
   }
 
-  const count = element("span", { class: "vp-count" }, "0");
+  const count = element("span", { class: "vp-count" }, "(0)");
   const arrow = element("span", { class: "vp-arrow", "aria-hidden": "true" }, "▸");
   const toggle = element(
     "button",
@@ -261,7 +261,7 @@
       if (kept.has(key)) rows.push(row(key, kept.get(key)));
     }
     list.replaceChildren(...rows);
-    count.textContent = String(kept.size);
+    count.textContent = `(${kept.size})`;
     empty.hidden = kept.size > 0;
     // Show the newest values: scroll the panel (not the page) to the first of them.
     const first = list.querySelector(".vp-row.new");
@@ -337,6 +337,13 @@
       case "amount": {
         const value = keptValue("selected_payment_option.amount");
         return value && { value, note: kept.get("selected_payment_option.amount").unit };
+      }
+      case "controller_type": {
+        // Only when the quote's other controller is left: the gateway picks it anyway.
+        const proven = keptValue("challenge_controller");
+        if (!notice || !proven) return null;
+        const wallet = !proven.startsWith("eip155:");
+        return { value: wallet ? "eip155" : "ed25519", note: `${wallet ? "the wallet" : "the public key"}, or leave the field empty` };
       }
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };

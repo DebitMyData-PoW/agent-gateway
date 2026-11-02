@@ -109,9 +109,16 @@ def test_the_staging_steps_are_numbered_with_their_endpoints(
     assert steps[0]["operation_id"].startswith("create_test_agent_key")
     assert steps[2]["operation_id"].startswith("create_test_payment")
     assert "private_key below" in steps[5]["help"] and "PAYMENT-SIGNATURE empty" in steps[7]["help"]
+    assert steps[4]["needs"] == ["registration_intent_id", "controller_type"]
     assert steps[5]["needs"] == ["challenge_id", "private_key"]
     assert steps[6]["needs"] == ["registration_intent_id", "challenge_id", "signature"]
     assert steps[6]["again_when"]["field"] == "next_action"
+
+
+def test_a_challenge_lets_the_gateway_pick_the_controller_by_default(client: TestClient) -> None:
+    # Swagger UI would otherwise fill in {"controller_type": "string"}, which is refused.
+    schema = client.get("/openapi.json").json()
+    assert schema["components"]["schemas"]["ChallengeRequest"]["examples"] == [{}]
 
 
 def test_the_page_marks_each_step_and_offers_the_next_one() -> None:

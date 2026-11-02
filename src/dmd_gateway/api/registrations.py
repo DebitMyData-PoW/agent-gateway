@@ -59,13 +59,15 @@ def _ctx(request: Request) -> IssuanceContext:
 
 
 class ChallengeRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # The docs page's example body is {}: the controller is then picked by the gateway.
+    model_config = ConfigDict(extra="forbid", json_schema_extra={"examples": [{}]})
 
     controller_type: str | None = Field(
         default=None,
         pattern=r"^(ed25519|eip155)$",
-        description="Which controller to prove: ed25519 (the public key) or eip155 (the "
-        "wallet). Optional: by default the only controller, or the next one still to prove.",
+        description="Usually left out: the gateway then picks the quote's only controller, or "
+        "the next one still to prove. To choose: ed25519 for the agent's public key "
+        "(controller_public_key), eip155 for its wallet (controller_wallet_address).",
     )
 
 

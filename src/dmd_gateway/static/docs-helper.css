@@ -7,8 +7,7 @@ font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 .vp-head{display:flex;align-items:center;gap:8px;padding:8px 10px}
 .vp-head button{font:inherit;cursor:pointer;border-radius:8px}
 .vp-toggle{flex:1;text-align:left;font-weight:700;border:0;background:transparent;color:#1d2330;padding:4px 6px}
-.vp-count{display:inline-block;min-width:22px;text-align:center;border-radius:999px;background:#1f6feb;color:#fff;
-font-size:12px;padding:1px 7px;margin-left:4px}
+.vp-count{color:#5d6577;font-weight:400;margin-left:2px}
 .vp-clear{border:1px solid #c9d1de;background:#fff;color:#5d6577;padding:3px 10px}
 .vp-body{position:relative;max-height:min(55vh,460px);overflow:auto;border-top:1px solid #dfe3ea;padding:6px 12px 10px}
 .vp-body[hidden]{display:none}
