@@ -6,7 +6,9 @@ Run locally with:
 
 from __future__ import annotations
 
+import functools
 import logging
+import re
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -155,6 +157,7 @@ def create_app(
     else:
         app.include_router(docs_pages.swagger_router)
         _add_how_to_guide(app)
+    app.state.docs_steps = functools.cache(lambda: panel_steps(app))
     app.state.mcp = mount_mcp(app, settings)
     return app
 
@@ -311,6 +314,93 @@ HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
 ]
 
 
+# The docs page panel: each step's short title, and for the steps done outside the page
+# (no request), what to do. The requests come from HOW_TO_STEPS / TRY_IT_STEPS; step 9 opens
+# the DID document.
+PANEL_TITLES = {
+    "production": [
+        ("See how you can pay", ""),
+        ("Get a quote", ""),
+        (
+            "Pay, outside this page",
+            "DMD: from your wallet, send the exact amount to the address below. USDC: nothing "
+            "to do yet, you pay in step 8.",
+        ),
+        ("Check the payment", ""),
+        ("Get a challenge", ""),
+        (
+            "Sign the message, outside this page",
+            "Sign the message below with the agent's key or wallet, in its own tools. Never "
+            "paste a private key into this page.",
+        ),
+        ("Send the proof", ""),
+        ("Register the DID", ""),
+        ("Open the DID document", "Open it with the Open link next to it below."),
+    ],
+    "staging": [
+        ("Create a test key", ""),
+        ("Get a quote", ""),
+        ("Pay with test coins", ""),
+        ("Check the payment", ""),
+        ("Get a challenge", ""),
+        ("Sign with the test key", ""),
+        ("Send the proof", ""),
+        ("Register the DID", ""),
+        ("Open the DID document", "Open it with the Open link next to it below."),
+    ],
+}
+# USDC (x402) is paid when registering, so its steps come in another order: on staging, the
+# test wallet signs the payment (step 3) right before registering.
+PANEL_X402_ORDER = {"production": [1, 2, 5, 6, 7, 8, 9], "staging": [1, 2, 5, 6, 7, 3, 8, 9]}
+# A new quote or a new challenge starts the steps after it again.
+PANEL_RESTARTS = {
+    "/v1/dids/registration-quotes",
+    "/v1/dids/registrations/{registration_intent_id}/controller-challenges",
+}
+# A step whose answer must say more than "OK" to be done.
+PANEL_DONE_WHEN = {
+    ("get", "/v1/payments/{payment_intent_id}"): ("status", "settled"),
+    ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): (
+        "status",
+        "verified",
+    ),
+}
+
+
+def panel_steps(app: FastAPI) -> dict[str, Any]:
+    """The steps of the docs page's panel: for each, its endpoint (section, operation id,
+    method and a path pattern to recognise its answers), or what to do outside the page."""
+    page = "staging" if app.state.settings.staging_test_tools else "production"
+    if page == "staging":
+        requests = [(method, path) for method, path, _, _ in TRY_IT_STEPS]
+    else:
+        requests = [request[:2] if request else None for request, _ in HOW_TO_STEPS]
+    schema = app.openapi()
+    steps = []
+    for number, (request, (title, outside)) in enumerate(
+        zip([*requests, None], PANEL_TITLES[page], strict=True), start=1
+    ):
+        step: dict[str, Any] = {"number": number, "title": title}
+        if request is None:
+            step["outside"] = outside
+        else:
+            method, path = request
+            operation = schema["paths"][path][method]
+            step |= {
+                "method": method.upper(),
+                "pattern": "^" + re.sub(r"\{[^}]+\}", "[^/]+", path) + "$",
+                "tag": operation["tags"][0],
+                "operation_id": operation["operationId"],
+            }
+            if request in PANEL_DONE_WHEN:
+                field, value = PANEL_DONE_WHEN[request]
+                step["done_when"] = {"field": field, "value": value}
+            if path in PANEL_RESTARTS:
+                step["restarts"] = True
+        steps.append(step)
+    return {"steps": steps, "x402_order": PANEL_X402_ORDER[page]}
+
+
 def _add_how_to_guide(app: FastAPI) -> None:
     """Outside staging: how to register a DID by hand from the docs page, each request step
     linked to its endpoint, and where to try the whole flow with test coins first."""
@@ -337,9 +427,10 @@ def _add_how_to_guide(app: FastAPI) -> None:
             "**Never paste a private key or a wallet's recovery phrase into this page: the "
             "gateway never asks for one.**",
             "",
-            "On [/docs](/docs), the **Values from your responses** panel (bottom right) keeps "
-            "each value the answers give you, with a **Copy** button and the step it goes "
-            "into.",
+            "On [/docs](/docs), each step's endpoint below is marked **Step 1** to **Step 8**. "
+            "The panel at the bottom right shows the next step with a **Go** button that opens "
+            "it, and keeps each value the answers give you (**Values from your responses**), "
+            "with a **Copy** button and the step it goes into.",
             "",
         ]
         for number, (request, text) in enumerate(HOW_TO_STEPS, start=1):
@@ -412,6 +503,10 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "each endpoint below, fill in the fields, click **Execute**, and copy the values "
             "named into the next step. The three **staging** endpoints stand in for what a "
             "real agent does with its own key and wallet.",
+            "",
+            "Each step's endpoint below is marked **Step 1** to **Step 8**. The panel at the "
+            "bottom right shows the next step with a **Go** button that opens it, and keeps "
+            "each value the answers give, with a **Copy** button.",
             "",
         ]
         for number, (method, path, label, text) in enumerate(TRY_IT_STEPS, start=1):

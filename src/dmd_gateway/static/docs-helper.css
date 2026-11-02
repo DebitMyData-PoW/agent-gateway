@@ -32,3 +32,21 @@ border-radius:6px;padding:2px 12px}
 .vp-head button:focus-visible,.vp-copy:focus-visible,.vp-actions a:focus-visible{outline:3px solid #1f6feb;outline-offset:2px}
 @media (max-width:600px){.values-panel{right:8px;left:8px;bottom:8px;width:auto;max-width:none}}
 @media (prefers-reduced-motion:reduce){.vp-row.new{animation:none}}
+.vp-next{background:#eef4ff;border-radius:10px 10px 0 0;padding:8px 12px;border-bottom:1px solid #dfe3ea}
+.vp-next[hidden]{display:none}
+.vp-next-line{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vp-next-text{font-weight:600}
+.vp-go{font:inherit;font-weight:700;cursor:pointer;border:1px solid #1a7f37;background:#1a7f37;color:#fff;
+border-radius:6px;padding:3px 12px;text-decoration:none;white-space:nowrap}
+.vp-next-help{color:#5d6577;font-size:12px;margin-top:4px}
+.vp-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.vp-chip{font:12px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;cursor:pointer;border:1px solid #c9d1de;
+background:#fff;color:#5d6577;border-radius:999px;min-width:26px;padding:4px 7px}
+.vp-chip.outside{border-style:dashed}
+.vp-chip.done{background:#e6f4ea;border-color:#1a7f37;color:#1a7f37}
+.vp-chip.next{background:#1f6feb;border-color:#1f6feb;color:#fff;font-weight:700}
+.vp-go:focus-visible,.vp-chip:focus-visible{outline:3px solid #1f6feb;outline-offset:2px}
+.vp-step-badge{display:inline-block;flex:0 0 auto;align-self:center;margin-right:10px;padding:2px 9px;
+border-radius:999px;background:#1d2330;color:#fff;font:700 12px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;
+white-space:nowrap}
+@media (max-width:600px){.values-panel:not(.open) .vp-chips{display:none}}

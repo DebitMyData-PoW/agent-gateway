@@ -1,10 +1,13 @@
 "use strict";
-// The API docs page: starts Swagger UI with the settings in #swagger-config, and keeps the
-// values each answer gives in a panel, each with its own Copy button and the step it goes
-// into. The values live in this open page only: nothing is stored or sent anywhere.
+// The API docs page: starts Swagger UI with the settings in #swagger-config, marks each
+// step's endpoint "Step N", and shows a panel with the next step (Go opens it) and the values
+// each answer gives, each with its own Copy button and the step it goes into. Everything
+// lives in this open page only: nothing is stored or sent anywhere.
 (() => {
-  const config = JSON.parse(document.getElementById("swagger-config").textContent);
+  const settings = JSON.parse(document.getElementById("swagger-config").textContent);
+  const config = settings.swagger;
   const specPath = new URL(config.url, location.href).pathname;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const notX402 = (body) =>
     Boolean(body.selected_payment_option) && body.selected_payment_option.payment_protocol !== "x402";
@@ -110,6 +113,7 @@
       }
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) return;
+    progress(url, methods.get(url.href) || "GET", body);
     const staging = url.pathname.startsWith("/v1/staging/");
     const changed = [];
     for (const field of FIELDS) {
@@ -122,10 +126,12 @@
       kept.set(key, { field, value: String(value), unit: field.unit ? field.unit(body) : "" });
       changed.push(key);
     }
-    if (!changed.length) return;
-    flash = new Set(changed);
-    if (!opened) setOpen(true);
-    render();
+    if (changed.length) {
+      flash = new Set(changed);
+      if (!opened) setOpen(true);
+      render();
+    }
+    renderSteps(); // after the values: the last step opens the DID document just kept
   }
 
   // ------------------------------------------------------------------ panel
@@ -158,9 +164,11 @@
       + "Copy button and the step it goes into. They stay in this page only."
   );
   const body = element("div", { class: "vp-body", id: "vp-body", hidden: "" }, empty, list);
+  const nextBar = element("div", { class: "vp-next", "aria-live": "polite" });
   const panel = element(
     "aside",
-    { class: "values-panel", "aria-label": "Values from your responses" },
+    { class: "values-panel", "aria-label": "Next step and values from your responses" },
+    nextBar,
     element("div", { class: "vp-head" }, toggle, clear),
     body
   );
@@ -179,7 +187,10 @@
   });
   clear.addEventListener("click", () => {
     kept.clear();
+    done.clear();
+    order = allSteps;
     render();
+    renderSteps();
   });
 
   async function copy(button, value, target) {
@@ -246,6 +257,160 @@
     flash = new Set();
   }
 
+  // ------------------------------------------------------------------ steps
+
+  // Each step: its number and title, and either its endpoint (section, operation id, method,
+  // a pattern for its path) or what to do outside this page. USDC has its own order.
+  const steps = settings.steps || [];
+  const byNumber = new Map(steps.map((step) => [step.number, step]));
+  const allSteps = steps.map((step) => step.number);
+  let order = allSteps;
+  const done = new Set();
+  const methods = new Map(); // request URL -> method, to recognise each step's answers
+
+  function nextStep() {
+    let last = -1;
+    order.forEach((number, index) => {
+      if (done.has(number)) last = index;
+    });
+    return last + 1 < order.length ? byNumber.get(order[last + 1]) : null;
+  }
+
+  function progress(url, method, answer) {
+    if (answer.selected_payment_option && settings.x402_order) {
+      order = answer.selected_payment_option.payment_protocol === "x402" ? settings.x402_order : allSteps;
+    }
+    for (const step of steps) {
+      if (!step.pattern || step.method !== method || !new RegExp(step.pattern).test(url.pathname)) continue;
+      if (step.done_when && read(answer, step.done_when.field) !== step.done_when.value) continue;
+      const position = order.indexOf(step.number);
+      if (position < 0) continue;
+      // A new quote or a new challenge starts what follows it again.
+      if (step.restarts) for (const number of order.slice(position + 1)) done.delete(number);
+      // What had to be done outside this page before it is done too.
+      for (const number of order.slice(0, position)) if (!byNumber.get(number).pattern) done.add(number);
+      done.add(step.number);
+    }
+  }
+
+  function goTo(step) {
+    if (!step || !step.operation_id) return;
+    try {
+      window.ui.layoutActions.show(["operations-tag", step.tag], true);
+      window.ui.layoutActions.show(["operations", step.tag, step.operation_id], true);
+    } catch (error) {
+      console.warn("Values panel:", error);
+    }
+    const id = `operations-${step.tag}-${step.operation_id}`;
+    let tries = 0;
+    const find = () => {
+      const block = document.getElementById(id);
+      if (!block) {
+        if (tries++ < 60) requestAnimationFrame(find);
+        return;
+      }
+      block.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+      if (block.animate && !reducedMotion) {
+        block.animate(
+          [{ boxShadow: "0 0 0 5px #f0a040" }, { boxShadow: "0 0 0 0 rgba(240,160,64,0)" }],
+          { duration: 2200, easing: "ease-out" }
+        );
+      }
+    };
+    requestAnimationFrame(find);
+  }
+
+  function renderSteps() {
+    if (!steps.length) {
+      nextBar.hidden = true;
+      return;
+    }
+    const step = nextStep();
+    const parts = [];
+    if (!step) {
+      parts.push(element("div", { class: "vp-next-line" }, element("span", { class: "vp-next-text" }, "✓ All steps done")));
+    } else {
+      let action;
+      if (step.pattern) {
+        action = element("button", { type: "button", class: "vp-go" }, "Go ↓");
+        action.addEventListener("click", () => goTo(step));
+      } else if (step.number === allSteps[allSteps.length - 1] && kept.has("did_document_url")) {
+        action = element(
+          "a",
+          { class: "vp-go", href: kept.get("did_document_url").value, target: "_blank", rel: "noopener" },
+          "Open"
+        );
+        action.addEventListener("click", () => {
+          done.add(step.number);
+          renderSteps();
+        });
+      } else {
+        action = element("button", { type: "button", class: "vp-go" }, "Done ✓");
+        action.addEventListener("click", () => {
+          done.add(step.number);
+          renderSteps();
+        });
+      }
+      parts.push(
+        element(
+          "div",
+          { class: "vp-next-line" },
+          element("span", { class: "vp-next-text" }, "Next: ", element("strong", {}, `Step ${step.number}`), ` · ${step.title}`),
+          action
+        )
+      );
+      if (step.outside) parts.push(element("div", { class: "vp-next-help" }, step.outside));
+    }
+    const chips = element("div", { class: "vp-chips" });
+    for (const number of order) {
+      const item = byNumber.get(number);
+      const state = done.has(number) ? " done" : step && step.number === number ? " next" : "";
+      const chip = element(
+        "button",
+        {
+          type: "button",
+          class: `vp-chip${state}${item.pattern ? "" : " outside"}`,
+          title: `Step ${number}: ${item.title}${done.has(number) ? " (done)" : ""}`,
+          "aria-label": `Step ${number}: ${item.title}${done.has(number) ? ", done" : ""}`,
+        },
+        done.has(number) ? `${number} ✓` : String(number)
+      );
+      chip.addEventListener("click", () => goTo(item));
+      chips.append(chip);
+    }
+    parts.push(chips);
+    nextBar.replaceChildren(...parts);
+  }
+
+  // "Step N" before the path of each step's endpoint, through Swagger UI's plugin system so
+  // it stays when Swagger UI draws the list again.
+  const badges = new Map(
+    steps.filter((step) => step.operation_id).map((step) => [`${step.tag}/${step.operation_id}`, step.number])
+  );
+  const StepBadges = () => ({
+    wrapComponents: {
+      OperationSummaryPath: (Original, system) => (props) => {
+        const React = system.React;
+        const operation = props.operationProps;
+        const number = operation && badges.get(`${operation.get("tag")}/${operation.get("operationId")}`);
+        const path = React.createElement(Original, props);
+        if (!number) return path;
+        return React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(
+            "span",
+            { className: "vp-step-badge", title: `Step ${number} of the DID registration` },
+            `Step ${number}`
+          ),
+          path
+        );
+      },
+    },
+  });
+
+  renderSteps();
+
   setInterval(() => {
     for (const left of list.querySelectorAll(".vp-left")) {
       left.textContent = timeLeft(left.dataset.at);
@@ -258,6 +423,15 @@
   window.ui = SwaggerUIBundle({
     ...config,
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+    plugins: [StepBadges],
+    requestInterceptor: (request) => {
+      try {
+        methods.set(new URL(request.url, location.href).href, String(request.method || "GET").toUpperCase());
+      } catch {
+        // an address Swagger UI could not have sent either
+      }
+      return request;
+    },
     responseInterceptor: (response) => {
       try {
         collect(response);

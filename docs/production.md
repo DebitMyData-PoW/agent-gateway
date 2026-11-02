@@ -191,8 +191,10 @@ a dedicated Base RPC endpoint (`DMD_BASE_RPC_URL`).
 
 **The API docs page.** `/docs` explains how to register a DID by hand (paying and signing
 happen in the agent's own wallet and tools, never in the page) and links to the guided test
-page on staging. Its panel **Values from your responses** keeps the values each answer gives,
-each with a **Copy** button, in the open page only. `/docs` and `/redoc` load Swagger UI and
+page on staging. Each step's endpoint is marked **Step N**, and the panel at the bottom right
+shows the next step with a **Go** button that opens it (or, for paying and signing, what to do
+outside the page) and keeps the values each answer gives, each with a **Copy** button, in the
+open page only. `/docs` and `/redoc` load Swagger UI and
 ReDoc from jsDelivr at exact versions, and the browser checks each file's SHA-384 fingerprint
 before running it; their Content-Security-Policy lets nothing else run. To move to newer
 versions, see the top of `src/dmd_gateway/api/docs_pages.py`.

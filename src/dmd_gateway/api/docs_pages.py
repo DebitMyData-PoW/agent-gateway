@@ -26,6 +26,7 @@ import hashlib
 import json
 from html import escape
 from importlib.resources import files
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
@@ -111,8 +112,9 @@ def _external(tag: str, url: str, integrity: str) -> str:
     )
 
 
-def swagger_html(openapi_url: str, title: str) -> str:
-    config = json.dumps({"url": openapi_url, **SWAGGER_UI_PARAMETERS}, indent=1)
+def swagger_html(openapi_url: str, title: str, steps: dict[str, Any] | None = None) -> str:
+    settings = {"swagger": {"url": openapi_url, **SWAGGER_UI_PARAMETERS}, **(steps or {})}
+    config = json.dumps(settings, indent=1)
     config = config.replace("<", "\\u003c")  # data block: nothing in it can close the tag
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
@@ -127,7 +129,10 @@ def swagger_html(openapi_url: str, title: str) -> str:
 
 
 def swagger_ui(request: Request) -> HTMLResponse:
-    html = swagger_html(request.app.openapi_url, f"{request.app.title} - API docs")
+    steps = getattr(request.app.state, "docs_steps", None)  # set by create_app
+    html = swagger_html(
+        request.app.openapi_url, f"{request.app.title} - API docs", steps() if steps else None
+    )
     return HTMLResponse(html, headers={**_HEADERS, "Content-Security-Policy": SWAGGER_CSP})
 
 

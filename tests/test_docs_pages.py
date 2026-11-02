@@ -46,15 +46,70 @@ def test_only_swagger_ui_and_the_page_own_code_may_run(client: TestClient) -> No
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def _settings(page: str) -> dict:
+    block = r'<script type="application/json" id="swagger-config">(.*?)</script>'
+    return json.loads(re.search(block, page, re.S).group(1))
+
+
 def test_swagger_ui_settings_are_data_not_code(client: TestClient) -> None:
-    page = client.get("/docs").text
-    data = re.search(
-        r'<script type="application/json" id="swagger-config">(.*?)</script>', page, re.S
-    )
-    config = json.loads(data.group(1))
+    config = _settings(client.get("/docs").text)["swagger"]
     assert config["url"] == "/openapi.json"
     assert config["validatorUrl"] is None
     assert config["tryItOutEnabled"] is True and config["deepLinking"] is True
+
+
+def _check_steps(client: TestClient, path: str, outside: set[int], x402: list[int]) -> list:
+    settings = _settings(client.get(path).text)
+    steps = settings["steps"]
+    assert [step["number"] for step in steps] == list(range(1, 10))
+    assert {step["number"] for step in steps if "outside" in step} == outside
+    assert settings["x402_order"] == x402
+    schema = client.get("/openapi.json").json()
+    for step in steps:
+        if "outside" in step:
+            assert step["outside"] and "pattern" not in step
+            continue
+        # The endpoint exists, under that section, and the pattern recognises its address.
+        matches = [
+            (route, method)
+            for route, methods in schema["paths"].items()
+            for method, operation in methods.items()
+            if operation["operationId"] == step["operation_id"]
+        ]
+        assert len(matches) == 1
+        route, method = matches[0]
+        assert step["method"] == method.upper()
+        assert schema["paths"][route][method]["tags"][0] == step["tag"]
+        example = re.sub(r"\{[^}]+\}", "dmd_x_01ABC", route)
+        assert re.fullmatch(step["pattern"], example)
+        assert not re.fullmatch(step["pattern"], example + "/other")
+    return steps
+
+
+def test_the_production_steps_are_numbered_with_their_endpoints(client: TestClient) -> None:
+    steps = _check_steps(client, "/docs", outside={3, 6, 9}, x402=[1, 2, 5, 6, 7, 8, 9])
+    by_number = {step["number"]: step for step in steps}
+    assert by_number[4]["done_when"] == {"field": "status", "value": "settled"}
+    assert by_number[7]["done_when"] == {"field": "status", "value": "verified"}
+    assert {n for n, step in by_number.items() if step.get("restarts")} == {2, 5}
+    assert "Never paste a private key" in by_number[6]["outside"]
+
+
+def test_the_staging_steps_are_numbered_with_their_endpoints(
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    steps = _check_steps(
+        staging_client, "/docs/advanced", outside={9}, x402=[1, 2, 5, 6, 7, 3, 8, 9]
+    )
+    assert steps[0]["operation_id"].startswith("create_test_agent_key")
+    assert steps[2]["operation_id"].startswith("create_test_payment")
+
+
+def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
+    script = docs_pages._HELPER_JS
+    assert "OperationSummaryPath" in script and "wrapComponents" in script
+    assert "layoutActions.show" in script
+    assert '"Go ↓"' in script
 
 
 def test_redoc_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
