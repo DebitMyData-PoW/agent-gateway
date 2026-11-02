@@ -28,6 +28,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import Engine, create_engine, text
 
+from dmd_gateway.adapters.evm_rpc import EvmRpcUnavailable
 from dmd_gateway.db.session import session_factory
 from dmd_gateway.domain.ids import EXAMPLE_REGISTRATION_INTENT_ID
 from dmd_gateway.identity.crypto import verify_proof
@@ -46,6 +47,7 @@ from .x402_fakes import (
     MERCHANT,
     NETWORK,
     TOKEN,
+    FakeRpc,
     TestPayer,
     TestX402Adapter,
     recover_payer,
@@ -663,6 +665,63 @@ def sepolia_registry(registry: Path, directory: Path) -> Path:
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     CHAIN.chain_id = 84532
     return path
+
+
+def test_staging_test_wallet_shows_its_usdc_and_how_to_get_more(
+    registry: Path, engine: Engine, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payer = TestPayer(balance=12_000_000)
+    environ = {**ENVIRON, "DMD_STAGING_BASE_PAYER_KEY": payer.account.key.hex()}
+    sepolia = sepolia_registry(registry, tmp_path)
+    with TestClient(make_app(sepolia, engine, environ=environ, staging_test_tools=True)) as client:
+        short = client.get("/v1/staging/test-wallet")
+        CHAIN.balances[payer.address.lower()] = DUE
+        enough = client.get("/v1/staging/test-wallet").json()
+        original = FakeRpc.call
+
+        def chain_down(self: FakeRpc, method: str, params: list[Any]) -> Any:
+            if method == "eth_call":
+                raise EvmRpcUnavailable("eth_call: chain RPC unreachable")
+            return original(self, method, params)
+
+        monkeypatch.setattr(FakeRpc, "call", chain_down)
+        unknown = client.get("/v1/staging/test-wallet").json()
+    assert short.status_code == 200, short.text
+    assert short.json() == {
+        "network": "eip155:84532",
+        "network_name": "Base Sepolia",
+        "asset": "USDC",
+        "address": payer.address,
+        "balance": "12.000000",
+        "needed": "25.000000",
+        "enough": False,
+        "paid_back": False,
+        "faucet_url": "https://faucet.circle.com",
+        "explorer_url": f"https://sepolia.basescan.org/address/{payer.address}",
+    }
+    assert (enough["balance"], enough["enough"]) == ("25.000000", True)
+    assert (unknown["balance"], unknown["enough"]) == (None, None)
+
+    # On DebitMyData's staging server the test wallet is also the merchant: paid back.
+    environ["DMD_USDC_BASE_MERCHANT_ADDRESS"] = payer.address
+    with TestClient(make_app(sepolia, engine, environ=environ, staging_test_tools=True)) as client:
+        assert client.get("/v1/staging/test-wallet").json()["paid_back"] is True
+
+
+def test_staging_test_wallet_needs_its_key_and_usdc_on_base_sepolia(
+    registry: Path, engine: Engine, tmp_path: Path
+) -> None:
+    payer = TestPayer()
+    environ = {**ENVIRON, "DMD_STAGING_BASE_PAYER_KEY": payer.account.key.hex()}
+    with TestClient(make_app(registry, engine, environ=environ, staging_test_tools=True)) as client:
+        mainnet = client.get("/v1/staging/test-wallet")  # USDC on a real network
+    sepolia = sepolia_registry(registry, tmp_path)
+    with TestClient(make_app(sepolia, engine, staging_test_tools=True)) as client:
+        no_key = client.get("/v1/staging/test-wallet")
+    for response in (mainnet, no_key):
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "test_wallet_unavailable"
+    assert "DMD_STAGING_BASE_PAYER_KEY" in no_key.json()["error"]["message"]
 
 
 def test_staging_test_payer_signs_payments_the_registration_accepts(

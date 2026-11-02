@@ -60,7 +60,8 @@ starts the API and the worker, and opens port 443 to Cloudflare's address ranges
 with `{"status":"ready",...}`.
 
 Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery>,
-<https://staging-api.debitmydata.io/try> and <https://staging-api.debitmydata.io/docs>.
+<https://staging-api.debitmydata.io/docs> (the guided test page) and
+<https://staging-api.debitmydata.io/docs/advanced> (every endpoint, by hand).
 
 | What | Where |
 | --- | --- |
@@ -73,15 +74,23 @@ Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery>,
 
 ## 3. Try it from a browser
 
-### The guided test page
+### The guided test page (the default)
 
-The easiest way is <https://staging-api.debitmydata.io/try>. Pick DMD or USDC and click
+On staging, the docs page <https://staging-api.debitmydata.io/docs> is a guided test page
+(the site's address and the page's first address, `/try`, lead there too). Pick DMD or USDC and click
 **Execute** on each step, or **Run all steps**. The page calls the same API as an agent, in
 order, and fills each step in from the previous results; it scrolls to the next step after
 each one. A countdown in the corner shows the time left on whatever is about to expire: the
 quote (15 minutes), the controller challenge (5 minutes) and, for USDC, the signed payment.
 When something has expired, the step offers the way back (a new challenge, a new payment
-signature, or starting over). The last step shows a button that opens the DID document.
+signature, or starting over). The last step shows a button that opens the DID document,
+and for USDC a link to the payment on BaseScan.
+
+For USDC, the page first checks that the test wallet (below) holds the 25 test USDC a
+registration costs (`GET /v1/staging/test-wallet`). If it holds less, the page says how much
+is missing, links to Circle's faucet with the wallet's address to copy, and holds the steps
+back until the balance is enough; it checks again when the visitor comes back from the
+faucet's tab, or on **Check again**.
 
 Each step shows the values it filled in and, under "What was sent and what came back", the
 whole request and answer, so a developer can see the API at work. The test agent's private
@@ -89,10 +98,11 @@ key never leaves the page and is not shown. Like the test tools, the page only e
 `DMD_GW_STAGING_TEST_TOOLS=true`; its Content-Security-Policy lets only its own script and
 style run, and only toward this server.
 
-### Step by step from the docs page
+### Advanced: step by step
 
-Anyone can run the whole registration from a browser at
-<https://staging-api.debitmydata.io/docs>, with nothing to install. The top of that page lists
+The page's **Advanced** link opens the Swagger UI page at
+<https://staging-api.debitmydata.io/docs/advanced>, with every endpoint. (Outside staging,
+that page is `/docs` itself; there is no guided page.) The top of that page lists
 the nine steps, each linked to its endpoint (it opens in a new tab): fill in the fields, click
 **Execute**, and copy the values named into the next step.
 
@@ -191,8 +201,9 @@ An agent with its own Base Sepolia wallet pays the same 402 itself, with any x40
 `/etc/dmd-gateway/gateway.env`) and prints its address. On staging it is also the receiving
 address (`DMD_USDC_BASE_MERCHANT_ADDRESS`), so its test payments come back to it and its test
 USDC is never used up; it needs no ETH, since the facilitator pays the network fee. Give it
-25 test USDC once at <https://faucet.circle.com> (network Base Sepolia; the faucet gives 20 per
-request every 2 hours, so two requests). To see its address again:
+25 test USDC once at <https://faucet.circle.com> (network Base Sepolia; if one request is not
+enough, request again when the faucet allows it). The guided test page shows its address and
+balance, with these steps, whenever USDC is chosen. To see its address again:
 
 ```bash
 grep -E 'DMD_USDC_BASE_MERCHANT_ADDRESS' /etc/dmd-gateway/gateway.env
@@ -204,7 +215,7 @@ wallet needs test USDC.
 ### An inference donation (agents)
 
 Agents donate towards DebitMyData's AI inference in an amount they choose (people keep using
-the site's "Inference $" button). From the docs page, under the registration steps:
+the site's "Inference $" button). From the advanced docs page, under the registration steps:
 
 1. **staging** › `POST /v1/staging/test-donation-payments` with an `amount_usd` such as
    `5.00`: the staging test wallet signs the payment and returns `payment_signature`, valid

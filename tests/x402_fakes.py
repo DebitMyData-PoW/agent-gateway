@@ -147,6 +147,13 @@ class FakeBaseChain:
             }
         if method == "eth_getTransactionReceipt":
             return self.receipts.get(params[0].lower())
+        if method == "eth_call":  # the token's balanceOf(address), all the gateway reads
+            call = params[0]
+            data = call["data"].lower()
+            if call["to"].lower() != self.token.lower() or not data.startswith("0x70a08231"):
+                return "0x"
+            holder = "0x" + data[-40:]
+            return "0x" + format(self.balances.get(holder, 0), "064x")
         if method == "eth_getLogs":
             query = params[0]
             low, high = int(query["fromBlock"], 16), int(query["toBlock"], 16)

@@ -13,6 +13,8 @@
   const restart = $("#restart");
   const nameInput = $("#display-name");
   const resultBox = $("#result");
+  const fundingBox = $("#funding");
+  const runNote = $("#run-note");
   const countdown = $("#countdown");
   const announcer = $("#announcer");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -23,6 +25,10 @@
   let next = 0;
   let busy = false;
   let stopAll = false;
+  // USDC only: the staging test wallet, which must hold the test USDC the payment needs.
+  // state: none (DMD) | loading | ok | short (not enough) | unknown (balance unreadable) |
+  // unavailable (USDC cannot be tested on this server)
+  let funding = { state: "none" };
   // Server time minus this computer's time, from each answer's Date header, so the countdown
   // is right even when the visitor's clock is not (+0.5 s: the header drops the milliseconds).
   let clockOffset = 0;
@@ -215,7 +221,7 @@
     },
     paysign: {
       title: "Sign the USDC payment",
-      help: "The staging test wallet signs an x402 payment of the quoted test USDC.",
+      help: "The staging test wallet (see above) signs an x402 payment of the quoted test USDC.",
       uses: () => ({ payment_intent_id: values.paymentId }),
       run: async () => {
         const result = await call("POST", "/v1/staging/test-payments", {
@@ -260,11 +266,24 @@
           const data = expect(result, [200, 201]);
           values.issued = data;
           deadlines = {};
-          return { result, shown: { did: data.did } };
+          if (values.option === "x402_usdc_base") values.paymentTx = await paymentTransaction(data);
+          return { result, shown: { did: data.did, payment_transaction: short(values.paymentTx) } };
         }
       },
     },
   };
+
+  // The USDC transfer: in the answer that settled it, otherwise in the payment's status.
+  async function paymentTransaction(issued) {
+    const settled = issued.payment_response && issued.payment_response.transaction;
+    if (settled) return settled;
+    try {
+      const status = await call("GET", `/v1/payments/${values.paymentId}`);
+      return (status.data.transactions || [])[0] || null;
+    } catch {
+      return null;
+    }
+  }
 
   const PLANS = {
     dmd_pow_native: ["key", "quote", "pay", "settle", "challenge", "sign", "proof", "issue"],
@@ -347,14 +366,20 @@
     refresh();
   }
 
+  // A USDC test does not start until the test wallet can pay (or its balance is unknown).
+  function waitingForFunds() {
+    return next === 0 && ["loading", "short", "unavailable"].includes(funding.state);
+  }
+
   function refresh() {
+    const held = waitingForFunds();
     plan.forEach((id, index) => {
       const node = card(index);
       const isNext = index === next && !values.issued;
       node.classList.toggle("current", isNext);
       node.classList.toggle("waiting", index > next);
       const button = node.querySelector("button.execute");
-      button.disabled = !isNext || busy;
+      button.disabled = !isNext || busy || held;
       button.hidden = index < next;
       if (index >= next) {
         const uses = index === next ? valueList(STEPS[id].uses()) : null;
@@ -363,7 +388,12 @@
         );
       }
     });
-    runAll.disabled = busy || Boolean(values.issued) || !plan.length;
+    runAll.disabled = busy || Boolean(values.issued) || !plan.length || held;
+    runNote.textContent = {
+      loading: "Checking the test wallet's USDC…",
+      short: "First add test USDC to the test wallet (see above).",
+      unavailable: "USDC cannot be tested on this server right now.",
+    }[held ? funding.state : ""] || "";
     nameInput.disabled = next > 1;
     for (const radio of document.querySelectorAll("input[name=option]")) {
       radio.disabled = next > 0 || radio.dataset.available !== "yes";
@@ -442,8 +472,24 @@
         { class: "plain", href: issued.credential_url, target: "_blank", rel: "noopener" },
         "View the signed credential"
       ),
-      element("a", { class: "plain", href: "/docs" }, "API docs")
+      element("a", { class: "plain", href: "/docs/advanced" }, "Advanced API docs")
     );
+    if (values.paymentTx) {
+      const base = explorerBase();
+      resultBox.insertBefore(
+        element(
+          "p",
+          { class: "paid" },
+          `Paid ${amount(funding.data ? funding.data.needed : "")} test USDC on Base Sepolia: `,
+          element(
+            "a",
+            { href: `${base}/tx/${values.paymentTx}`, target: "_blank", rel: "noopener" },
+            "see the payment on BaseScan"
+          )
+        ),
+        open
+      );
+    }
     resultBox.hidden = false;
     announce("Your test DID is ready.");
   }
@@ -497,6 +543,200 @@
     }
   }
 
+  // ------------------------------------------------------------------ USDC test wallet
+
+  const amount = (text) =>
+    text === "" || text == null
+      ? ""
+      : Number(text).toLocaleString("en-US", { maximumFractionDigits: 6 });
+
+  function explorerBase() {
+    try {
+      return new URL(funding.data.explorer_url).origin;
+    } catch {
+      return "https://sepolia.basescan.org";
+    }
+  }
+
+  async function loadFunding() {
+    if (values.option !== "x402_usdc_base") {
+      funding = { state: "none" };
+      renderFunding();
+      refresh();
+      return;
+    }
+    funding = { state: "loading", data: funding.data };
+    renderFunding();
+    refresh();
+    let found;
+    try {
+      const result = await call("GET", "/v1/staging/test-wallet");
+      if (result.status !== 200) {
+        found = { state: "unavailable", message: errorText(result) };
+      } else {
+        const enough = result.data.enough;
+        found = { state: enough === true ? "ok" : enough === false ? "short" : "unknown", data: result.data };
+      }
+    } catch {
+      found = { state: "unknown", data: null };
+    }
+    if (values.option !== "x402_usdc_base") return; // switched to DMD meanwhile
+    funding = found;
+    renderFunding();
+    refresh();
+  }
+
+  function fundingSteps(data) {
+    const address = element("code", { class: "addr" }, data.address);
+    const copy = element("button", { type: "button", class: "secondary small" }, "Copy address");
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(data.address);
+        copy.textContent = "Copied";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(address);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        copy.textContent = "Selected: press Ctrl+C";
+      }
+      setTimeout(() => (copy.textContent = "Copy address"), 2500);
+    });
+    return element(
+      "ol",
+      { class: "how" },
+      element(
+        "li",
+        {},
+        element(
+          "a",
+          { class: "button", href: data.faucet_url, target: "_blank", rel: "noopener" },
+          "Open the Circle faucet"
+        ),
+        " (a new tab; the test USDC is free)."
+      ),
+      element(
+        "li",
+        {},
+        "Choose ",
+        element("strong", {}, data.asset),
+        " and the network ",
+        element("strong", {}, data.network_name),
+        "."
+      ),
+      element("li", {}, "Paste the test wallet's address: ", address, " ", copy),
+      element(
+        "li",
+        {},
+        "Send, then come back to this page: the balance is checked again when you return. If one "
+          + "request is not enough, request again when the faucet allows it."
+      )
+    );
+  }
+
+  function renderFunding() {
+    if (funding.state === "none") {
+      fundingBox.hidden = true;
+      fundingBox.replaceChildren();
+      return;
+    }
+    fundingBox.hidden = false;
+    const data = funding.data;
+    fundingBox.className = `funding ${funding.state}${data ? "" : " bare"}`;
+    if (funding.state === "unavailable") {
+      fundingBox.replaceChildren(
+        element("h2", {}, "USDC cannot be tested on this server right now"),
+        element("p", {}, funding.message || "")
+      );
+      return;
+    }
+    if (!data) {
+      fundingBox.replaceChildren(
+        element(
+          "p",
+          {},
+          funding.state === "loading"
+            ? "Checking the USDC test wallet…"
+            : "The USDC test wallet could not be checked just now. You can still try the steps."
+        )
+      );
+      return;
+    }
+    const need = amount(data.needed);
+    const have = amount(data.balance);
+    const back = data.paid_back
+      ? "The payment goes back to the same wallet, so it only needs this test USDC once."
+      : `Each USDC test spends ${need} test USDC from it.`;
+    const check = element("button", { type: "button", class: "secondary small" }, "Check again");
+    check.addEventListener("click", () => loadFunding());
+    check.disabled = funding.state === "loading";
+    const wallet = element(
+      "a",
+      { href: data.explorer_url, target: "_blank", rel: "noopener" },
+      "See the wallet on BaseScan"
+    );
+    const tools = element("p", { class: "tools" }, check, " ", wallet);
+    if (funding.state === "loading") {
+      tools.prepend(element("span", { class: "help" }, "Checking… "));
+    }
+    // While checking again, keep showing what the last check found.
+    const view =
+      funding.state !== "loading"
+        ? funding.state
+        : data.enough === true
+          ? "ok"
+          : data.enough === false
+            ? "short"
+            : "unknown";
+    fundingBox.className = `funding ${view}`;
+    let parts;
+    if (view === "ok") {
+      parts = [
+        element("h2", {}, "✓ The test wallet has enough test USDC"),
+        element(
+          "p",
+          {},
+          `This test pays ${need} test USDC (${data.network_name}, no real value) from the `
+            + `staging test wallet, which holds ${have} USDC. ${back}`
+        ),
+        element(
+          "details",
+          {},
+          element("summary", {}, "How to add more test USDC"),
+          fundingSteps(data)
+        ),
+        tools,
+      ];
+    } else if (view === "short") {
+      const missing = amount((Number(data.needed) - Number(data.balance || 0)).toFixed(6));
+      parts = [
+        element("h2", {}, `First: add ${missing} test USDC to the test wallet`),
+        element(
+          "p",
+          {},
+          `This test pays ${need} test USDC (${data.network_name}, no real value) from the `
+            + `staging test wallet, which holds ${have} USDC now. ${back} Adding some is free `
+            + "and takes about a minute:"
+        ),
+        fundingSteps(data),
+        tools,
+      ];
+    } else {
+      parts = [
+        element("h2", {}, `This test needs ${need} test USDC in the test wallet`),
+        element(
+          "p",
+          {},
+          "Its balance could not be read just now; you can still try the steps. If the payment "
+            + `fails for lack of funds, add test USDC: ${back}`
+        ),
+        fundingSteps(data),
+        tools,
+      ];
+    }
+    fundingBox.replaceChildren(...parts);
+  }
+
   // ------------------------------------------------------------------ countdown
 
   function tick() {
@@ -539,6 +779,7 @@
     resultBox.replaceChildren();
     render();
     tick();
+    loadFunding();
   }
 
   function start() {
@@ -580,6 +821,10 @@
     radio.addEventListener("change", () => prepare());
   }
   runAll.addEventListener("click", () => runEverything());
+  // Back from the faucet's tab: check the balance again.
+  window.addEventListener("focus", () => {
+    if (funding.state === "short" && next === 0) loadFunding();
+  });
   restart.addEventListener("click", () => start());
   setInterval(tick, 1000);
   loadOptions();

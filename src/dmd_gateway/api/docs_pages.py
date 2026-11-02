@@ -1,7 +1,9 @@
 """The interactive API docs (/docs, /redoc) and the DebitMyData favicon.
 
 FastAPI's built-in docs pages are switched off in ``create_app`` and served here instead,
-so that they carry the DebitMyData logo and open with "Try it out" already enabled.
+so that they carry the DebitMyData logo and open with "Try it out" already enabled. The
+Swagger UI page is at /docs, except on staging, where /docs is the guided test page and this
+page is the advanced option at /docs/advanced (see ``try_page``).
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, Response
 
 router = APIRouter(include_in_schema=False)
+swagger_router = APIRouter(include_in_schema=False)  # GET /docs, outside staging
 
 _STATIC = files("dmd_gateway") / "static"
 _ICONS = {
@@ -32,7 +35,7 @@ SWAGGER_UI_PARAMETERS = {
 }
 
 
-@router.get("/docs")
+@swagger_router.get("/docs")
 def swagger_ui(request: Request) -> HTMLResponse:
     return get_swagger_ui_html(
         openapi_url=request.app.openapi_url,

@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.16.0`). The whole registration flow (quote,
+This is an early development release (`0.17.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -58,7 +58,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Controller proof: one-time challenges signed with the agent's Ed25519 key and/or its EVM wallet (ordinary wallets, and smart wallets through ERC-1271 and ERC-6492) | done |
 | DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
-| Staging server behind Cloudflare; the whole flow can be tried from its guided `/try` page or step by step from `/docs` (staging-only test tools) | done |
+| Staging server behind Cloudflare; the whole flow can be tried from its docs page, a guided test page on staging (advanced: Swagger UI step by step at `/docs/advanced`; staging-only test tools) | done |
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
 | Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
@@ -79,8 +79,9 @@ still needs the gateway's own DebitMyData node with the watch-only receiving wal
 Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
 facilitator, which needs DebitMyData's CDP API key (DEC-08). A staging server with the full flow on a private
 regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
-from its [guided test page](https://staging-api.debitmydata.io/try) or its
-[docs page](https://staging-api.debitmydata.io/docs) (see [docs/staging.md](docs/staging.md)).
+from its [guided test page](https://staging-api.debitmydata.io/docs), or step by step from
+the [advanced API docs](https://staging-api.debitmydata.io/docs/advanced) (see
+[docs/staging.md](docs/staging.md)).
 See [docs/roadmap.md](docs/roadmap.md) for the task list and decisions.
 
 ## Quick start

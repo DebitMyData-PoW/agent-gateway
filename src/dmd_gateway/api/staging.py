@@ -8,6 +8,7 @@
                                         sign a donation's x402 payment (test USDC)
     POST /v1/staging/test-signatures    sign a controller challenge with the throwaway key or
                                         wallet
+    GET  /v1/staging/test-wallet        the USDC test wallet, its balance and the faucet
 
 Only mounted when ``staging_test_tools`` is on, which settings refuse in production. See
 ``dmd_gateway.services.staging_tools`` for the other safeguards.
@@ -33,7 +34,7 @@ from dmd_gateway.api.registrations import CHALLENGE_ID
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import AuditEvent, ControllerChallenge, PaymentIntent
 from dmd_gateway.db.session import transaction
-from dmd_gateway.domain.money import format_base_units
+from dmd_gateway.domain.money import format_base_units, to_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import encode_signature
@@ -394,6 +395,89 @@ def create_test_donation_payment(
             "UTC. The payment is settled on Base Sepolia and the answer carries the signed "
             "donation receipt."
         ),
+    )
+
+
+# --------------------------------------------------------------------------- USDC test wallet
+
+FAUCET_URL = "https://faucet.circle.com"
+BASE_SEPOLIA_EXPLORER = "https://sepolia.basescan.org"
+BALANCE_OF = "0x70a08231"  # ERC-20 balanceOf(address)
+
+
+class StagingWalletResponse(BaseModel):
+    network: str
+    network_name: str
+    asset: str
+    address: str = Field(description="The staging test wallet that signs the USDC payments.")
+    balance: str | None = Field(
+        description="Its test USDC, or null when the chain could not be read just now."
+    )
+    needed: str = Field(description="What one DID registration costs in test USDC.")
+    enough: bool | None
+    paid_back: bool = Field(
+        description="True when the test wallet also receives the payments (as on DebitMyData's "
+        "staging server), so its test USDC comes back after each test."
+    )
+    faucet_url: str
+    explorer_url: str
+
+
+def _usdc_adapter(request: Request) -> X402PaymentAdapter:
+    state = request.app.state
+    for rail_id, rail in state.registry.enabled_rails(DID_REGISTRATION):
+        adapter = state.quote_context.adapters.get(rail_id)
+        if isinstance(adapter, X402PaymentAdapter) and rail.network == BASE_SEPOLIA:
+            return adapter
+    raise ApiError(
+        503, "test_wallet_unavailable", "USDC on Base Sepolia is not enabled on this server."
+    )
+
+
+def _token_balance(adapter: X402PaymentAdapter, address: str) -> int | None:
+    data = BALANCE_OF + address[2:].lower().rjust(64, "0")
+    try:
+        answer = adapter.rpc().call("eth_call", [{"to": adapter.token, "data": data}, "latest"])
+        return int(str(answer), 16)
+    except Exception:  # noqa: BLE001 - shown as "could not read the balance", nothing else
+        return None
+
+
+@router.get(
+    "/test-wallet",
+    response_model=StagingWalletResponse,
+    summary="Staging only: the USDC test wallet and its balance",
+    description=(
+        "The wallet that POST /v1/staging/test-payments signs USDC payments with, how much "
+        "test USDC it holds on Base Sepolia, and whether that covers one DID registration. "
+        "Test USDC is free from Circle's faucet (faucet_url)."
+    ),
+)
+def get_test_wallet(request: Request) -> StagingWalletResponse:
+    adapter = _usdc_adapter(request)
+    try:
+        payer = BaseSepoliaTestPayer.from_environ(request.app.state.environ)
+    except StagingToolError as exc:
+        raise ApiError(503, "test_wallet_unavailable", str(exc)) from exc
+    asset = adapter.rail.asset
+    service = request.app.state.registry.services[DID_REGISTRATION]
+    needed = to_base_units(service.commercial_price.amount, asset.decimals)
+    balance = _token_balance(adapter, payer.address)
+    try:
+        paid_back = adapter.pay_to.lower() == payer.address.lower()
+    except Exception:  # noqa: BLE001 - recipient not configured: it is not paid back
+        paid_back = False
+    return StagingWalletResponse(
+        network=BASE_SEPOLIA,
+        network_name="Base Sepolia",
+        asset=asset.symbol,
+        address=payer.address,
+        balance=None if balance is None else format_base_units(balance, asset.decimals),
+        needed=format_base_units(needed, asset.decimals),
+        enough=None if balance is None else balance >= needed,
+        paid_back=paid_back,
+        faucet_url=FAUCET_URL,
+        explorer_url=f"{BASE_SEPOLIA_EXPLORER}/address/{payer.address}",
     )
 
 

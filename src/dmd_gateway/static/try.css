@@ -84,3 +84,24 @@ display:flex;justify-content:space-between;align-items:center}
 #countdown[hidden]{display:none}#countdown .time{font-size:1.3rem}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+nav.modes{display:inline-flex;flex-wrap:wrap;gap:4px;border:1px solid var(--line);border-radius:999px;
+padding:4px;margin:0 0 14px;font-size:.9rem}
+nav.modes>*{border-radius:999px;padding:5px 14px;text-decoration:none}
+nav.modes .on{background:var(--accent);color:var(--accent-fg);font-weight:600}
+.run-note{align-self:center;color:var(--warn);font-weight:600}
+.funding{border:2px solid var(--warn);border-radius:12px;padding:14px 18px;margin:0 0 18px}
+.funding.ok{border-color:var(--ok)}
+.funding.unknown,.funding.bare{border-color:var(--line)}
+.funding.unavailable{border-color:var(--bad)}
+.funding h2{font-size:1.15rem;margin:0 0 6px}
+.funding.ok h2{color:var(--ok)}
+.funding p{margin:6px 0}
+ol.how{margin:10px 0;padding-left:22px}
+ol.how li{margin:0 0 10px}
+code.addr{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9rem;
+background:var(--code);border-radius:6px;padding:2px 6px;overflow-wrap:anywhere}
+a.button{display:inline-block;font-weight:600;text-decoration:none;border-radius:8px;padding:8px 16px;
+background:var(--accent);color:var(--accent-fg)}
+button.small{padding:5px 12px;font-size:.9rem;margin:2px 0}
+p.tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+p.paid{margin:4px 0 12px}

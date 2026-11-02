@@ -163,7 +163,8 @@ The last command prints `valid: did:web:localhost%3A8000:agents:... (DemoAgent-0
 by did:web:localhost%3A8000`. Calling the registration endpoint again returns the same DID.
 `curl -s localhost:8000/v1/dids/registrations/$REG | jq` shows the progress of a
 registration at any time, including what is still missing. The `/docs` page shows every
-endpoint and lets you run them from the browser.
+endpoint and lets you run them from the browser (on a server with the staging test tools on,
+that is `/docs/advanced`, and `/docs` is a guided test page).
 
 ## 5. The same registration through MCP
 

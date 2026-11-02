@@ -150,8 +150,10 @@ def create_app(
     app.include_router(docs_pages.router)
     if settings.staging_test_tools:
         app.include_router(staging.router)
-        app.include_router(try_page.router)
+        app.include_router(try_page.router)  # /docs is the guided page, /docs/advanced Swagger
         _add_try_it_guide(app)
+    else:
+        app.include_router(docs_pages.swagger_router)
     app.state.mcp = mount_mcp(app, settings)
     return app
 
@@ -291,9 +293,9 @@ def _add_try_it_guide(app: FastAPI) -> None:
         lines = [
             "### Try the whole registration from this page",
             "",
-            f"**Easiest:** [the guided test page]({try_page.TRY_PATH}) runs every step below "
-            "for you, filling each one in from the previous results, with a countdown of the "
-            "time left. Or do the steps yourself here:",
+            f"**Easiest: [go back to the guided test page]({try_page.PAGE_PATH}).** It runs "
+            "every step below for you, filling each one in from the previous results, with a "
+            "countdown of the time left. This advanced page is for doing the steps by hand:",
             "",
             "This is the **staging** server: test networks whose coins have no value. Open "
             "each endpoint below, fill in the fields, click **Execute**, and copy the values "
