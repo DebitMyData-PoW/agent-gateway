@@ -30,6 +30,7 @@ from dmd_gateway.api import (
     quotes,
     registrations,
     staging,
+    try_page,
 )
 from dmd_gateway.api.form_bodies import FormBodyMiddleware, FormHints, add_form_bodies
 from dmd_gateway.db.session import build_engine, session_factory
@@ -149,6 +150,7 @@ def create_app(
     app.include_router(docs_pages.router)
     if settings.staging_test_tools:
         app.include_router(staging.router)
+        app.include_router(try_page.router)
         _add_try_it_guide(app)
     app.state.mcp = mount_mcp(app, settings)
     return app
@@ -288,6 +290,10 @@ def _add_try_it_guide(app: FastAPI) -> None:
         add_form_bodies(schema, replace(FORM_HINTS, choices=choices))
         lines = [
             "### Try the whole registration from this page",
+            "",
+            f"**Easiest:** [the guided test page]({try_page.TRY_PATH}) runs every step below "
+            "for you, filling each one in from the previous results, with a countdown of the "
+            "time left. Or do the steps yourself here:",
             "",
             "This is the **staging** server: test networks whose coins have no value. Open "
             "each endpoint below, fill in the fields, click **Execute**, and copy the values "

@@ -59,8 +59,8 @@ is ever printed), starts the regtest node and creates its test wallets, updates 
 starts the API and the worker, and opens port 443 to Cloudflare's address ranges only. It ends
 with `{"status":"ready",...}`.
 
-Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
-<https://staging-api.debitmydata.io/docs>.
+Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery>,
+<https://staging-api.debitmydata.io/try> and <https://staging-api.debitmydata.io/docs>.
 
 | What | Where |
 | --- | --- |
@@ -71,7 +71,25 @@ Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery> and
 | Logs | `journalctl -u dmd-gateway-api -f` (same for the others) |
 | DebitMyData command line | `dmd-cli ...` (for example `dmd-cli getblockchaininfo`) |
 
-## 3. Try it from the docs page
+## 3. Try it from a browser
+
+### The guided test page
+
+The easiest way is <https://staging-api.debitmydata.io/try>. Pick DMD or USDC and click
+**Execute** on each step, or **Run all steps**. The page calls the same API as an agent, in
+order, and fills each step in from the previous results; it scrolls to the next step after
+each one. A countdown in the corner shows the time left on whatever is about to expire: the
+quote (15 minutes), the controller challenge (5 minutes) and, for USDC, the signed payment.
+When something has expired, the step offers the way back (a new challenge, a new payment
+signature, or starting over). The last step shows a button that opens the DID document.
+
+Each step shows the values it filled in and, under "What was sent and what came back", the
+whole request and answer, so a developer can see the API at work. The test agent's private
+key never leaves the page and is not shown. Like the test tools, the page only exists when
+`DMD_GW_STAGING_TEST_TOOLS=true`; its Content-Security-Policy lets only its own script and
+style run, and only toward this server.
+
+### Step by step from the docs page
 
 Anyone can run the whole registration from a browser at
 <https://staging-api.debitmydata.io/docs>, with nothing to install. The top of that page lists
