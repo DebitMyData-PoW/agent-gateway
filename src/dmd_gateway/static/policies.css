@@ -1,6 +1,6 @@
 *{box-sizing:border-box}
 body{margin:0;background:#fff;color:var(--text);font:17px/1.6 var(--sans)}
-main{max-width:880px;margin:0 auto;padding:0 16px 48px}
+main{max-width:var(--page);margin:0 auto;padding:0 16px 48px}
 nav.policies{display:flex;flex-wrap:wrap;gap:6px;padding:16px 0 12px;border-bottom:1px solid var(--line)}
 nav.policies a{color:var(--text);text-decoration:none;padding:4px 14px;border-radius:999px;font-size:.95rem;
 border:1px solid var(--line)}

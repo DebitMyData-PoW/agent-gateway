@@ -5,7 +5,7 @@ body{margin:0;background:#fff;color:var(--text);font:17px/1.55 var(--sans)}
 a{color:var(--red)}
 a:hover{color:var(--red-hover)}
 code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-main{max-width:880px;margin:0 auto;padding:28px 16px 120px}
+main{max-width:var(--page);margin:0 auto;padding:28px 16px 120px}
 .hero h1{font-size:2.1rem;line-height:1.15;margin:0 0 8px}
 .hero p{margin:0 0 10px;color:#3d3b3b}
 .price{display:inline-block;background:var(--pink);color:var(--red-brand);font-weight:700;border-radius:999px;

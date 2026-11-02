@@ -194,9 +194,9 @@ def swagger_html(
         f"<title>{escape(title)}</title>"
         f'<link rel="icon" href="{FAVICON_URL}">'
         f"{_external('link', *SWAGGER_UI_CSS)}<style>{_HELPER_CSS}</style></head>"
-        f"<body>{brand.header('advanced', staging, wide=True)}{_intro(staging, version)}"
+        f"<body>{brand.header('advanced', staging)}{_intro(staging, version)}"
         '<div id="swagger-ui"></div>'
-        f"{brand.footer(wide=True)}"
+        f"{brand.footer()}"
         f'<script type="application/json" id="swagger-config">{config}</script>'
         f"{_external('script', *SWAGGER_UI_JS)}<script>{_HELPER_JS}</script></body></html>"
     )

@@ -1,6 +1,6 @@
 body{margin:0;background:#fff;color:var(--text)}
 /* The top of the page, in the guided pages' look */
-.adv{max-width:1140px;margin:0 auto;padding:30px 20px 0;font:17px/1.55 var(--sans);color:var(--text)}
+.adv{box-sizing:border-box;max-width:var(--page);margin:0 auto;padding:30px 16px 0;font:17px/1.55 var(--sans);color:var(--text)}
 .adv *{box-sizing:border-box}
 .adv h1{font-size:2.3rem;line-height:1.15;margin:0 0 10px}
 .adv h2{font-size:1.6rem;line-height:1.2;margin:0 0 6px}
@@ -81,7 +81,7 @@ border-radius:999px;padding:1px 10px}
 /* Swagger UI's own top block (title, description) is the top of this page instead. */
 .swagger-ui .information-container{display:none}
 /* Bigger text, fields and buttons in Swagger UI */
-.swagger-ui .wrapper{max-width:1140px}
+.swagger-ui .wrapper{max-width:var(--page);padding:0 16px}
 .swagger-ui .opblock-tag{font-size:26px;padding:12px 10px 12px 0}
 .swagger-ui .opblock-tag small{font-size:16px}
 .swagger-ui .opblock{border-radius:12px;margin:0 0 12px;box-shadow:none}

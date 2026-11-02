@@ -52,7 +52,7 @@ _PRODUCTION_PAGE = {
 }
 
 
-def header(current: str, staging: bool, wide: bool = False) -> str:
+def header(current: str, staging: bool) -> str:
     """The top bar: the DebitMyData name (to debitmydata.com) and the gateway's pages, with
     ``current`` (get-did, guided, advanced or policies) marked; on staging, a link to the
     same page on the real API."""
@@ -69,17 +69,17 @@ def header(current: str, staging: bool, wide: bool = False) -> str:
             'api.debitmydata.io (production)">Real API ↗</a>'
         )
     return (
-        f'<header class="topbar{" wide" if wide else ""}"><div class=in>'
+        '<header class="topbar"><div class=in>'
         '<a class=brand href="https://debitmydata.com/"><img src="/favicon.png" alt="">'
         f'DebitMyData</a><nav class=modes aria-label="Gateway pages">{links}</nav>'
         "</div></header>"
     )
 
 
-def footer(wide: bool = False) -> str:
+def footer() -> str:
     links = "".join(f'<a href="{path}">{label}</a>' for path, label in FOOTER_LINKS)
     return (
-        f'<footer class="site-footer{" wide" if wide else ""}"><div class=in>{links}'
+        f'<footer class="site-footer"><div class=in>{links}'
         '<span>Questions: <a href="mailto:info@debitmydata.com">info@debitmydata.com</a>'
         "</span></div></footer>"
     )

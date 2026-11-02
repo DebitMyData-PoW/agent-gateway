@@ -1,7 +1,7 @@
 *{box-sizing:border-box}
 html{scroll-padding-top:90px}
 body{margin:0;background:#fff;color:var(--text);font:17px/1.55 var(--sans)}
-main{max-width:880px;margin:0 auto;padding:28px 16px 120px}
+main{max-width:var(--page);margin:0 auto;padding:28px 16px 120px}
 h1{font-size:2.1rem;line-height:1.15;margin:0 0 8px}
 h2{font-size:1.15rem;margin:0}
 a{color:var(--red)}
