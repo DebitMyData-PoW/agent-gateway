@@ -93,6 +93,11 @@ def test_the_production_steps_are_numbered_with_their_endpoints(client: TestClie
     assert by_number[7]["done_when"] == {"field": "status", "value": "verified"}
     assert {n for n, step in by_number.items() if step.get("restarts")} == {2, 5}
     assert "Never paste a private key" in by_number[6]["outside"]
+    # A key and a wallet: after the first verified proof, steps 5 to 7 again for the other.
+    assert by_number[7]["again_when"]["value"] == "prove_wallet_control"
+    assert "leave PAYMENT-SIGNATURE empty" in by_number[8]["help"]
+    assert by_number[3]["needs"] == ["recipient", "amount"]
+    assert by_number[6]["needs"] == ["message"]
 
 
 def test_the_staging_steps_are_numbered_with_their_endpoints(
@@ -103,6 +108,10 @@ def test_the_staging_steps_are_numbered_with_their_endpoints(
     )
     assert steps[0]["operation_id"].startswith("create_test_agent_key")
     assert steps[2]["operation_id"].startswith("create_test_payment")
+    assert "private_key below" in steps[5]["help"] and "PAYMENT-SIGNATURE empty" in steps[7]["help"]
+    assert steps[5]["needs"] == ["challenge_id", "private_key"]
+    assert steps[6]["needs"] == ["registration_intent_id", "challenge_id", "signature"]
+    assert steps[6]["again_when"]["field"] == "next_action"
 
 
 def test_the_page_marks_each_step_and_offers_the_next_one() -> None:

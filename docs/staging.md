@@ -107,7 +107,9 @@ the nine steps, each linked to its endpoint (it opens in a new tab): fill in the
 **Execute**, and copy the values named into the next step. Each step's endpoint is marked
 **Step 1** to **Step 8**. The panel at the bottom right shows the next step, with a **Go**
 button that opens it (USDC has its own order, which the panel follows after the quote), and
-keeps each value the answers give (IDs, keys, signatures, the DID links), with its own
+what to paste into it, each value with a **Copy** button (at step 6, the private key the
+challenge is for). With a key and a wallet in the quote, it takes you through steps 5 to 7
+once for each. It also keeps each value the answers give (IDs, keys, signatures, the DID links), with its own
 **Copy** button and the step it goes into; it keeps them in the open page only.
 
 On staging, each request body is shown as fields to fill in, with a list to pick from where

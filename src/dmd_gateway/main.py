@@ -314,9 +314,11 @@ HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
 ]
 
 
-# The docs page panel: each step's short title, and for the steps done outside the page
-# (no request), what to do. The requests come from HOW_TO_STEPS / TRY_IT_STEPS; step 9 opens
-# the DID document.
+# The docs page panel: each step's short title, and a line shown while it is the next step:
+# for the steps done outside the page (no request), what to do; for the others, a tip. The
+# requests come from HOW_TO_STEPS / TRY_IT_STEPS; step 9 opens the DID document.
+_REGISTER_TIP = "DMD: leave PAYMENT-SIGNATURE empty."
+_CHALLENGE_TIP = "Leave controller_type empty: the answer names the controller still to prove."
 PANEL_TITLES = {
     "production": [
         ("See how you can pay", ""),
@@ -327,14 +329,18 @@ PANEL_TITLES = {
             "to do yet, you pay in step 8.",
         ),
         ("Check the payment", ""),
-        ("Get a challenge", ""),
+        ("Get a challenge", _CHALLENGE_TIP),
         (
             "Sign the message, outside this page",
             "Sign the message below with the agent's key or wallet, in its own tools. Never "
             "paste a private key into this page.",
         ),
         ("Send the proof", ""),
-        ("Register the DID", ""),
+        (
+            "Register the DID",
+            f"{_REGISTER_TIP} USDC: the first answer is 402; the agent's x402 client pays and "
+            "sends the request again with PAYMENT-SIGNATURE.",
+        ),
         ("Open the DID document", "Open it with the Open link next to it below."),
     ],
     "staging": [
@@ -342,16 +348,56 @@ PANEL_TITLES = {
         ("Get a quote", ""),
         ("Pay with test coins", ""),
         ("Check the payment", ""),
-        ("Get a challenge", ""),
-        ("Sign with the test key", ""),
+        ("Get a challenge", _CHALLENGE_TIP),
+        (
+            "Sign with the test key",
+            "The private_key below is the one this challenge is for (the test agent's key, or "
+            "the test wallet's key for a wallet challenge).",
+        ),
         ("Send the proof", ""),
-        ("Register the DID", ""),
+        (
+            "Register the DID",
+            f"{_REGISTER_TIP} USDC: paste the payment_signature from step 3 (the long one, "
+            "starting with eyJ).",
+        ),
         ("Open the DID document", "Open it with the Open link next to it below."),
     ],
 }
 # USDC (x402) is paid when registering, so its steps come in another order: on staging, the
 # test wallet signs the payment (step 3) right before registering.
 PANEL_X402_ORDER = {"production": [1, 2, 5, 6, 7, 8, 9], "staging": [1, 2, 5, 6, 7, 3, 8, 9]}
+# A proof is verified but the quote names another controller (a key and a wallet): the
+# challenge, signature and proof steps are done again for it.
+PANEL_AGAIN_WHEN = {
+    ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): {
+        "field": "next_action",
+        "value": "prove_wallet_control",
+        "note": "One more controller to prove: the quote names a key and a wallet. Get a new "
+        "challenge, sign it with the other one, and send that proof too.",
+    },
+}
+# What to paste into each step, by field name: the panel shows each value it has kept for
+# them, with a Copy button. On staging's signing step, private_key is the key the
+# challenge is for (the agent key, or the wallet key).
+PANEL_NEEDS = {
+    ("post", "/v1/dids/registration-quotes"): ["controller_public_key"],
+    ("post", "/v1/staging/test-payments"): ["payment_intent_id"],
+    ("get", "/v1/payments/{payment_intent_id}"): ["payment_intent_id"],
+    ("post", "/v1/dids/registrations/{registration_intent_id}/controller-challenges"): [
+        "registration_intent_id"
+    ],
+    ("post", "/v1/staging/test-signatures"): ["challenge_id", "private_key"],
+    ("post", "/v1/dids/registrations/{registration_intent_id}/controller-proofs"): [
+        "registration_intent_id",
+        "challenge_id",
+        "signature",
+    ],
+    ("post", "/v1/dids/registrations"): ["registration_intent_id", "PAYMENT-SIGNATURE"],
+}
+PANEL_OUTSIDE_NEEDS = {
+    "Pay, outside this page": ["recipient", "amount"],
+    "Sign the message, outside this page": ["message"],
+}
 # A new quote or a new challenge starts the steps after it again.
 PANEL_RESTARTS = {
     "/v1/dids/registration-quotes",
@@ -383,7 +429,13 @@ def panel_steps(app: FastAPI) -> dict[str, Any]:
         step: dict[str, Any] = {"number": number, "title": title}
         if request is None:
             step["outside"] = outside
+            if title in PANEL_OUTSIDE_NEEDS:
+                step["needs"] = PANEL_OUTSIDE_NEEDS[title]
         else:
+            if request in PANEL_NEEDS:
+                step["needs"] = PANEL_NEEDS[request]
+            if outside:
+                step["help"] = outside
             method, path = request
             operation = schema["paths"][path][method]
             step |= {
@@ -397,6 +449,8 @@ def panel_steps(app: FastAPI) -> dict[str, Any]:
                 step["done_when"] = {"field": field, "value": value}
             if path in PANEL_RESTARTS:
                 step["restarts"] = True
+            if request in PANEL_AGAIN_WHEN:
+                step["again_when"] = PANEL_AGAIN_WHEN[request]
         steps.append(step)
     return {"steps": steps, "x402_order": PANEL_X402_ORDER[page]}
 

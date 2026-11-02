@@ -16,17 +16,21 @@
   // is, and where it goes. "staging" values only come from the staging test tools.
   const FIELDS = [
     { path: "controller_public_key", label: "Agent public key", goes: "Get a quote: controller_public_key" },
-    { path: "controller_wallet_address", label: "Agent wallet address", goes: "Get a quote: controller_wallet_address" },
+    {
+      path: "controller_wallet_address",
+      label: "Agent wallet address",
+      goes: "Get a quote: controller_wallet_address, only to try a wallet too. With a key and a wallet, both are proven (steps 5 to 7 for each)",
+    },
     {
       path: "private_key",
-      label: "Test agent key (staging only)",
-      goes: "Test signature: private_key, when the challenge's controller starts with ed25519:",
+      label: "Private key of the test agent (staging only)",
+      goes: "Step 6: private_key, when the challenge is for the agent key (ed25519:…)",
       staging: true,
     },
     {
       path: "wallet_private_key",
-      label: "Test wallet key (staging only)",
-      goes: "Test signature: private_key, when the challenge's controller starts with eip155:",
+      label: "Private key of the test wallet (staging only)",
+      goes: "Step 6: private_key, when the challenge is for the wallet (eip155:…)",
       staging: true,
     },
     { path: "registration_intent_id", label: "Registration ID", goes: "Challenge, proof and registration: registration_intent_id" },
@@ -52,6 +56,13 @@
       when: (body) => Boolean(body.selected_payment_option),
     },
     { path: "challenge_id", label: "Challenge ID", goes: "Proof: challenge_id" },
+    {
+      key: "challenge_controller",
+      path: "controller",
+      label: "Challenge is for",
+      goes: "The key or wallet that signs this challenge",
+      when: (body) => Boolean(body.challenge_id && body.message),
+    },
     {
       path: "message",
       label: "Message to sign",
@@ -188,6 +199,7 @@
   clear.addEventListener("click", () => {
     kept.clear();
     done.clear();
+    notice = "";
     order = allSteps;
     render();
     renderSteps();
@@ -267,6 +279,7 @@
   let order = allSteps;
   const done = new Set();
   const methods = new Map(); // request URL -> method, to recognise each step's answers
+  let notice = ""; // why a step is to be done again
 
   function nextStep() {
     let last = -1;
@@ -285,12 +298,74 @@
       if (step.done_when && read(answer, step.done_when.field) !== step.done_when.value) continue;
       const position = order.indexOf(step.number);
       if (position < 0) continue;
+      const again = step.again_when;
+      if (again && read(answer, again.field) === again.value) {
+        // Proven, but another controller is left: from its challenge on, everything again.
+        const challenge = order
+          .slice(0, position)
+          .reverse()
+          .find((number) => byNumber.get(number).restarts && !byNumber.get(number).pattern.includes("quotes"));
+        if (challenge) for (const number of order.slice(order.indexOf(challenge))) done.delete(number);
+        notice = again.note;
+        continue;
+      }
+      notice = "";
       // A new quote or a new challenge starts what follows it again.
       if (step.restarts) for (const number of order.slice(position + 1)) done.delete(number);
       // What had to be done outside this page before it is done too.
       for (const number of order.slice(0, position)) if (!byNumber.get(number).pattern) done.add(number);
       done.add(step.number);
     }
+  }
+
+  // The value kept for a field of the next step, and what it is when that helps.
+  function source(field) {
+    const keptValue = (key) => (kept.has(key) ? kept.get(key).value : null);
+    switch (field) {
+      case "private_key": {
+        const controller = keptValue("challenge_controller") || "";
+        const wallet = controller.startsWith("eip155:");
+        const value = keptValue(wallet ? "wallet_private_key" : "private_key");
+        return value && { value, note: wallet ? "the test wallet's key" : "the test agent's key" };
+      }
+      case "PAYMENT-SIGNATURE": {
+        const value = order === settings.x402_order ? keptValue("payment_signature") : null;
+        return value && { value };
+      }
+      case "recipient":
+        return keptValue("selected_payment_option.recipient") && { value: keptValue("selected_payment_option.recipient") };
+      case "amount": {
+        const value = keptValue("selected_payment_option.amount");
+        return value && { value, note: kept.get("selected_payment_option.amount").unit };
+      }
+      case "message":
+        return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
+      default:
+        return keptValue(field) && { value: keptValue(field) };
+    }
+  }
+
+  function fillRows(step) {
+    const rows = [];
+    for (const field of step.needs || []) {
+      const found = source(field);
+      if (!found) continue;
+      const value = element("span", { class: "vp-fill-value", title: found.value }, found.value);
+      const button = element("button", { type: "button", class: "vp-copy" }, "Copy");
+      button.addEventListener("click", () => copy(button, found.value, value));
+      rows.push(
+        element(
+          "div",
+          { class: "vp-fill-row" },
+          element("code", { class: "vp-field" }, field),
+          element("span", { class: "vp-fill-main" }, value, found.note ? element("small", {}, found.note) : null),
+          button
+        )
+      );
+    }
+    if (!rows.length) return null;
+    const title = step.pattern ? "Paste into this step:" : "For this step:";
+    return element("div", { class: "vp-fill" }, element("div", { class: "vp-fill-title" }, title), ...rows);
   }
 
   function goTo(step) {
@@ -303,12 +378,17 @@
     }
     const id = `operations-${step.tag}-${step.operation_id}`;
     let tries = 0;
+    // Wait until Swagger UI has drawn the opened step, so the page does not move under it.
     const find = () => {
       const block = document.getElementById(id);
-      if (!block) {
-        if (tries++ < 60) requestAnimationFrame(find);
+      if (!block || !block.querySelector(".opblock-body")) {
+        if (tries++ < 90) requestAnimationFrame(find);
+        else if (block) jump(block);
         return;
       }
+      requestAnimationFrame(() => jump(block));
+    };
+    const jump = (block) => {
       block.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
       if (block.animate && !reducedMotion) {
         block.animate(
@@ -316,6 +396,10 @@
           { duration: 2200, easing: "ease-out" }
         );
       }
+      // A long way may take longer than the smooth scroll: finish it where the step starts.
+      setTimeout(() => {
+        if (Math.abs(block.getBoundingClientRect().top) > 40) block.scrollIntoView({ block: "start" });
+      }, reducedMotion ? 0 : 1200);
     };
     requestAnimationFrame(find);
   }
@@ -359,7 +443,11 @@
           action
         )
       );
-      if (step.outside) parts.push(element("div", { class: "vp-next-help" }, step.outside));
+      if (notice) parts.push(element("div", { class: "vp-notice" }, notice));
+      const tip = step.outside || step.help;
+      if (tip) parts.push(element("div", { class: "vp-next-help" }, tip));
+      const fill = fillRows(step);
+      if (fill) parts.push(fill);
     }
     const chips = element("div", { class: "vp-chips" });
     for (const number of order) {

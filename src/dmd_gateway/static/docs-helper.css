@@ -1,4 +1,6 @@
 body{margin:0}
+/* Opening a step draws its form a moment later: keep the page where Go put it. */
+html,body{overflow-anchor:none}
 .values-panel{position:fixed;right:16px;bottom:16px;z-index:1000;width:350px;max-width:calc(100vw - 32px);
 background:#fff;color:#1d2330;border:2px solid #1f6feb;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18);
 font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -50,3 +52,13 @@ background:#fff;color:#5d6577;border-radius:999px;min-width:26px;padding:4px 7px
 border-radius:999px;background:#1d2330;color:#fff;font:700 12px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;
 white-space:nowrap}
 @media (max-width:600px){.values-panel:not(.open) .vp-chips{display:none}}
+.vp-notice{margin-top:6px;padding:6px 8px;border-radius:6px;background:#fff3c4;color:#5c3d00;font-size:12px;font-weight:600}
+.vp-fill{margin-top:6px;border-top:1px dashed #c9d1de;padding-top:5px}
+.vp-fill-title{font-size:12px;color:#5d6577;margin-bottom:2px}
+.vp-fill-row{display:flex;align-items:center;gap:6px;margin:3px 0}
+.vp-field{flex:0 0 auto;font:600 11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#7a2cbf;
+background:#f4ecfb;border-radius:4px;padding:1px 5px}
+.vp-fill-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.vp-fill-value{font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;
+white-space:nowrap}
+.vp-fill-main small{color:#5d6577;font-size:11px}
