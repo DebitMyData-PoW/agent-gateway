@@ -61,6 +61,7 @@ legend{font-weight:600;padding:0;margin-bottom:6px}
 .tag{display:inline-block;background:var(--pink);color:var(--red-brand);border-radius:999px;font-size:.78rem;
 font-weight:700;padding:0 8px;margin-left:6px;vertical-align:middle}
 .sub{margin:6px 0 12px 26px}
+.hint{background:#fff7e0;border-left:4px solid #f6c000;border-radius:8px;padding:8px 12px;margin:-4px 0 12px;font-size:.95rem}
 .wallets{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px}
 .wallets img{width:20px;height:20px;vertical-align:middle;margin-right:6px}
 .connected{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eaf6ef;border:1px solid #bfe3cd;

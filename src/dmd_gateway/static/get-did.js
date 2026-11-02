@@ -12,6 +12,11 @@
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const WALLET_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
   const PUBLIC_KEY = /^ed25519:z[1-9A-HJ-NP-Za-km-z]{40,60}$/;
+  // DMD addresses (mainnet dm1…, test networks td1…, regtest dmrt1…): people paste the wallet
+  // they pay from, but a DID is controlled by an Ethereum-style wallet or an agent's key.
+  const DMD_ADDRESS = /^(dm|td|dmrt)1[02-9ac-hj-np-z]{6,}$/i;
+  const DMD_HINT =
+    "This is a DMD address: you don't need one here. At step 2 the page gives you the amount and the address to pay, from any DMD wallet. Here, give the wallet the DID will belong to: an Ethereum-style wallet (0x…), or choose “My agent's public key”.";
 
   const form = $("#details");
   const nameInput = $("#name");
@@ -202,7 +207,7 @@
         element(
           "p",
           { class: "small" },
-          "No browser wallet found here. Open this page in your wallet app's browser, or type your wallet address below: you will then sign one message in your wallet app and paste the signature."
+          "No browser wallet found in this browser. Add one (such as MetaMask or Coinbase Wallet) and reload this page, open this page in your wallet app's browser, or type your wallet's 0x… address below: you will then sign one message in your wallet app and paste the signature."
         )
       );
       return;
@@ -264,7 +269,7 @@
       if (onPage) first = false;
       const help = onPage
         ? option.asset === "DMD"
-          ? "Send the coins from any DMD wallet."
+          ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
           : `Pay in ${option.asset}.`
         : "Soon on this page: agents can already pay it through the API.";
       optionsBox.append(
@@ -283,7 +288,8 @@
     let controller;
     if (controllerChoice() === "wallet") {
       const address = (wallet ? wallet.address : walletAddress.value).trim();
-      if (!WALLET_ADDRESS.test(address)) return { error: "Connect your wallet, or type its address (0x followed by 40 characters)." };
+      if (DMD_ADDRESS.test(address)) return { error: "Use an Ethereum-style address (0x…) here: a DMD address can't hold a DID (see the note above)." };
+      if (!WALLET_ADDRESS.test(address)) return { error: "Connect your wallet, or type its address: 0x followed by 40 characters." };
       request.controller_wallet_address = address;
       controller = { kind: "wallet", value: address };
     } else {
@@ -504,7 +510,10 @@
       sign.addEventListener("click", () => signWithWallet(challenge, sign, status));
       parts.push(element("div", { class: "actions" }, sign));
     } else {
-      parts.push(element("p", { class: "small" }, `The signature can be base64url, base64 or hex (${challenge.signature_encoding || "base64url"}).`));
+      parts.push(
+        element("p", { class: "small" }, `The signature can be base64url, base64 or hex (${challenge.signature_encoding || "base64url"}).`),
+        element("div", { class: "copyline act" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id))
+      );
     }
     const pasted = element("textarea", { rows: 3, placeholder: isWallet ? "0x…" : "The signature", "aria-label": "Signature" });
     const send = element("button", { type: "button", class: isWallet ? "secondary act" : "act" }, "Send the signature");
@@ -655,6 +664,12 @@
 
   for (const radio of form.querySelectorAll("input[name=controller]")) radio.addEventListener("change", syncController);
   for (const kind of ["input", "change"]) form.addEventListener(kind, () => (detailsError.hidden = true));
+  const walletHint = $("#wallet-hint");
+  walletAddress.addEventListener("input", () => {
+    const dmd = DMD_ADDRESS.test(walletAddress.value.trim());
+    walletHint.textContent = dmd ? DMD_HINT : "";
+    walletHint.hidden = !dmd;
+  });
   syncController();
   setTimeout(renderWallets, 300); // wallets announce themselves shortly after the page loads
   renderWallets();

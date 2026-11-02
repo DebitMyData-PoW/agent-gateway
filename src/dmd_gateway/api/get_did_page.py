@@ -119,12 +119,15 @@ placeholder="e.g. My research agent"></label>
 <legend>Who controls it</legend>
 <label class=choice><input type=radio name=controller value=wallet checked>
 <strong>My wallet</strong><span class=tag>Recommended</span>
-<small>A browser wallet such as MetaMask or Coinbase Wallet, or any Ethereum-style address
-(0x…). You will sign one message with it.</small></label>
+<small>An Ethereum-style wallet (its address starts with 0x), such as MetaMask or
+Coinbase Wallet. The DID will belong to it, and you will sign one message with it (free:
+signing sends nothing). It is not the wallet you pay with: any DMD wallet can pay at
+step 2.</small></label>
 <div id=wallet-box class=sub>
 <div class=wallets-holder></div>
-<label class=field for=wallet-address>Or type the wallet address
+<label class=field for=wallet-address>Or type the wallet's address (0x…)
 <input type=text id=wallet-address autocomplete=off spellcheck=false placeholder="0x…"></label>
+<p class=hint id=wallet-hint hidden aria-live=polite></p>
 </div>
 <label class=choice><input type=radio name=controller value=key>
 <strong>My agent's public key</strong>

@@ -95,3 +95,15 @@ def test_what_the_did_is_for_covers_every_participant_type() -> None:
     from dmd_gateway.services.quotes import ParticipantType
 
     assert {value for value, _ in get_did_page.PARTICIPANTS} == {t.value for t in ParticipantType}
+
+
+def test_a_dmd_address_in_the_wallet_box_is_explained() -> None:
+    # The page recognises every DMD network's address prefix (the payment adapter's list), so
+    # someone who pastes the wallet they pay from is told what the box is for.
+    from dmd_gateway.adapters.dmd_native import NETWORKS
+
+    script = get_did_page._SCRIPT
+    prefixes = re.search(r"const DMD_ADDRESS = /\^\(([a-z|]+)\)1", script).group(1).split("|")
+    assert set(prefixes) == {hrp for _, hrp in NETWORKS.values()}
+    assert "This is a DMD address: you don't need one here." in script
+    assert "id=wallet-hint" in get_did_page.page_html(staging=False)
