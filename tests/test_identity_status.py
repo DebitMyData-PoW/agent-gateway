@@ -19,6 +19,7 @@ from dmd_gateway import admin
 from dmd_gateway.db.session import session_factory
 
 from .conftest import TEST_DATABASE_URL
+from .fakes import AGENT_CONTROLLER
 from .test_quotes import ready_registry  # noqa: F401
 from .test_registration import (  # noqa: F401
     clean_chain,
@@ -209,3 +210,30 @@ def test_reason_and_operator_are_required() -> None:
     ):
         with pytest.raises(SystemExit):
             admin.parser().parse_args(argv)
+
+
+def test_names_check_lists_issued_names_a_quote_would_refuse(
+    client: TestClient,  # noqa: F811
+    engine: Engine,  # noqa: F811
+) -> None:
+    issued = issue(client)
+    iid = issued["identity_id"]
+    # A name issued before the check existed (set here directly, as the quote now refuses it).
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE identities SET display_name = 'DebitMyData Support' WHERE id = :i"),
+            {"i": iid},
+        )
+    lines: list[str] = []
+    args = admin.parser().parse_args(["names", "check"])
+    assert admin.run(args, session_factory(engine), out=lines.append) == 0
+    report = "\n".join(lines)
+    assert "would be refused today" in report
+    assert f"{iid} (active) 'DebitMyData Support'" in report
+    assert "looks like one of DebitMyData's own names" in report
+
+    # The same name is fine when the DID's controller is one of the company's.
+    lines.clear()
+    owners = frozenset({AGENT_CONTROLLER})
+    assert admin.run(args, session_factory(engine), out=lines.append, brand=owners) == 0
+    assert iid not in "\n".join(lines)

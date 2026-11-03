@@ -42,6 +42,7 @@ from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import Issuer, load_issuer_key
+from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
@@ -126,6 +127,7 @@ def create_app(
         quote_ttl=timedelta(seconds=settings.quote_ttl_seconds),
         max_open_quotes=settings.max_open_quotes_per_controller,
         public_base_url=settings.public_base_url,
+        brand_owners=brand_owners(settings.brand_name_controllers),
     )
     app.state.policy_pages = load_policy_pages(
         public_base_url=settings.public_base_url,

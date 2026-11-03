@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     mcp_url: str | None = None
     # Extra Host header values accepted by the MCP endpoint (DNS-rebinding protection).
     mcp_allowed_hosts: list[str] = []
+    # DebitMyData's own controllers (agent keys ed25519:... and wallets 0x..., separated by
+    # commas): only DIDs they control may have a name like DebitMyData, DMD, BottyBotty or
+    # AgenticSpaces (identity/names.py).
+    brand_name_controllers: str = ""
 
     route_registry_path: Path = Path("config/payment_routes.yaml")
 

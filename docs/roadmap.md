@@ -104,6 +104,7 @@ place; the application logic comes with the related phase.
 - [ ] ID-12 Controller rotation with proof and audit history
 - [x] ID-13 Suspension and revocation without deleting history: `dmd-gateway-admin did suspend|reactivate|revoke` on the server only, every change in the write-once audit trail with its reason and operator, an alert for each, `did_status` in the registration status; open: recovery (with ID-12) and a public status list in new credentials
 - [ ] ID-14 Transfer/new-registration policy for material controller changes
+- [x] ID-16 Display names that cannot pass for another one, checked when the quote is requested (before payment): no hidden characters, one alphabet per word, DebitMyData's own names (DebitMyData, DMD, BottyBotty, AgenticSpaces and their lookalikes) only for the company's controllers (`DMD_GW_BRAND_NAME_CONTROLLERS`); `dmd-gateway-admin names check` for the DIDs issued before
 - [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); open: key rotation procedure
 
 ## Phase 6 – MCP server

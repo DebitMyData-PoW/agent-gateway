@@ -4,6 +4,7 @@
     dmd-gateway-admin did suspend ID --reason "..." --by NAME
     dmd-gateway-admin did reactivate ID --reason "..." --by NAME
     dmd-gateway-admin did revoke ID --reason "..." --by NAME     permanent: asks to confirm
+    dmd-gateway-admin names check     the issued DIDs whose name the quote check would refuse
 
 ID is the DID, its did.json address, the identity ID (dmd_identity_...) or the registration ID
 (dmd_did_intent_...). On the servers, run it as root (``sudo dmd-gateway-admin ...``): a small
@@ -24,6 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.db.models import AgentIdentity, Credential, Entitlement
 from dmd_gateway.db.session import build_engine, session_factory, transaction
+from dmd_gateway.identity.names import NameRefused, brand_owners, check_display_name, is_brand_owner
 from dmd_gateway.services.identity_status import (
     STATUS_CHANGED,
     StatusChangeError,
@@ -65,14 +67,21 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--by", required=True, help="your name, kept in the audit trail")
         if name == "revoke":
             command.add_argument("--yes", action="store_true", help="do not ask to confirm")
+    names = groups.add_parser("names", help="check the names of the DIDs already issued")
+    names.add_subparsers(dest="command", required=True).add_parser(
+        "check", help="list the active and suspended DIDs whose name a quote would refuse today"
+    )
     return top
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    engine = build_engine(get_settings())
+    settings = get_settings()
+    engine = build_engine(settings)
     try:
-        return run(args, session_factory(engine))
+        return run(
+            args, session_factory(engine), brand=brand_owners(settings.brand_name_controllers)
+        )
     finally:
         engine.dispose()
 
@@ -84,7 +93,11 @@ def run(
     out: Callable[[str], None] = print,
     ask: Callable[[str], str] = input,
     now: datetime | None = None,
+    brand: frozenset[str] = frozenset(),
 ) -> int:
+    if args.group == "names":
+        with transaction(factory) as session:
+            return _check_names(session, brand, out)
     try:
         if args.command == "show":
             with transaction(factory) as session:
@@ -167,6 +180,32 @@ def _show(session: Session, text: str, out: Callable[[str], None]) -> None:
         else:
             line = f"{event.action} ({event.actor_type})"
         out(f"  {_when(event.occurred_at)}  {line}")
+
+
+def _check_names(session: Session, brand: frozenset[str], out: Callable[[str], None]) -> int:
+    identities = session.scalars(
+        select(AgentIdentity)
+        .where(AgentIdentity.status != "revoked")
+        .order_by(AgentIdentity.created_at)
+    ).all()
+    refused = []
+    for identity in identities:
+        owner = is_brand_owner(
+            brand, identity.controller_public_key, identity.controller_wallet_address
+        )
+        try:
+            check_display_name(identity.display_name, brand_owner=owner)
+        except NameRefused as exc:
+            refused.append((identity, str(exc)))
+    if not refused:
+        out(f"Checked {len(identities)} DIDs: every name passes.")
+        return 0
+    out(f"Checked {len(identities)} DIDs: {len(refused)} would be refused today.")
+    for identity, reason in refused:
+        out(f"  {identity.id} ({identity.status}) {identity.display_name!r}")
+        out(f"    {reason}")
+    out('To suspend one: dmd-gateway-admin did suspend <identity> --reason "..." --by "<you>"')
+    return 0
 
 
 def _when(moment: datetime) -> str:

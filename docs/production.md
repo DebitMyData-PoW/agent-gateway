@@ -276,7 +276,33 @@ identity ID (`dmd_identity_...`) or its registration ID (`dmd_did_intent_...`).
   `did_status`, the identity record in `status`. The payment is not refunded (see the
   [refund policy](https://api.debitmydata.io/policies/refunds)).
 
-## 10. Go-live checklist
+## 10. Names reserved for DebitMyData
+
+A DID's display name is public, so the gateway refuses, when the quote is requested and
+before anything is paid:
+
+- names with hidden characters (zero-width or text-direction marks, unusual spaces);
+- words that mix alphabets, such as "DebitMyData" written with a Cyrillic "е" (names written
+  entirely in another alphabet are fine);
+- names that look like DebitMyData's own: DebitMyData, DMD, BottyBotty, AgenticSpaces, also
+  written with other capitals, spaces, accents, lookalike letters or digits ("D3bit My Data").
+
+DebitMyData's own DIDs may use those names when their controller is listed in
+`/etc/dmd-gateway/gateway.env`, separated by commas, then `systemctl restart dmd-gateway-api`:
+
+```bash
+DMD_GW_BRAND_NAME_CONTROLLERS=ed25519:z6Mk...,0x...
+```
+
+List only keys and wallets that DebitMyData holds (agent keys `ed25519:...`, wallets `0x...`).
+The other checks still apply to them. To see whether a DID issued earlier has a name that
+would now be refused, and suspend it if it impersonates DebitMyData:
+
+```bash
+sudo dmd-gateway-admin names check
+```
+
+## 11. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set

@@ -40,6 +40,7 @@ from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
+from dmd_gateway.identity.names import NameRefused, check_display_name, is_brand_owner
 from dmd_gateway.identity.wallets import (
     Wallet,
     WalletError,
@@ -231,6 +232,8 @@ class QuoteContext:
     quote_ttl: timedelta
     max_open_quotes: int = 5  # per controller key
     public_base_url: str = ""  # for the links to policy pages on this server
+    # The company's controllers (keys and wallets) that may use DebitMyData's own names.
+    brand_owners: frozenset[str] = frozenset()
 
 
 def enabled_option_ids(ctx: QuoteContext, service_id: str) -> list[str]:
@@ -289,6 +292,18 @@ def _quote_wallet(ctx: QuoteContext, request: QuoteRequest) -> Wallet | None:
         )
     except WalletError as exc:
         raise ApiError(422, "invalid_controller_wallet", str(exc)) from exc
+
+
+def _check_name(ctx: QuoteContext, request: QuoteRequest, wallet: Wallet | None) -> None:
+    """The display name is public: refuse hidden characters, mixed alphabets and lookalikes
+    of DebitMyData's own names, before anything is paid (identity/names.py)."""
+    owner = is_brand_owner(
+        ctx.brand_owners, request.controller_public_key, wallet.address if wallet else None
+    )
+    try:
+        check_display_name(request.display_name, brand_owner=owner)
+    except NameRefused as exc:
+        raise ApiError(422, "display_name_refused", str(exc)) from exc
 
 
 def _check_open_quotes(session: Session, ctx: QuoteContext, controller: str, now: datetime) -> None:
@@ -352,6 +367,7 @@ def create_registration_quote(
     rail_id = request.preferred_payment_option
     rail = resolve_payment_option(ctx, service_id, rail_id)
     wallet = _quote_wallet(ctx, request)
+    _check_name(ctx, request, wallet)
     if request.controller_public_key:
         _check_open_quotes(session, ctx, request.controller_public_key, now)
     usd_price = service.commercial_price.amount

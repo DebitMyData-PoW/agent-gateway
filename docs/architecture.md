@@ -122,7 +122,10 @@ payment settled in the last 30 days again on its chain, read-only. See
    that are currently enabled.
 2. `POST /v1/dids/registration-quotes` takes the display name, participant type,
    controller public key and/or controller wallet address, preferred payment option and
-   metadata. It creates a registration intent and a payment intent for the chosen rail and
+   metadata. The display name is public, so a name with hidden characters, with alphabets
+   mixed inside a word, or that looks like one of DebitMyData's own names (unless the
+   controller is the company's) is refused first (`identity/names.py`). It creates a
+   registration intent and a payment intent for the chosen rail and
    returns the fixed 25.00 USD price, exact amount in the chosen asset, destination,
    finality policy, conversion source and time (non-USD assets), expiry and policy version.
    Non-USD amounts are rounded up to the next base unit and computed only from a price that

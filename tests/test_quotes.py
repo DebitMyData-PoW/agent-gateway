@@ -396,3 +396,43 @@ def test_open_quotes_are_limited_per_controller_key(ready_registry: Path, engine
                 {"id": first.json()["registration_intent_id"]},
             )
         assert client.post(URL, json=_request(controller_public_key=key)).status_code == 201
+
+
+@needs_db
+def test_lookalike_names_are_refused_before_anything_is_stored(
+    ready_registry: Path, engine: Engine
+) -> None:
+    before = _count(engine, "SELECT count(*) FROM registration_intents")
+    company = new_test_agent_key().controller_public_key
+    settings = {"brand_name_controllers": f"{company}, 0x52908400098527886E0F7030069857D2E4169eE7"}
+    with _app_client(ready_registry, engine, settings_overrides=settings) as client:
+        for name, words in (
+            ("DebitMyData TEST 1", "looks like one of DebitMyData's own names"),
+            ("DеbitMyData", "mixes letters from different alphabets"),  # Cyrillic e
+            ("Agent​X", "hidden character (U+200B ZERO WIDTH SPACE)"),
+        ):
+            refused = client.post(URL, json=_request(display_name=name))
+            assert refused.status_code == 422, name
+            error = refused.json()["error"]
+            assert error["code"] == "display_name_refused"
+            assert words in error["message"]
+        assert _count(engine, "SELECT count(*) FROM registration_intents") == before
+
+        # The company's own key or wallet may use the name; lookalike letters stay refused.
+        own = client.post(
+            URL, json=_request(display_name="DebitMyData TEST 1", controller_public_key=company)
+        )
+        assert own.status_code == 201, own.text
+        wallet = client.post(
+            URL,
+            json=_request(
+                display_name="DMD treasury agent",
+                controller_public_key=None,
+                controller_wallet_address="0x52908400098527886e0f7030069857d2e4169ee7",
+            ),
+        )
+        assert wallet.status_code == 201, wallet.text
+        mixed = client.post(
+            URL, json=_request(display_name="DеbitMyData", controller_public_key=company)
+        )
+        assert mixed.json()["error"]["code"] == "display_name_refused"
