@@ -130,6 +130,11 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     # Go is grey while its step is open ("Now: Step N"), and pulses when the next is ready.
     assert 'goHere ? "Now: " : "Next: "' in script
     assert '" here"' in script and '" ready"' in script
+    # Under Execute and Clear, the button to the next step once this one is done; while a
+    # step is open, the rest of the page is dimmed (Esc or a click elsewhere shows it all).
+    assert "clear: (Original, system)" in script and "dmd-next-go" in script
+    assert "Show the whole page (Esc)" in script
+    assert "body.dmd-focusing" in docs_pages._HELPER_CSS
 
 
 def test_redoc_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:

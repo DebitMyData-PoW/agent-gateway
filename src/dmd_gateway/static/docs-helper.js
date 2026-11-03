@@ -205,6 +205,8 @@
     notice = "";
     paying = "dmd";
     openedKey = null;
+    focusStep = null;
+    document.body.classList.remove("dmd-focusing");
     controllers = 1;
     rounds = ["key", "wallet"];
     quoteControllers.clear();
@@ -308,6 +310,13 @@
   let lastNextKey = null;
   let goHere = false;
   let goReady = false;
+  // While a step is open, the rest of the page is dimmed ("focus"): its form, Execute and the
+  // answer stay bright, with the Go button that appears under them once it is done.
+  let focusStep = null;
+  const listeners = new Set(); // Swagger UI parts drawn by this page, redrawn when steps change
+  const notify = () => {
+    for (const listener of listeners) listener();
+  };
 
   // The steps in the order they are done: one entry per step, and per round.
   function entries() {
@@ -608,12 +617,22 @@
         },
         isDone ? `${item.label} ✓` : item.label
       );
-      chip.addEventListener("click", () => (entry && item.key === entry.key ? openStep(item) : goTo(item.step)));
+      chip.addEventListener("click", () => {
+        if (entry && item.key === entry.key) return openStep(item);
+        exitFocus();
+        goTo(item.step);
+      });
       chips.append(chip);
     }
     parts.push(chips);
+    if (focusStep) {
+      const unfocus = element("button", { type: "button", class: "vp-unfocus" }, "Show the whole page (Esc)");
+      unfocus.addEventListener("click", exitFocus);
+      parts.push(unfocus);
+    }
     nextBar.replaceChildren(...parts);
     renderCards(entry);
+    notify();
   }
 
   // " here" while the next step is open (grey), " ready" when it has just become the next one.
@@ -621,8 +640,97 @@
 
   function openStep(entry) {
     openedKey = entry.key;
+    setFocus(entry.step.pattern ? entry.step : null);
     goTo(entry.step);
     renderSteps();
+  }
+
+  function setFocus(step) {
+    focusStep = step;
+    document.body.classList.toggle("dmd-focusing", Boolean(step));
+  }
+
+  function exitFocus() {
+    if (!focusStep) return;
+    setFocus(null);
+    renderSteps();
+  }
+
+  const focusedBlock = () =>
+    focusStep && document.getElementById(`operations-${focusStep.tag}-${focusStep.operation_id}`);
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") exitFocus();
+  });
+  // A click anywhere else (another endpoint, the cards, the top of the page) shows it all again.
+  document.addEventListener(
+    "click",
+    (event) => {
+      if (!focusStep || !(event.target instanceof Element)) return;
+      const block = focusedBlock();
+      if ((block && block.contains(event.target)) || event.target.closest(".values-panel")) return;
+      exitFocus();
+    },
+    true
+  );
+
+  // The step an endpoint of Swagger UI is for (its method and path template).
+  const stepFor = (method, path) =>
+    steps.find((step) => step.pattern && step.method === String(method).toUpperCase() && new RegExp(step.pattern).test(path));
+
+  function useSteps(React) {
+    const [, update] = React.useReducer((n) => n + 1, 0);
+    React.useEffect(() => {
+      listeners.add(update);
+      return () => listeners.delete(update);
+    }, []);
+  }
+
+  // Under Execute and Clear, once this endpoint's step is done: the button to the next step.
+  function nextButton(React, method, path) {
+    const step = stepFor(method, path);
+    const entry = nextEntry();
+    if (!step || !entry || entry.step === step) return null;
+    if (!entries().some((item) => item.step === step && done.has(item.key))) return null;
+    const e = React.createElement;
+    const next = entry.step;
+    if (next.pattern) {
+      return e(
+        "button",
+        { type: "button", className: "btn dmd-next-go", onClick: () => openStep(entry) },
+        `Go to step ${entry.label}: ${next.title}${forRound(entry)} ↓`
+      );
+    }
+    if (next.number === lastNumber && kept.has("did_document_url")) {
+      return e(
+        "a",
+        {
+          className: "btn dmd-next-go done",
+          href: kept.get("did_document_url").value,
+          target: "_blank",
+          rel: "noopener",
+          onClick: () => {
+            setFocus(null);
+            finishOutside(entry);
+          },
+        },
+        "Open your DID document ↗"
+      );
+    }
+    // Outside this page (paying, signing): its card at the top says what to do.
+    return e(
+      "button",
+      {
+        type: "button",
+        className: "btn dmd-next-go",
+        onClick: () => {
+          exitFocus();
+          const card = document.querySelector("#adv-steps .adv-step.current");
+          if (card) card.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+        },
+      },
+      `Next: step ${entry.label}, ${next.title} ↑`
+    );
   }
 
   // ------------------------------------------------------------------ the steps' cards
@@ -800,10 +908,14 @@
     wrapComponents: {
       OperationSummaryPath: (Original, system) => (props) => {
         const React = system.React;
+        useSteps(React);
         const operation = props.operationProps;
-        const number = operation && badges.get(`${operation.get("tag")}/${operation.get("operationId")}`);
+        const tag = operation && operation.get("tag");
+        const id = operation && operation.get("operationId");
+        const number = operation && badges.get(`${tag}/${id}`);
         const path = React.createElement(Original, props);
         if (!number) return path;
+        const focused = Boolean(focusStep) && focusStep.tag === tag && focusStep.operation_id === id;
         return React.createElement(
           React.Fragment,
           null,
@@ -812,8 +924,16 @@
             { className: "vp-step-badge", title: `Step ${number} of the DID registration` },
             `Step ${number}`
           ),
+          focused ? React.createElement("span", { className: "dmd-focus-mark" }) : null,
           path
         );
+      },
+      clear: (Original, system) => (props) => {
+        const React = system.React;
+        useSteps(React);
+        const original = React.createElement(Original, props);
+        const next = nextButton(React, props.method, props.path);
+        return next ? React.createElement(React.Fragment, null, original, next) : original;
       },
     },
   });
