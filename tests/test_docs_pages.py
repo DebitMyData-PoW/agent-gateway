@@ -145,6 +145,8 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     # Step 2's payment option and "How the agent pays" stay the same: the form's list follows
     # the top and the top follows the list; a JSON body that names another option is flagged.
     assert "function syncPaySelect()" in script and "function followStep2(value)" in script
+    # Step 8: the payment signature is dimmed with DMD (left empty), bright with USDC.
+    assert 'if (paying !== "x402") needs.delete("PAYMENT-SIGNATURE");' in script
     assert "is not a payment option open on this server" in script
     assert "body.dmd-focusing" in docs_pages._HELPER_CSS
     # In the open step, the required fields and the ones to paste stay bright; the optional

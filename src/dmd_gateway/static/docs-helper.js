@@ -702,6 +702,8 @@
     const block = focusedBlock();
     if (!block) return;
     const needs = new Set(focusStep.needs || []);
+    // The payment signature only goes with USDC (x402): with DMD, step 8 leaves it empty.
+    if (paying !== "x402") needs.delete("PAYMENT-SIGNATURE");
     for (const row of block.querySelectorAll("tr[data-param-name], tr[data-property-name]")) {
       const name = row.getAttribute("data-param-name") || row.getAttribute("data-property-name");
       const required = Boolean(row.querySelector(".parameter__name.required"));
