@@ -12,7 +12,7 @@ when there is one, otherwise the wallet. A wallet proven next to a key is in
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -208,10 +208,13 @@ class ProductFacts:
     recipient: str
     transactions: Sequence[str]
     issued_at: datetime
+    list_amount: str | None = None  # the product's price, when more than `amount` (an upgrade)
+    upgrade_from: str | None = None  # an upgrade: the tier owned before (product ID)
+    tier: Mapping[str, Any] | None = None  # one tier of a family: group, rank, name
 
 
 def product_receipt(facts: ProductFacts, issuer: Issuer) -> dict[str, Any]:
-    """The receipt of a product bought for a DID (BottyBotty protection), signed like the DID
+    """The receipt of a product bought for a DID (BottyBotty), signed like the DID
     credential. Its subject is the DID; ``validUntil`` is the end of the period it covers, so a
     service such as BottyBotty can check it with the issuer DID document alone."""
     product: dict[str, Any] = {
@@ -225,6 +228,11 @@ def product_receipt(facts: ProductFacts, issuer: Issuer) -> dict[str, Any]:
     }
     if facts.covers_until is not None:
         product["coversUntil"] = xml_datetime(facts.covers_until)
+    if facts.tier is not None:
+        product["tier"] = dict(facts.tier)
+    if facts.upgrade_from is not None:
+        product["upgradeFrom"] = facts.upgrade_from
+        product["listPrice"] = {"currency": facts.currency, "amount": facts.list_amount}
     document: dict[str, Any] = {
         "@context": VC_CONTEXT,
         "id": facts.receipt_url,

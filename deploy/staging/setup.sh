@@ -162,7 +162,7 @@ add_setting DMD_USDC_BASE_INFERENCE_ADDRESS "$TEST_WALLET"
 add_setting DMD_X402_FACILITATOR_URL https://x402.org/facilitator
 add_setting DMD_BASE_RPC_URL https://sepolia.base.org
 add_setting DMD_RAIL_X402_USDC_BASE_ENABLED true
-# BottyBotty protection: on with its placeholder price (test coins only on staging).
+# The BottyBotty tiers: on (test coins only on staging).
 add_setting DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED true
 chmod 600 "$ENV_FILE"
 

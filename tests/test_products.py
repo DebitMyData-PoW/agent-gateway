@@ -1,7 +1,10 @@
-"""Products bought for a DID that already exists (BottyBotty protection), against PostgreSQL
-with a scripted chain: the quote, the payment, completion with a receipt signed by DebitMyData
-and an entitlement for the period bought, renewal, and everything that is refused (a product
-switched off, an unknown, suspended or revoked DID, completion before payment).
+"""Products bought for a DID that already exists, against PostgreSQL with a scripted chain.
+
+The BottyBotty tiers (Entry, Standard, Premium): paid once and owned for good, one tier per
+DID, a higher tier for the difference in price. And products bought for a period (a test
+product, ``test_monthly``): the quote, the payment, completion with a receipt signed by
+DebitMyData and an entitlement for the period bought, renewal, and everything that is refused
+(a product switched off, an unknown, suspended or revoked DID, completion before payment).
 """
 
 from __future__ import annotations
@@ -33,8 +36,13 @@ from .test_registration import ISSUER, audit_actions, clean_chain, engine, tick 
 from .test_signer import KEY, remote, signer_socket  # noqa: F401
 
 FLAG = "DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED"
-PRODUCT = "bottybotty_protection"
-QUOTES = "/v1/products/bottybotty-protection/quotes"
+PRODUCT = "test_monthly"  # a product bought for a period (added to the test registry below)
+QUOTES = "/v1/products/test-monthly/quotes"
+TIERS = {
+    "bottybotty_entry": "49.00",
+    "bottybotty_standard": "99.00",
+    "bottybotty_premium": "199.00",
+}
 DMD = "dmd_pow_native"
 SWITCHED_ON = {**ENABLED, FLAG: "true"}
 UNKNOWN_DID = "did:web:localhost%3A8000:agents:" + "0" * 26
@@ -43,21 +51,43 @@ REASON = "Reported impersonation, under review"
 needs_db = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL not set")
 
 
+@pytest.fixture(scope="module")
+def products_registry(
+    ready_registry: Path,  # noqa: F811
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """The shipped registry with, next to the BottyBotty tiers, a product bought for a period."""
+    data = yaml.safe_load(ready_registry.read_text(encoding="utf-8"))
+    monthly = {k: v for k, v in data["products"]["bottybotty_entry"].items() if k != "tier"}
+    monthly.update(
+        title="Test Monthly",
+        path="/v1/products/test-monthly",
+        commercial_price={"currency": "USD", "amount": "10.00"},
+        period_days=30,
+        entitlement=PRODUCT,
+    )
+    data["products"][PRODUCT] = monthly
+    path = tmp_path_factory.mktemp("products") / "payment_routes.yaml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
 @pytest.fixture
-def api(ready_registry: Path, engine: Engine) -> Iterator[TestClient]:  # noqa: F811
-    with _app_client(ready_registry, engine, issuer_key=ISSUER, environ=SWITCHED_ON) as client:
+def api(products_registry: Path, engine: Engine) -> Iterator[TestClient]:  # noqa: F811
+    with _app_client(products_registry, engine, issuer_key=ISSUER, environ=SWITCHED_ON) as client:
         yield client
 
 
 # --------------------------------------------------------------------------- helpers
 
 
-def buy(api: TestClient, did: str, option: str = DMD) -> httpx.Response:
-    return api.post(QUOTES, json={"did": did, "preferred_payment_option": option})
+def buy(api: TestClient, did: str, option: str = DMD, product: str = PRODUCT) -> httpx.Response:
+    path = f"/v1/products/{product.replace('_', '-')}/quotes"
+    return api.post(path, json={"did": did, "preferred_payment_option": option})
 
 
-def quoted(api: TestClient, did: str) -> dict[str, Any]:
-    response = buy(api, did)
+def quoted(api: TestClient, did: str, product: str = PRODUCT) -> dict[str, Any]:
+    response = buy(api, did, product=product)
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -84,12 +114,15 @@ def complete(api: TestClient, purchase_id: str) -> httpx.Response:
     return api.post(f"/v1/products/purchases/{purchase_id}/complete")
 
 
-def bought(api: TestClient, did: str) -> dict[str, Any]:
-    q = quoted(api, did)
+def paid_and_completed(api: TestClient, q: dict[str, Any]) -> dict[str, Any]:
     pay(api, q)
     response = complete(api, q["purchase_id"])
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def bought(api: TestClient, did: str, product: str = PRODUCT) -> dict[str, Any]:
+    return paid_and_completed(api, quoted(api, did, product))
 
 
 def error(response: httpx.Response, status: int) -> dict[str, Any]:
@@ -118,16 +151,31 @@ def set_entitlement(engine: Engine, identity_id: str, **values: Any) -> None:  #
 # --------------------------------------------------------------------------- configuration
 
 
-def test_shipped_product_is_off_until_switched_on() -> None:
+def test_shipped_bottybotty_tiers_are_off_until_switched_on() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
-    product = registry.products[PRODUCT]
-    assert (product.entitlement, product.period_days) == (PRODUCT, 30)
-    assert list(product.payment_options) == [DMD]
-    assert not registry.product_on(PRODUCT)
-    assert registry.product_rails(PRODUCT) == []
+    tiers = registry.tiers("bottybotty")
+    assert [
+        (
+            pid,
+            f"{p.commercial_price.amount}",
+            p.tier.rank if p.tier else None,
+            p.tier and p.tier.name,
+        )
+        for pid, p in tiers
+    ] == [
+        ("bottybotty_entry", "49.00", 1, "Entry"),
+        ("bottybotty_standard", "99.00", 2, "Standard"),
+        ("bottybotty_premium", "199.00", 3, "Premium"),
+    ]
+    for product_id, product in tiers:
+        assert (product.entitlement, product.period_days) == (product_id, None)  # for good
+        assert list(product.payment_options) == [DMD]
+        assert product.enable_env == FLAG
+        assert not registry.product_on(product_id)
+        assert registry.product_rails(product_id) == []
     on = load_registry(REGISTRY_PATH, environ={FLAG: "true"}, available_adapters=set())
-    assert on.product_on(PRODUCT)
-    assert on.product_rails(PRODUCT) == []  # its payment option is still switched off
+    assert all(on.product_on(product_id) for product_id, _ in tiers)
+    assert on.product_rails("bottybotty_entry") == []  # its payment option is still off
 
 
 def _change(product: dict[str, Any], **values: Any) -> None:
@@ -140,18 +188,30 @@ def _change(product: dict[str, Any], **values: Any) -> None:
         (lambda p, d: _change(p, payment_options=["x402_usdc_base"]), "only quote-based rails"),
         (lambda p, d: _change(p, payment_options=["any_crypto"]), "unknown rail 'any_crypto'"),
         (lambda p, d: _change(p, entitlement="dmd_did_holder"), "reuses the entitlement"),
-        (lambda p, d: d["products"].update(did_registration=dict(p)), "has the ID of a service"),
+        (
+            lambda p, d: d["products"].update(did_registration=dict(p)),
+            "has the ID of a service",
+        ),
         (lambda p, d: _change(p, period_days=0), "period_days"),
         (lambda p, d: _change(p, path="/v1/dids/protection"), "path"),
         (lambda p, d: _change(p, commercial_price={"currency": "USD", "amount": 10}), "quoted"),
         (lambda p, d: _change(p, payment_options=[]), "payment_options"),
+        # Tiers: owned for good, one rank each, each one dearer than the one below.
+        (lambda p, d: _change(p, period_days=30), "a tier is owned for good"),
+        (lambda p, d: _change(p, tier={**p["tier"], "rank": 2}), "same rank"),
+        (
+            lambda p, d: _change(p, commercial_price={"currency": "USD", "amount": "120.00"}),
+            "each tier must cost more than the one below",
+        ),
+        (lambda p, d: _change(p, enable_env="DMD_PRODUCT_OTHER_ENABLED"), "same enable_env"),
+        (lambda p, d: _change(p, tier={**p["tier"], "group": "Botty Botty"}), "group"),
     ],
 )
 def test_configuration_mistakes_stop_the_gateway(
     tmp_path: Path, change: Callable[[dict[str, Any], dict[str, Any]], None], message: str
 ) -> None:
     data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
-    change(data["products"][PRODUCT], data)
+    change(data["products"]["bottybotty_entry"], data)
     path = tmp_path / "routes.yaml"
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     with pytest.raises(RegistryError, match=message):
@@ -163,24 +223,27 @@ def test_configuration_mistakes_stop_the_gateway(
 
 @needs_db
 def test_switched_off_the_product_is_not_offered(
-    ready_registry: Path,  # noqa: F811
+    products_registry: Path,
     engine: Engine,  # noqa: F811
 ) -> None:
-    with _app_client(ready_registry, engine, issuer_key=ISSUER) as off:
+    with _app_client(products_registry, engine, issuer_key=ISSUER) as off:
         assert off.get("/v1/products").json() == []
         did = issue(off)["did"]
         assert error(buy(off, did), 404)["code"] == "not_found"
+        assert error(buy(off, did, product="bottybotty_entry"), 404)["code"] == "not_found"
 
 
 @needs_db
-def test_a_did_buys_protection_and_gets_a_signed_receipt(
+def test_a_did_buys_a_product_for_a_period_and_gets_a_signed_receipt(
     api: TestClient,
     engine: Engine,  # noqa: F811
 ) -> None:
     issued = issue(api)
     did, iid = issued["did"], issued["identity_id"]
-    (offered,) = api.get("/v1/products").json()
-    assert offered["product_id"] == PRODUCT
+    offers = {offer["product_id"]: offer for offer in api.get("/v1/products").json()}
+    assert set(offers) == {PRODUCT, *TIERS}
+    offered = offers[PRODUCT]
+    assert offered["tier"] is None
     assert (offered["entitlement"], offered["period_days"]) == (PRODUCT, 30)
     assert offered["payment_options"] == [DMD]
     assert offered["quote_url"].endswith(QUOTES)
@@ -230,7 +293,7 @@ def test_a_did_buys_protection_and_gets_a_signed_receipt(
     assert payment["transactions"] == ["c3" * 32]
 
     # The entitlement is on the DID, with its end.
-    assert api.get(f"/v1/dids/{iid}").json()["entitlements"] == [PRODUCT, "dmd_did_holder"]
+    assert api.get(f"/v1/dids/{iid}").json()["entitlements"] == ["dmd_did_holder", PRODUCT]
     rows = held(api, iid)
     assert rows[PRODUCT]["status"] == "active"
     assert when(rows[PRODUCT]["expires_at"]) == until
@@ -278,7 +341,7 @@ def test_only_an_active_did_can_buy(api: TestClient, engine: Engine) -> None:  #
     assert code == 0, out
     assert complete(api, q["purchase_id"]).status_code == 200
 
-    # The protection follows the DID, like its other entitlements.
+    # The product follows the DID, like its other entitlements.
     run(engine, "did", "suspend", did, "--reason", REASON, "--by", "Tyler")
     assert api.get(f"/v1/dids/{iid}").json()["entitlements"] == []
     assert held(api, iid)[PRODUCT]["status"] == "suspended"
@@ -291,7 +354,7 @@ def test_only_an_active_did_can_buy(api: TestClient, engine: Engine) -> None:  #
 
 
 @needs_db
-def test_an_expired_protection_is_no_longer_held(
+def test_an_expired_product_is_no_longer_held(
     api: TestClient,
     engine: Engine,  # noqa: F811
 ) -> None:
@@ -378,6 +441,143 @@ def test_the_did_itself_names_it_in_the_public_records(api: TestClient) -> None:
     assert api.get("/v1/entitlements/did:web:x/../agents").status_code in (404, 422)
 
 
+# --------------------------------------------------------------------------- BottyBotty tiers
+
+
+@needs_db
+def test_a_bottybotty_tier_is_owned_for_good_and_upgraded_for_the_difference(
+    api: TestClient,
+    engine: Engine,  # noqa: F811
+) -> None:
+    issued = issue(api)
+    did, iid = issued["did"], issued["identity_id"]
+    offers = {offer["product_id"]: offer for offer in api.get("/v1/products").json()}
+    assert {pid: offers[pid]["commercial_price"]["amount"] for pid in TIERS} == TIERS
+    assert offers["bottybotty_standard"]["tier"] == {
+        "group": "bottybotty",
+        "rank": 2,
+        "name": "Standard",
+    }
+    assert {offers[pid]["period_days"] for pid in TIERS} == {None}
+
+    # Entry, at its price, for good.
+    q = quoted(api, did, "bottybotty_entry")
+    assert (q["commercial_price"]["amount"], q["list_price"]["amount"]) == ("49.00", "49.00")
+    assert q["upgrade_from"] is None
+    entry = paid_and_completed(api, q)
+    assert entry["covers_until"] is None
+    receipt = entry["receipt"]
+    assert verify_proof(receipt, ISSUER.public_key_multibase)
+    assert "validUntil" not in receipt
+    product = receipt["credentialSubject"]["product"]
+    assert product["tier"] == {"group": "bottybotty", "rank": 1, "name": "Entry"}
+    assert "upgradeFrom" not in product and "coversUntil" not in product
+    assert held(api, iid)["bottybotty_entry"]["expires_at"] is None
+
+    # The same tier again is refused before anything is paid.
+    refused = error(buy(api, did, product="bottybotty_entry"), 409)
+    assert (refused["code"], refused["owned"]) == ("already_covered", "bottybotty_entry")
+
+    # Premium costs the difference: 199.00 - 49.00, in DMD at the quote's price (0.20 USD).
+    q = quoted(api, did, "bottybotty_premium")
+    assert (q["commercial_price"]["amount"], q["list_price"]["amount"]) == ("150.00", "199.00")
+    assert q["upgrade_from"] == "bottybotty_entry"
+    assert q["selected_payment_option"]["amount"] == "750.00000000"
+    premium = paid_and_completed(api, q)
+    product = premium["receipt"]["credentialSubject"]["product"]
+    assert (product["entitlement"], product["upgradeFrom"]) == (
+        "bottybotty_premium",
+        "bottybotty_entry",
+    )
+    assert product["price"] == {"currency": "USD", "amount": "150.00"}
+    assert product["listPrice"] == {"currency": "USD", "amount": "199.00"}
+    assert product["tier"]["rank"] == 3
+
+    # One BottyBotty tier on the DID: Entry became Premium, for good.
+    rows = held(api, iid)
+    assert "bottybotty_entry" not in rows
+    assert (rows["bottybotty_premium"]["status"], rows["bottybotty_premium"]["expires_at"]) == (
+        "active",
+        None,
+    )
+    assert api.get(f"/v1/entitlements/{did}").json()["entitlements"][0]["entitlement"] == (
+        "bottybotty_premium"
+    )
+    assert api.get(f"/v1/dids/{did}").json()["entitlements"] == [
+        "bottybotty_premium",
+        "dmd_did_holder",
+    ]
+    # A lower tier, or the same, is refused.
+    for tier in ("bottybotty_entry", "bottybotty_standard", "bottybotty_premium"):
+        assert error(buy(api, did, product=tier), 409)["owned"] == "bottybotty_premium"
+    # The history is in the audit trail.
+    with engine.connect() as conn:
+        grants = conn.execute(
+            text(
+                "SELECT data->>'entitlement', data->>'upgrade_from' FROM audit_events"
+                " WHERE action = 'entitlement.granted' AND subject_id = :i"
+                " AND data->>'entitlement' LIKE 'bottybotty%' ORDER BY id"
+            ),
+            {"i": iid},
+        ).all()
+    assert [tuple(row) for row in grants] == [
+        ("bottybotty_entry", None),
+        ("bottybotty_premium", "bottybotty_entry"),
+    ]
+
+
+@needs_db
+def test_two_tiers_paid_at_once_complete_once(
+    api: TestClient,
+    engine: Engine,  # noqa: F811
+) -> None:
+    issued = issue(api)
+    did, iid = issued["did"], issued["identity_id"]
+    standard, premium = (
+        quoted(api, did, "bottybotty_standard"),
+        quoted(api, did, "bottybotty_premium"),
+    )
+    assert (standard["commercial_price"]["amount"], premium["commercial_price"]["amount"]) == (
+        "99.00",
+        "199.00",
+    )
+    pay(api, standard)
+    pay(api, premium)
+    assert complete(api, premium["purchase_id"]).status_code == 200
+    # Standard was paid too, but the DID now owns a higher tier: refunded by hand.
+    refused = error(complete(api, standard["purchase_id"]), 409)
+    assert (refused["code"], refused["next_action"]) == (
+        "already_covered",
+        "contact_support_for_refund",
+    )
+    assert "refunded by hand" in refused["message"]
+    assert purchase(api, standard["purchase_id"])["status"] == "paid"
+    assert list(held(api, iid)) == ["bottybotty_premium", "dmd_did_holder"]
+
+
+@needs_db
+def test_a_tier_follows_its_did(api: TestClient, engine: Engine) -> None:  # noqa: F811
+    issued = issue(api)
+    did, iid = issued["did"], issued["identity_id"]
+    bought(api, did, "bottybotty_standard")
+    run(engine, "did", "suspend", did, "--reason", REASON, "--by", "Tyler")
+    assert held(api, iid)["bottybotty_standard"]["status"] == "suspended"
+    assert error(buy(api, did, product="bottybotty_premium"), 409)["code"] == "did_not_active"
+    run(engine, "did", "reactivate", did, "--reason", "No misuse", "--by", "Tyler")
+    assert held(api, iid)["bottybotty_standard"]["status"] == "active"
+    assert quoted(api, did, "bottybotty_premium")["commercial_price"]["amount"] == "100.00"
+    # A tier revoked on its own never comes back, and nothing more is sold for it.
+    with engine.begin() as conn:
+        conn.execute(
+            update(Entitlement)
+            .where(Entitlement.subject_id == iid, Entitlement.entitlement == "bottybotty_standard")
+            .values(status="revoked", revoked_at=datetime.now(UTC))
+        )
+    assert error(buy(api, did, product="bottybotty_premium"), 409)["code"] == (
+        "entitlement_revoked"
+    )
+
+
 # --------------------------------------------------------------------------- the signer
 
 
@@ -397,11 +597,11 @@ def _receipt(did: str, purchase_id: str, payment_id: str) -> dict[str, Any]:
 @needs_db
 def test_the_signer_checks_a_product_receipt_against_the_database(
     signer_socket: Path,  # noqa: F811
-    ready_registry: Path,  # noqa: F811
+    products_registry: Path,
     engine: Engine,  # noqa: F811
 ) -> None:
     issuer = remote(signer_socket)
-    with _app_client(ready_registry, engine, issuer_key=issuer, environ=SWITCHED_ON) as client:
+    with _app_client(products_registry, engine, issuer_key=issuer, environ=SWITCHED_ON) as client:
         did = issue(client)["did"]
         q = quoted(client, did)
         pur, pid = q["purchase_id"], q["payment_intent_id"]
@@ -449,8 +649,9 @@ def test_the_daily_report_counts_products_apart_from_donations(
         count, total = conn.execute(
             text(
                 "SELECT count(*), sum(commercial_price_amount) FROM purchases"
-                " WHERE status = 'completed' AND subject_did IS NOT NULL"
-            )
+                " WHERE status = 'completed' AND product_id = :p"
+            ),
+            {"p": PRODUCT},
         ).one()
     assert count >= 1  # with the purchases of the earlier tests in this file
     assert f"- Products completed, {PRODUCT}: {count} ({total:.2f} USD)" in body

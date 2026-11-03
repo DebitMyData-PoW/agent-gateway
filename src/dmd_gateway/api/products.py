@@ -1,4 +1,4 @@
-"""Products bought for a DID that already exists, such as BottyBotty protection.
+"""Products bought for a DID that already exists, such as a BottyBotty tier.
 
 GET  /v1/products                                  the products offered, with price and period
 POST /v1/products/{product}/quotes                 a quote for one DID (active)
@@ -34,7 +34,7 @@ PURCHASE_ID = r"^dmd_purchase_[0-9A-HJKMNP-TV-Z]{26}$"
 @router.get(
     "",
     response_model=list[ProductInfo],
-    summary="Products an agent can buy for its DID (such as BottyBotty protection)",
+    summary="Products an agent can buy for its DID (such as the BottyBotty tiers)",
 )
 def products(request: Request) -> list[ProductInfo]:
     return offered_products(request.app.state.quote_context)
@@ -53,9 +53,7 @@ def products(request: Request) -> list[ProductInfo]:
 def quote(
     request: Request,
     body: ProductQuoteRequest,
-    product: str = Path(
-        pattern=r"^[a-z][a-z0-9-]{1,40}$", description="e.g. bottybotty-protection"
-    ),
+    product: str = Path(pattern=r"^[a-z][a-z0-9-]{1,40}$", description="e.g. bottybotty-entry"),
 ) -> ProductQuote:
     ctx = request.app.state.quote_context
     product_id, config = product_by_path(ctx, product)

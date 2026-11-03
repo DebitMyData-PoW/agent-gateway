@@ -1,4 +1,4 @@
-"""Products bought for a DID that already exists, such as BottyBotty protection.
+"""Products bought for a DID that already exists, such as BottyBotty.
 
     quote     POST /v1/products/<product>/quotes      the DID, the payment option -> a quote
     pay       the agent sends the exact amount to the quote's address (like the DID itself)
@@ -9,6 +9,10 @@
 Only an active DID can buy, and only an active DID gets the entitlement. Buying again before
 the period ends extends it from its end. A product is offered only once switched on
 (``enable_env`` in the route registry).
+
+Tiers (BottyBotty Entry, Standard, Premium) are owned for good, one per DID: the DID's one
+entitlement row for the family moves up to the tier bought, and a higher tier costs the
+difference between the two tiers' prices. A lower or the same tier is refused.
 """
 
 from __future__ import annotations
@@ -36,7 +40,7 @@ from dmd_gateway.db.models import (
 from dmd_gateway.domain.ids import PAYMENT_INTENT, PURCHASE, new_id
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
-from dmd_gateway.domain.routes import ProductConfig, RailConfig
+from dmd_gateway.domain.routes import ProductConfig, RailConfig, TierConfig
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.credentials import ProductFacts, product_receipt
 from dmd_gateway.services.identity_status import public_identity
@@ -84,6 +88,12 @@ class ProductQuoteRequest(BaseModel):
     )
 
 
+class TierInfo(BaseModel):
+    group: str = Field(description="The family of tiers, e.g. bottybotty.")
+    rank: int = Field(description="1 is the lowest tier.")
+    name: str
+
+
 class ProductInfo(BaseModel):
     product_id: str
     name: str
@@ -91,6 +101,11 @@ class ProductInfo(BaseModel):
     entitlement: str
     period_days: int | None = Field(description="How long one purchase covers; null: for good.")
     commercial_price: Money
+    tier: TierInfo | None = Field(
+        default=None,
+        description="One tier of a family: a DID owns one tier, and a higher tier costs the "
+        "difference in price.",
+    )
     payment_options: list[str]
     quote_url: str
 
@@ -100,7 +115,14 @@ class ProductQuote(BaseModel):
     payment_intent_id: str
     product: ProductInfo
     did: str
-    commercial_price: Money
+    commercial_price: Money = Field(description="What this quote charges.")
+    list_price: Money = Field(
+        description="The product's price (more than commercial_price for "
+        "an upgrade, which pays the difference)."
+    )
+    upgrade_from: str | None = Field(
+        default=None, description="For an upgrade: the tier the DID owns now (product ID)."
+    )
     selected_payment_option: SelectedPaymentOption
     price_quote: PriceQuote | None
     payment_status: str
@@ -143,17 +165,27 @@ def product_info(ctx: QuoteContext, product_id: str, product: ProductConfig) -> 
             currency=product.commercial_price.currency,
             amount=f"{product.commercial_price.amount:.2f}",
         ),
+        tier=_tier_info(product.tier),
         payment_options=[rail_id for rail_id, _ in ctx.registry.product_rails(product_id)],
         quote_url=f"{base}{product.path}/quotes",
     )
 
 
+def _tier_info(tier: TierConfig | None) -> TierInfo | None:
+    return TierInfo(group=tier.group, rank=tier.rank, name=tier.name) if tier else None
+
+
 def offered_products(ctx: QuoteContext) -> list[ProductInfo]:
-    return [
-        product_info(ctx, product_id, product)
+    """The products switched on; the tiers of a family together, lowest first."""
+    offered = [
+        (product_id, product)
         for product_id, product in ctx.registry.products.items()
         if ctx.registry.product_on(product_id)
     ]
+    offered.sort(
+        key=lambda item: (item[1].tier.group, item[1].tier.rank) if item[1].tier else (item[0], 0)
+    )
+    return [product_info(ctx, product_id, product) for product_id, product in offered]
 
 
 def product_by_path(ctx: QuoteContext, slug: str) -> tuple[str, ProductConfig]:
@@ -218,6 +250,54 @@ def _check_can_hold(held: Entitlement | None) -> None:
         raise ApiError(409, "already_covered", "This DID already holds this entitlement for good.")
 
 
+Owned = tuple[Entitlement, str, ProductConfig]
+
+
+def _owned_tier(
+    session: Session, ctx: QuoteContext, identity: AgentIdentity, group: str, *, lock: bool = False
+) -> Owned | None:
+    """The DID's tier in a family (its entitlement row, the product ID and the product), or
+    None. A tier revoked on its own never comes back: nothing more is sold for it."""
+    members = {product.entitlement: (pid, product) for pid, product in ctx.registry.tiers(group)}
+    query = select(Entitlement).where(
+        Entitlement.subject_id == identity.id, Entitlement.entitlement.in_(list(members))
+    )
+    rows = session.scalars(query.with_for_update() if lock else query).all()
+    for row in rows:
+        if row.status == "revoked":
+            _check_can_hold(row)
+    if not rows:
+        return None
+    row = max(rows, key=lambda r: _rank(members[r.entitlement][1]))
+    product_id, product = members[row.entitlement]
+    return row, product_id, product
+
+
+def _rank(product: ProductConfig) -> int:
+    return product.tier.rank if product.tier else 0
+
+
+def _tier_price(
+    owned: Owned | None, product_id: str, product: ProductConfig
+) -> tuple[Decimal, str | None]:
+    """What a tier costs this DID: its price, or for an upgrade the difference with the tier it
+    owns (and that tier's product ID). The same or a lower tier is refused."""
+    if owned is None:
+        return product.commercial_price.amount, None
+    _, owned_id, owned_product = owned
+    if _rank(owned_product) >= _rank(product):
+        message = (
+            f"This DID already owns {product.title}."
+            if owned_id == product_id
+            else f"This DID already owns {owned_product.title}, a higher tier."
+        )
+        raise ApiError(409, "already_covered", message, details={"owned": owned_id})
+    return (
+        product.commercial_price.amount - owned_product.commercial_price.amount,
+        owned_id,
+    )
+
+
 def create_product_quote(
     session: Session,
     ctx: QuoteContext,
@@ -230,8 +310,13 @@ def create_product_quote(
     rail_id = request.preferred_payment_option
     rail = _rail(ctx, product_id, product, rail_id)
     identity = _active_identity(session, request.did)
-    _check_can_hold(_held(session, identity, product.entitlement))
-    usd_price = product.commercial_price.amount
+    upgrade_from = None
+    if product.tier is not None:
+        owned = _owned_tier(session, ctx, identity, product.tier.group)
+        usd_price, upgrade_from = _tier_price(owned, product_id, product)
+    else:
+        _check_can_hold(_held(session, identity, product.entitlement))
+        usd_price = product.commercial_price.amount
     amount_units, observation = _quote_amount(ctx, rail, usd_price, now)
     if amount_units <= 0:
         raise ApiError(500, "quote_failed", "The quote could not be calculated.")
@@ -314,6 +399,8 @@ def create_product_quote(
             "rail_id": rail_id,
             "amount_base_units": str(amount_units),
             "commercial_price_usd": f"{usd_price:.2f}",
+            "list_price_usd": f"{product.commercial_price.amount:.2f}",
+            "upgrade_from": upgrade_from,
             "terms_version": product.terms_version,
         },
     )
@@ -326,6 +413,11 @@ def create_product_quote(
         commercial_price=Money(
             currency=product.commercial_price.currency, amount=f"{usd_price:.2f}"
         ),
+        list_price=Money(
+            currency=product.commercial_price.currency,
+            amount=f"{product.commercial_price.amount:.2f}",
+        ),
+        upgrade_from=upgrade_from,
         selected_payment_option=SelectedPaymentOption(
             id=rail_id,
             name=rail.name,
@@ -445,18 +537,33 @@ def complete_product_purchase(
         )
     )
     now = now.replace(microsecond=0)  # equal to the receipt's signed validFrom
-    entitlement = _held(session, identity, product.entitlement, lock=True)
-    if entitlement is not None and entitlement.status == "revoked":
-        _check_can_hold(entitlement)
-    active = entitlement is not None and entitlement.status == "active"
-    end = entitlement.expires_at if entitlement is not None else None
-    start, until = now, None
-    # Already held for good (two purchases paid at once): nothing shortens it.
-    if not (active and end is None):
-        if active and end is not None and end > now:
-            start = end  # buying again before the end extends the period
-        if product.period_days:
-            until = start + timedelta(days=product.period_days)
+    start, until, upgrade_from = now, None, None
+    if product.tier is not None:
+        owned = _owned_tier(session, ctx, identity, product.tier.group, lock=True)
+        try:
+            _, upgrade_from = _tier_price(owned, purchase.product_id, product)
+        except ApiError as exc:
+            # Another purchase completed first with this tier or a higher one.
+            raise ApiError(
+                409,
+                "already_covered",
+                f"{exc.message} This paid purchase cannot be completed: it is refunded by hand "
+                "(see the refund policy).",
+                details={**exc.details, "next_action": "contact_support_for_refund"},
+            ) from exc
+        entitlement = owned[0] if owned else None
+    else:
+        entitlement = _held(session, identity, product.entitlement, lock=True)
+        if entitlement is not None and entitlement.status == "revoked":
+            _check_can_hold(entitlement)
+        active = entitlement is not None and entitlement.status == "active"
+        end = entitlement.expires_at if entitlement is not None else None
+        # Already held for good (two purchases paid at once): nothing shortens it.
+        if not (active and end is None):
+            if active and end is not None and end > now:
+                start = end  # buying again before the end extends the period
+            if product.period_days:
+                until = start + timedelta(days=product.period_days)
     base = issuance.public_base_url.rstrip("/")
     receipt = product_receipt(
         ProductFacts(
@@ -479,6 +586,13 @@ def complete_product_purchase(
             recipient=intent.recipient,
             transactions=transactions,
             issued_at=now,
+            list_amount=f"{product.commercial_price.amount:.2f}",
+            upgrade_from=upgrade_from,
+            tier=(
+                {"group": product.tier.group, "rank": product.tier.rank, "name": product.tier.name}
+                if product.tier
+                else None
+            ),
         ),
         issuance.issuer,
     )
@@ -492,6 +606,10 @@ def complete_product_purchase(
             )
         )
     else:
+        if product.tier is not None:
+            # The DID's row for the family moves up to this tier, from now.
+            entitlement.entitlement = product.entitlement
+            entitlement.granted_at = now
         entitlement.status = "active"
         entitlement.revoked_at = None
         entitlement.expires_at = until
@@ -521,6 +639,7 @@ def complete_product_purchase(
         actor_type="system",
         data={
             "entitlement": product.entitlement,
+            "upgrade_from": upgrade_from,
             "purchase_id": purchase.id,
             "covers_from": start.isoformat(),
             "covers_until": until.isoformat() if until else None,

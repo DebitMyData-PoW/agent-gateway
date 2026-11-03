@@ -112,6 +112,8 @@ def test_quotes_name_the_version_of_the_terms_page(path: Path) -> None:
         assert service.terms_version == terms.version.isoformat()
     for donation in registry.donations.values():
         assert donation.terms_version == terms.version.isoformat()
+    for product in registry.products.values():
+        assert product.terms_version == terms.version.isoformat()
 
 
 @pytest.mark.parametrize("path", CONFIGS, ids=["production", "staging"])
@@ -178,7 +180,7 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
     assert markdown.text.startswith("# Refund policy\n")
 
     listing = client.get("/v1/policies").json()
-    assert listing["terms_version"] == "2026-10-25"
+    assert listing["terms_version"] == "2026-11-03"
     # Approved: no page says "Draft" any more.
     assert {policy["status"] for policy in listing["policies"]} == {"approved"}
     assert "Draft." not in page.text and "(draft)" not in index.text

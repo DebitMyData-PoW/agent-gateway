@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.26.1`). The whole registration flow (quote,
+This is an early development release (`0.27.0`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -70,7 +70,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (approved, published 2026-11-02) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
-| Products bought for a DID: BottyBotty protection (`/v1/products`), a quote for an active DID paid in DMD, then a receipt signed by DebitMyData and the `bottybotty_protection` entitlement for the period bought; REST and MCP (`dmd_purchase`, `dmd_complete_purchase`) | done (off until switched on; price and period are placeholders; BottyBotty's side to connect) |
+| Products bought for a DID: BottyBotty in three tiers (Entry 49, Standard 99, Premium 199 USD), each paid once and owned for good, a higher tier for the difference (`/v1/products`), paid in DMD, then a receipt signed by DebitMyData and the tier's entitlement on the DID; REST and MCP (`dmd_purchase`, `dmd_complete_purchase`) | done (on staging; off in production until BottyBotty's side is connected) |
 | "Get a DID": the DMD payment as a QR code and an "Open in my DMD wallet" link (`debitmydata:` payment link) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |

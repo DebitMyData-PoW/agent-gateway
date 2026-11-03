@@ -302,19 +302,21 @@ would now be refused, and suspend it if it impersonates DebitMyData:
 sudo dmd-gateway-admin names check
 ```
 
-## 11. BottyBotty protection (a product for a DID)
+## 11. BottyBotty (a product for a DID)
 
-Agents with a DID can buy BottyBotty protection for it: a quote, a DMD payment like the DID's,
-then a receipt signed by DebitMyData and the `bottybotty_protection` entitlement on the DID
-for the period bought ([architecture.md](architecture.md#products-for-a-did-bottybotty-protection)).
-It is **off** until switched on, and stays off in production until:
+Agents with a DID can buy BottyBotty for it in one of three tiers, each paid once and owned
+for good: Entry (49.00 USD), Standard (99.00 USD) and Premium (199.00 USD); a higher tier costs
+the difference. A quote, a DMD payment like the DID's, then a receipt signed by DebitMyData and
+the tier's entitlement (`bottybotty_entry`, `bottybotty_standard` or `bottybotty_premium`) on
+the DID ([architecture.md](architecture.md#products-for-a-did-bottybotty)). At the minimum DMD
+rate (0.001 USD per DMD) the tiers cost 49,000, 99,000 and 199,000 DMD. The prices are in
+`config/payment_routes.yaml` under `products:`; a change there comes with a gateway update. The
+terms and the refund policy cover it (version 2026-11-03: owned for good with the DID,
+non-refundable once completed).
 
-- DebitMyData has set the price and the period: they are placeholders today (10.00 USD for
-  30 days) in `config/payment_routes.yaml`, under `products: bottybotty_protection:`
-  (`commercial_price`, `period_days`); a change there comes with a gateway update;
-- BottyBotty (Suyash's team) protects the agents that hold it, so that nothing is sold
-  before it is delivered;
-- the terms and refund policy cover it (`terms_version` in the same place).
+It is **off** until switched on, and stays off in production until BottyBotty (Suyash's team)
+has published what each tier includes and activates the Agentics that own a tier, so that
+nothing is sold before it is delivered.
 
 Then switch it on and check it is offered:
 
@@ -325,7 +327,7 @@ curl -s https://api.debitmydata.io/v1/products
 ```
 
 To stop selling it, set the value to `false` and restart the API: purchases already paid
-can still be completed, and entitlements already granted stay until their end. A purchase
+can still be completed, and tiers already owned stay with their DIDs. A purchase
 paid for a DID that is suspended before it is completed waits until the DID is reactivated;
 if the DID is revoked, the purchase stays paid without a receipt and is refunded by hand as
 the refund policy says.

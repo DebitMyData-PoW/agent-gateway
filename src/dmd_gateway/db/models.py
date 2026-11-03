@@ -176,7 +176,7 @@ class Purchase(Base):
     # Optional, given by the donor and shown in the receipt.
     donor_name: Mapped[str | None] = mapped_column(Text)
     donor_did: Mapped[str | None] = mapped_column(Text)
-    # A product bought for a DID (BottyBotty protection): the DID it is for, and once
+    # A product bought for a DID (a BottyBotty tier): the DID it is for, and once
     # completed, until when it covers that DID (None: for good).
     subject_identity_id: Mapped[str | None] = mapped_column(ForeignKey("identities.id"), index=True)
     subject_did: Mapped[str | None] = mapped_column(Text)

@@ -106,7 +106,7 @@ def payment_status(
         next_action = NEXT_ACTIONS[status]
         purchase = session.get(Purchase, intent.purchase_id) if intent.purchase_id else None
         if purchase is not None and purchase.subject_did is not None:
-            # A product for a DID (such as BottyBotty protection): paid like the DID itself,
+            # A product for a DID (such as a BottyBotty tier): paid like the DID itself,
             # then completed for the receipt and the entitlement.
             if status is PaymentStatus.SETTLED:
                 next_action = "complete_purchase"

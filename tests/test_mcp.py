@@ -2,7 +2,7 @@
 
 Without a database: tool listing, discovery tools, error reporting and transport checks.
 With TEST_DATABASE_URL: the whole registration through MCP tools only, from the offer to
-the DID, and an add-on (BottyBotty protection) bought for that DID, with a scripted chain
+the DID, and an add-on (a BottyBotty tier) bought for that DID, with a scripted chain
 behind the DMD adapter.
 """
 
@@ -355,17 +355,19 @@ async def test_an_add_on_is_bought_through_mcp_only(
     async with mcp_client(app) as mcp:
         did = await _issued_through_mcp(mcp, app, "McpAddOn-01", "5d" * 32)
         catalog = await call(mcp, "dmd_catalog")
-        (add_on,) = [p for p in catalog["products"] if p["kind"] == "add_on"]
-        assert add_on["product_id"] == "bottybotty_protection"
-        assert (add_on["period_days"], add_on["payment_options"]) == (30, ["dmd_pow_native"])
+        add_ons = {p["product_id"]: p for p in catalog["products"] if p["kind"] == "add_on"}
+        assert list(add_ons) == ["bottybotty_entry", "bottybotty_standard", "bottybotty_premium"]
+        add_on = add_ons["bottybotty_entry"]
+        assert (add_on["period_days"], add_on["payment_options"]) == (None, ["dmd_pow_native"])
+        assert add_on["tier"] == {"group": "bottybotty", "rank": 1, "name": "Entry"}
         assert "active DebitMyData DID" in add_on["requires"]
-        offer = await call(mcp, "dmd_get_purchase_quote", product_id="bottybotty_protection")
+        offer = await call(mcp, "dmd_get_purchase_quote", product_id="bottybotty_entry")
         assert offer["payment_options"] == ["dmd_pow_native"]
 
         unknown = await call_error(
             mcp,
             "dmd_purchase",
-            product_id="bottybotty_protection",
+            product_id="bottybotty_entry",
             preferred_payment_option="dmd_pow_native",
             details={"did": "did:web:localhost%3A8000:agents:" + "0" * 26},
         )
@@ -374,7 +376,7 @@ async def test_an_add_on_is_bought_through_mcp_only(
         quote = await call(
             mcp,
             "dmd_purchase",
-            product_id="bottybotty_protection",
+            product_id="bottybotty_entry",
             preferred_payment_option="dmd_pow_native",
             details={"did": did},
         )
@@ -391,6 +393,7 @@ async def test_an_add_on_is_bought_through_mcp_only(
         again = await call(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
 
     assert (done["status"], done["did"]) == ("completed", did)
-    assert done["entitlement"] == "bottybotty_protection"
+    assert done["entitlement"] == "bottybotty_entry"
+    assert done["covers_until"] is None  # owned for good
     assert verify_proof(done["receipt"], issuer.public_key_multibase)
     assert again["receipt"] == done["receipt"]

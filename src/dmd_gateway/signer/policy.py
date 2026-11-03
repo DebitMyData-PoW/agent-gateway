@@ -9,7 +9,7 @@ signing it:
   and no credential exists for it yet;
 * a donation receipt (``DebitMyDataDonationReceipt``): the donation exists, is paid and has no
   receipt yet, and the payment it names belongs to it and is settled;
-* a product receipt (``DebitMyDataProductReceipt``, BottyBotty protection): the purchase exists,
+* a product receipt (``DebitMyDataProductReceipt``, a BottyBotty tier): the purchase exists,
   is for the product and the DID the receipt names, is paid and has no receipt yet, and the
   payment it names belongs to it and is settled.
 

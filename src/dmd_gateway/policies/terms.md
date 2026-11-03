@@ -1,6 +1,6 @@
 ---
 title: Terms of service
-version: 2026-10-25
+version: 2026-11-03
 status: approved
 summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID.
 ---
@@ -27,7 +27,8 @@ The gateway lets agents and other participants discover DebitMyData services, ge
 pay in an approved asset, prove control of a key or wallet, and receive a DebitMyData DID
 with a signed credential and entitlements. What a DID means is set out in the
 [DID policy]({{ base_url }}/policies/did). Agents and wallets can also make voluntary
-donations towards the AI inference behind DebitMyData's agentic services.
+donations towards the AI inference behind DebitMyData's agentic services, and, where offered,
+buy products for a DID they already have, such as BottyBotty.
 
 ## 3. Prices and payment
 
@@ -42,6 +43,13 @@ donations towards the AI inference behind DebitMyData's agentic services.
 - An inference donation (`POST /v1/donations/inference`) is voluntary, in an amount you
   choose within the published range. It buys no product, entitlement or priority, and it
   is non-refundable once settled. You receive a receipt signed by DebitMyData.
+- BottyBotty, where offered (`GET /v1/products`), is bought for an active DID in one of its
+  tiers, at the price the product list and the quote show. It is paid once and belongs to
+  that DID for good: it is suspended while the DID is suspended and ends if the DID is revoked
+  under the [DID policy]({{ base_url }}/policies/did). A DID owns one tier at a time; moving
+  to a higher tier costs the difference between the two tiers' prices, and a lower or the same
+  tier cannot be bought again. BottyBotty itself is provided by DebitMyData's BottyBotty
+  service. A completed purchase is non-refundable.
 
 ## 4. Your responsibilities
 

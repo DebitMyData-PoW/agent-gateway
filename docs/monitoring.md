@@ -118,7 +118,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
 
 - **Last 24 hours**: quotes, DIDs issued, donations, products bought for a DID (such as
-  BottyBotty protection, apart from donations), payments settled per payment option with the
+  the BottyBotty tiers, apart from donations), payments settled per payment option with the
   amounts received, payments that failed or need a refund.
 - **Since the start**: DIDs issued and amounts received per payment option.
 - **Receiving destinations in use**: the USDC addresses, and the DMD wallet shown by its key

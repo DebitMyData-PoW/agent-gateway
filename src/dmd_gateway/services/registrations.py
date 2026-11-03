@@ -420,7 +420,7 @@ def active_entitlements(session: Session, identity_id: str) -> list[str]:
             .where(
                 Entitlement.subject_id == identity_id,
                 Entitlement.status == "active",
-                # A product bought for a period (BottyBotty protection) ends then.
+                # A product bought for a period ends then (BottyBotty tiers have no end).
                 Entitlement.expires_at.is_(None) | (Entitlement.expires_at > func.now()),
             )
             .order_by(Entitlement.entitlement)

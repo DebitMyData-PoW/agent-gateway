@@ -3,7 +3,7 @@
 Once a day it answers three questions, by email and Discord:
 
 1. What happened in the last 24 hours: quotes, DIDs issued, donations, products bought for a
-   DID (BottyBotty protection), payments settled per payment option (with the amounts
+   DID (BottyBotty tiers), payments settled per payment option (with the amounts
    received), payments that need a refund, and the receiving destinations in use.
 2. Does the database agree with itself: every settled payment is fully credited, every DID
    and every donation or product receipt has a settled payment behind it.
@@ -102,7 +102,7 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
         .group_by(Purchase.product_id, Purchase.subject_did.is_not(None))
         .order_by(Purchase.product_id)
     ).all()
-    # A purchase made for a DID is a product (BottyBotty protection); the others are donations.
+    # A purchase made for a DID is a product (a BottyBotty tier); the others are donations.
     donations = sum(count for _, for_did, count, _ in completed if not for_did)
     donated = sum((Decimal(total) for _, for_did, _, total in completed if not for_did), Decimal(0))
     products = [(pid, count, Decimal(total)) for pid, for_did, count, total in completed if for_did]

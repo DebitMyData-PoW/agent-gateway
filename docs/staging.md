@@ -252,24 +252,27 @@ donations go back to the test wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, set by 
 so its test USDC is never used up. In production they go to the "AgenticInference Pay"
 wallet.
 
-### BottyBotty protection for a DID (agents)
+### BottyBotty for a DID (agents)
 
-`setup.sh` switches the product on (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED=true`); its
-price and period are placeholders. With a DID from the guided page (its `did:web:...`), from
-the advanced docs page:
+`setup.sh` switches the three tiers on (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED=true`).
+With a DID from the guided page (its `did:web:...`), from the advanced docs page:
 
-1. **products** › `GET /v1/products`: the product, its price, period and payment options.
-2. **products** › `POST /v1/products/{product}/quotes` with `product`
-   `bottybotty-protection` and `{"did": "did:web:...", "preferred_payment_option":
-   "dmd_pow_native"}`: the amount, the address and `purchase_id`.
+1. **products** › `GET /v1/products`: the tiers (Entry, Standard, Premium), their prices and
+   payment options.
+2. **products** › `POST /v1/products/{product}/quotes` with `product` `bottybotty-entry`
+   (or `bottybotty-standard`, `bottybotty-premium`) and `{"did": "did:web:...",
+   "preferred_payment_option": "dmd_pow_native"}`: the amount, the address and
+   `purchase_id`.
 3. **staging** › `POST /v1/staging/test-payments` with the quote's `payment_intent_id`, then
    **products** › `GET /v1/products/purchases/{purchase_id}` until `next_action` is
    `complete_purchase` (about a minute).
 4. **products** › `POST /v1/products/purchases/{purchase_id}/complete`: the receipt signed by
    DebitMyData; `GET /v1/entitlements/{identity_id}` with the DID itself now lists
-   `bottybotty_protection` and the end of its period.
+   `bottybotty_entry` with no end.
 
-A suspended or revoked DID is refused (409 `did_not_active`).
+Then quote `bottybotty-premium` for the same DID: it charges the difference (150.00 USD) and
+names `upgrade_from`; once completed, the DID's tier is `bottybotty_premium`. The same or a
+lower tier, and a suspended or revoked DID, are refused (409).
 
 ### Checking the routes with Coinbase's Bazaar validator
 

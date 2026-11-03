@@ -1,6 +1,6 @@
 ---
 title: Refund policy
-version: 2026-10-25
+version: 2026-11-03
 status: approved
 summary: The DID registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
@@ -23,6 +23,14 @@ An inference donation is voluntary and you choose its amount, so it is **non-ref
 once settled. A donation whose payment was refused or failed was never taken: nothing is
 charged and nothing needs refunding. If you believe a donation was taken by mistake, for
 example by a wallet you no longer control, write to us with its `purchase_id`.
+
+## BottyBotty purchases are non-refundable
+
+A BottyBotty tier is paid once and belongs to the DID for good, so it is **non-refundable**
+once the purchase is completed, including an upgrade (which costs only the difference in
+price). This includes a DID that is later suspended or revoked under the
+[DID policy]({{ base_url }}/policies/did). A purchase that was paid but could not be completed
+(for example because the DID was revoked before completion) is refunded as described below.
 
 ## Payments that are returned
 

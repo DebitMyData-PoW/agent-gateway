@@ -60,10 +60,12 @@ payment settles.
 6. dmd_register_did: receive your DID, a signed credential (also your receipt) and your \
 entitlements. dmd_get_registration_status shows what is still missing at any time.
 
-Add-ons for a DID you have (dmd_catalog, kind "add_on", such as BottyBotty protection): \
-dmd_purchase with details {"did": ...} gives a quote; pay it like the DID; when \
-dmd_get_payment_status says "settled", dmd_complete_purchase returns the receipt signed by \
-DebitMyData, and the add-on's entitlement is on your DID for the period bought.
+Add-ons for a DID you have (dmd_catalog, kind "add_on", such as BottyBotty in three tiers: \
+bottybotty_entry, bottybotty_standard, bottybotty_premium): dmd_purchase with details \
+{"did": ...} gives a quote; pay it like the DID; when dmd_get_payment_status says \
+"settled", dmd_complete_purchase returns the receipt signed by DebitMyData, and the add-on's \
+entitlement is on your DID (a BottyBotty tier for good: a higher tier later costs only the \
+difference in price).
 
 DebitMyData never asks for private keys, seed phrases or wallet access."""
 
@@ -459,6 +461,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                     "description": add_on["description"],
                     "commercial_price": add_on["commercial_price"],
                     "period_days": add_on["period_days"],
+                    "tier": add_on.get("tier"),
                     "entitlement": add_on["entitlement"],
                     "requires": "an active DebitMyData DID (details.did in dmd_purchase)",
                     "accepting_payments": bool(add_on["payment_options"]),
@@ -497,7 +500,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                 "participant_type, controller_public_key and/or controller_wallet_address "
                 "(with optional controller_network), and optionally metadata. For a "
                 "donation (inference_donation): amount_usd, and optionally donor_name and "
-                "donor_did. For an add-on (bottybotty_protection): did, the DID it is for"
+                "donor_did. For an add-on (such as bottybotty_entry): did, the DID it is for"
             ),
         ],
         ctx: Context,
@@ -522,7 +525,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
         did_registration: returns a payable quote (the same as dmd_create_did_payment_quote).
 
-        Add-ons for a DID (bottybotty_protection): returns a payable quote for details.did.
+        Add-ons for a DID (bottybotty_entry, bottybotty_standard, bottybotty_premium): returns
+        a payable quote for details.did; for a higher BottyBotty tier than the one owned, it
+        charges the difference.
         Pay it, wait for dmd_get_payment_status to say "settled", then dmd_complete_purchase.
 
         Donations (inference_donation, USDC on Base through x402): call with the amount; it
@@ -601,8 +606,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         purchase_id: Annotated[
             str,
             Field(
-                description="purchase_id from dmd_purchase (an add-on such as BottyBotty "
-                "protection)",
+                description="purchase_id from dmd_purchase (an add-on such as a BottyBotty tier)",
                 pattern=r"^dmd_purchase_[0-9A-HJKMNP-TV-Z]{26}$",
             ),
         ],

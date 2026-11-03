@@ -168,7 +168,7 @@ class Entitlements(BaseModel):
 @router.get(
     "/v1/entitlements/{identity_id}",
     response_model=Entitlements,
-    summary="Entitlements of a DID, such as BottyBotty protection and the end of its period",
+    summary="Entitlements of a DID, such as its BottyBotty tier (and any end of period)",
     responses={404: {"description": "Unknown identity."}},
 )
 def entitlements(

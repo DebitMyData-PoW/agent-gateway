@@ -282,13 +282,25 @@ class DonationConfig(_Strict):
         return self
 
 
+class TierConfig(_Strict):
+    """A product's place in a family of tiers (BottyBotty Entry, Standard, Premium): a DID owns
+    one tier of the family at a time, and moves up by paying the difference in price."""
+
+    group: str = Field(pattern=r"^[a-z][a-z0-9_]{2,63}$")
+    rank: int = Field(ge=1, le=20)
+    name: str = Field(min_length=1, max_length=40)
+
+
 class ProductConfig(_Strict):
-    """A product bought for a DID that already exists, such as BottyBotty protection.
+    """A product bought for a DID that already exists, such as BottyBotty.
 
     It is quoted and paid like the DID itself (quote-based rails only), then completed with a
     receipt signed by DebitMyData and an entitlement on the DID, valid for ``period_days`` from
     the purchase (or for good when unset; buying again before the end extends it). It is off
     until the environment variable ``enable_env`` is true.
+
+    A product with a ``tier`` is one tier of a family: owned for good (no period), one tier
+    per DID, and a higher tier costs the difference between the two tiers' prices.
     """
 
     title: str
@@ -301,6 +313,7 @@ class ProductConfig(_Strict):
     enable_env: str = Field(pattern=ENV_NAME)
     terms_version: str = Field(min_length=1, max_length=64)
     policy_urls: dict[str, str] = {}
+    tier: TierConfig | None = None
 
     @field_validator("policy_urls")
     @classmethod
@@ -405,7 +418,36 @@ class RegistryFile(_Strict):
                         f"product {product_id!r}: only quote-based rails can be used ({rail_id!r} "
                         "is x402)"
                     )
+        self._check_tiers()
         return self
+
+    def _check_tiers(self) -> None:
+        groups: dict[str, list[tuple[str, ProductConfig]]] = {}
+        for product_id, product in self.products.items():
+            if product.tier is not None:
+                groups.setdefault(product.tier.group, []).append((product_id, product))
+        for group, members in groups.items():
+            members.sort(key=lambda member: member[1].tier.rank if member[1].tier else 0)
+            ranks = [product.tier.rank for _, product in members if product.tier]
+            if len(set(ranks)) != len(ranks):
+                raise ValueError(f"tiers of {group!r}: two products have the same rank")
+            first = members[0][1]
+            for product_id, product in members:
+                if product.period_days is not None:
+                    raise ValueError(
+                        f"product {product_id!r}: a tier is owned for good (no period_days), "
+                        "so that a higher tier costs the difference"
+                    )
+                if (
+                    product.enable_env != first.enable_env
+                    or product.commercial_price.currency != first.commercial_price.currency
+                ):
+                    raise ValueError(
+                        f"tiers of {group!r}: every tier needs the same enable_env and currency"
+                    )
+            prices = [product.commercial_price.amount for _, product in members]
+            if any(lower >= higher for lower, higher in zip(prices, prices[1:], strict=False)):
+                raise ValueError(f"tiers of {group!r}: each tier must cost more than the one below")
 
 
 def _flag_on(value: str | None) -> bool:
@@ -534,6 +576,15 @@ class PaymentRouteRegistry:
 
     def product_on(self, product_id: str) -> bool:
         return product_id in self._products_on
+
+    def tiers(self, group: str) -> list[tuple[str, ProductConfig]]:
+        """The products of a family of tiers, lowest rank first."""
+        members = [
+            (product_id, product)
+            for product_id, product in self._data.products.items()
+            if product.tier is not None and product.tier.group == group
+        ]
+        return sorted(members, key=lambda member: member[1].tier.rank if member[1].tier else 0)
 
     def product_rails(self, product_id: str) -> list[tuple[str, RailConfig]]:
         """Enabled payment options of a product that is switched on."""

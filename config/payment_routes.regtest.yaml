@@ -76,7 +76,7 @@ services:
       - solana_usdc
     # Version of the terms an agent accepts with each quote: the version of the terms page
     # served at /policies/terms (DEC-09), which the tests keep equal.
-    terms_version: "2026-10-25"
+    terms_version: "2026-11-03"
     # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
     # a full https URL points elsewhere.
     policy_urls:
@@ -109,7 +109,7 @@ donations:
     # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
     recipients:
       x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
-    terms_version: "2026-10-25"
+    terms_version: "2026-11-03"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -120,26 +120,89 @@ donations:
 
 # Products bought for a DID that already exists, paid like the DID (quote, then payment), then
 # completed with a receipt signed by DebitMyData and an entitlement on the DID.
+#
+# BottyBotty for Agentics (Preska Thomas, November 2026): three tiers, each paid once and owned
+# by the DID for good. A DID owns one tier; a higher tier costs the difference in price. Off
+# until DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED is true (staging: on).
 products:
-  bottybotty_protection:
-    title: BottyBotty Protection
+  bottybotty_entry:
+    title: BottyBotty Entry
     description: >-
-      BottyBotty protection for an agent that has a DebitMyData DID, provided through
-      DebitMyData's BottyBotty APIs, as an optional add-on to the DID. One purchase covers the
-      DID for the period shown; buying again before the end extends it. The receipt signed by
-      DebitMyData, and the bottybotty_protection entitlement on the DID, prove it.
-    path: /v1/products/bottybotty-protection
-    # PLACEHOLDER price and period until DebitMyData confirms them: the product stays off
-    # (DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED) until they are set here.
+      BottyBotty for an Agentic that has a DebitMyData DID, Entry tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
+      signed by DebitMyData and the bottybotty_entry entitlement on the DID. A DID owns one
+      BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
+    path: /v1/products/bottybotty-entry
     commercial_price:
       currency: USD
-      amount: "10.00"
-    period_days: 30
-    entitlement: bottybotty_protection
+      amount: "49.00"
+    entitlement: bottybotty_entry
+    tier:
+      group: bottybotty
+      rank: 1
+      name: Entry
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-10-25"
+    terms_version: "2026-11-03"
+    policy_urls:
+      site: https://agenticssocialspaces.debitmydata.com/
+      terms: /policies/terms
+      privacy: /policies/privacy
+      security: /policies/security
+      payment_policy: /policies/payment-methods
+      refund_policy: /policies/refunds
+      did_policy: /policies/did
+
+  bottybotty_standard:
+    title: BottyBotty Standard
+    description: >-
+      BottyBotty for an Agentic that has a DebitMyData DID, Standard tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
+      signed by DebitMyData and the bottybotty_standard entitlement on the DID. A DID owns one
+      BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
+    path: /v1/products/bottybotty-standard
+    commercial_price:
+      currency: USD
+      amount: "99.00"
+    entitlement: bottybotty_standard
+    tier:
+      group: bottybotty
+      rank: 2
+      name: Standard
+    payment_options:
+      - dmd_pow_native
+    enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
+    terms_version: "2026-11-03"
+    policy_urls:
+      site: https://agenticssocialspaces.debitmydata.com/
+      terms: /policies/terms
+      privacy: /policies/privacy
+      security: /policies/security
+      payment_policy: /policies/payment-methods
+      refund_policy: /policies/refunds
+      did_policy: /policies/did
+
+  bottybotty_premium:
+    title: BottyBotty Premium
+    description: >-
+      BottyBotty for an Agentic that has a DebitMyData DID, Premium tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
+      signed by DebitMyData and the bottybotty_premium entitlement on the DID. A DID owns one
+      BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
+    path: /v1/products/bottybotty-premium
+    commercial_price:
+      currency: USD
+      amount: "199.00"
+    entitlement: bottybotty_premium
+    tier:
+      group: bottybotty
+      rank: 3
+      name: Premium
+    payment_options:
+      - dmd_pow_native
+    enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
+    terms_version: "2026-11-03"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms

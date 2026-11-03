@@ -281,18 +281,33 @@ can never be paid. A payment refused by the facilitator closes its donation at o
 completed donation's payment is later reorganized out of the chain, an alert is recorded in
 the audit trail. Through MCP, `dmd_catalog` lists the donation and `dmd_purchase` pays it.
 
-## Products for a DID (BottyBotty protection)
+## Products for a DID (BottyBotty)
 
-Some products are bought for a DID that already exists: the first is BottyBotty protection
-(Preska Thomas, October 2026: "include BottyBotty for the Agentics to purchase for protecting
+Some products are bought for a DID that already exists: the first is BottyBotty (Preska
+Thomas, October 2026: "include BottyBotty for the Agentics to purchase for protecting
 themselves"). They are defined under `products` in the route registry (title, price, period,
-entitlement, payment options, terms version) and offered only once switched on with their
-`enable_env` (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED`). The price and the period in the
-registry are placeholders until DebitMyData sets them (`services/products.py`,
-`api/products.py`):
+entitlement, payment options, terms version, tier) and offered only once switched on with
+their `enable_env` (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED` for BottyBotty)
+(`services/products.py`, `api/products.py`).
 
-1. `GET /v1/products` lists the products switched on, with their price, period, entitlement
-   and payment options.
+BottyBotty comes in three tiers (Preska Thomas, November 2026: "once an Agentic pays for
+BottyBotty, it belongs to that Agentic forever"): Entry 49.00 USD, Standard 99.00 USD and
+Premium 199.00 USD, each `bottybotty_<tier>` as product ID and entitlement. A tier is paid once
+and owned by the DID for good (no period, no `validUntil` on its receipt). A DID owns one tier
+at a time: a higher tier costs the difference between the two tiers' prices (Entry to Premium:
+150.00 USD) and the DID's one BottyBotty entitlement moves up to it; the same or a lower tier
+is refused before payment (409 `already_covered`). Quotes show `commercial_price` (what is
+charged), `list_price` and, for an upgrade, `upgrade_from`; receipts carry the `tier` and, for
+an upgrade, `upgradeFrom` and `listPrice`. If two tiers are paid at once, the second to
+complete is refused (409, `next_action: contact_support_for_refund`) and refunded by hand. The
+route registry refuses tiers with a period, two tiers of the same rank, a tier that costs no
+more than the one below, or tiers that are not switched on together. What each tier includes
+is up to BottyBotty.
+
+The steps:
+
+1. `GET /v1/products` lists the products switched on, with their price, period (none for a
+   tier), tier, entitlement and payment options; tiers lowest first.
 2. `POST /v1/products/<product>/quotes` with the DID (`did`) and the payment option: only an
    active DID can buy. It stores a `purchases` row naming the DID and a payment intent with a
    fresh address, exactly like a DID quote (same price source, same 15 minutes).
@@ -313,8 +328,8 @@ x402 rails are refused for products (they are paid in answer to the completion, 
 yet). The signer checks the purchase, the DID and the settled payment before signing a
 receipt. Through MCP, `dmd_catalog` lists products as `kind: "add_on"`, `dmd_purchase` with
 `details.did` returns the quote, and `dmd_complete_purchase` returns the receipt. The daily
-report counts products apart from donations. What BottyBotty does for a protected agent is
-up to BottyBotty: it can check the receipt with the issuer DID document alone, or the
+report counts products apart from donations, per product. What BottyBotty does for an
+Agentic is up to BottyBotty: it can check the receipt with the issuer DID document alone, or the
 entitlement at `GET /v1/entitlements/<DID>`. The public records (`/v1/dids/...`,
 `/v1/entitlements/...`) take the DID itself or its identity ID (`dmd_identity_...`); a DID
 with another host than this gateway's is unknown there, even with the same ending.

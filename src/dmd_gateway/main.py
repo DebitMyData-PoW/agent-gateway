@@ -200,9 +200,10 @@ def _openapi_tags(settings: Settings) -> list[dict[str, str]]:
         },
         {
             "name": "products",
-            "description": "Products bought for a DID that already exists, such as BottyBotty "
-            "protection: a quote for the DID, the payment, then a receipt signed by DebitMyData "
-            "and the product's entitlement on the DID for the period bought.",
+            "description": "Products bought for a DID that already exists, such as the BottyBotty "
+            "tiers (Entry, Standard, Premium; paid once and owned for good, a higher tier costs "
+            "the difference): a quote for the DID, the payment, then a receipt signed by "
+            "DebitMyData and the product's entitlement on the DID.",
         },
         {"name": "health", "description": "Liveness and readiness checks."},
     ]

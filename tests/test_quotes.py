@@ -239,7 +239,7 @@ def test_usdc_quote_matches_the_directive(db_client: TestClient, engine: Engine)
     # x402: the controller is proven first; the payment answers the 402 of the registration.
     assert quote["next_action"] == "prove_wallet_control"
     assert quote["controller_proof_required"] is True
-    assert quote["terms_version"] == "2026-10-25"
+    assert quote["terms_version"] == "2026-11-03"
     # Links to the policy pages this server serves.
     assert quote["policy_urls"]["refund_policy"] == "http://localhost:8000/policies/refunds"
 

@@ -321,7 +321,7 @@ def test_price_source_must_be_implemented(tmp_path: Path) -> None:
 
 def test_terms_version_is_set() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
-    assert registry.services["did_registration"].terms_version == "2026-10-25"
+    assert registry.services["did_registration"].terms_version == "2026-11-03"
 
 
 # --------------------------------------------------------------------------- donations
@@ -341,7 +341,7 @@ def test_shipped_inference_donation() -> None:
     assert (str(donation.amount.minimum), str(donation.amount.maximum)) == ("0.50", "1000.00")
     assert donation.payment_options == ("x402_usdc_base",)
     assert donation.recipients == {"x402_usdc_base": "DMD_USDC_BASE_INFERENCE_ADDRESS"}
-    assert donation.terms_version == "2026-10-25"
+    assert donation.terms_version == "2026-11-03"
     assert registry.donation_rails("inference_donation") == []  # every rail is off
 
 
