@@ -514,7 +514,7 @@
       case "preferred_payment_option": {
         const value = (settings.payment_options || {})[paying];
         // Picked from a list, not pasted: shown without a Copy button.
-        return value && { value, note: "pick the same in the list, as in “How the agent pays” at the top", pick: true };
+        return value && { value, note: "the same as “How the agent pays” at the top", pick: true };
       }
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
@@ -633,6 +633,7 @@
       const fill = fillRows(step);
       if (fill) parts.push(fill);
       if (notice) parts.push(element("div", { class: "vp-notice" }, notice));
+      if (payWarning && step === quoteStep) parts.push(element("div", { class: "vp-warn", role: "alert" }, ...rich(payWarning)));
       const tip = roundTip(entry) || step.outside || step.help;
       if (tip) parts.push(element("div", { class: "vp-next-help" }, ...rich(tip)));
     }
@@ -707,6 +708,95 @@
       row.classList.toggle("dmd-need", required || needs.has(name));
     }
   }
+  // ------------------------------------------------------------------ the payment choice
+
+  // "How the agent pays" at the top and step 2's preferred_payment_option say the same: in
+  // staging's form, the list in step 2 follows the choice at the top, and the top follows the
+  // list when it is changed there. A JSON body (production) is never rewritten: if it names
+  // the other option, or one this server does not offer, step 2 says what to change.
+  const quoteStep = steps.find((step) => step.pattern && step.pattern.includes("registration-quotes"));
+  const payOptions = settings.payment_options || {};
+  const kindOf = (id) => Object.keys(payOptions).find((kind) => payOptions[kind] === id) || null;
+  const CHOICES = { dmd: "DMD", x402: "USDC" };
+  let payWarning = "";
+
+  const quoteBlock = () =>
+    quoteStep && document.getElementById(`operations-${quoteStep.tag}-${quoteStep.operation_id}`);
+  const paySelect = () => {
+    const block = quoteBlock();
+    return block && block.querySelector('tr[data-property-name="preferred_payment_option"] select');
+  };
+
+  function syncPaySelect() {
+    const select = paySelect();
+    const wanted = payOptions[paying];
+    if (!select || !wanted || select.value === wanted) return;
+    if (![...select.options].some((option) => option.value === wanted)) return;
+    // As if picked by hand, so that Swagger UI sends it.
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, wanted);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function checkPayBody() {
+    const block = quoteBlock();
+    const area = block && !paySelect() ? block.querySelector("textarea.body-param__text") : null;
+    let warning = "";
+    let value = null;
+    try {
+      const body = area ? JSON.parse(area.value) : null;
+      if (body && typeof body.preferred_payment_option === "string") value = body.preferred_payment_option;
+    } catch {
+      // not JSON yet: nothing to compare
+    }
+    if (value) {
+      const kind = kindOf(value);
+      const open = Object.values(payOptions).map((id) => `\`${id}\``).join(" or ");
+      if (!kind) {
+        warning = `\`${value}\` is not a payment option open on this server: use ${open} in preferred_payment_option.`;
+      } else if (kind !== paying) {
+        warning = `The request body says \`${value}\` (${CHOICES[kind]}), but “How the agent pays” says ${CHOICES[paying]}: change preferred_payment_option to \`${payOptions[paying]}\`, or pick ${CHOICES[kind]} at the top.`;
+      }
+    }
+    if (warning !== payWarning) {
+      payWarning = warning;
+      renderSteps();
+    }
+  }
+
+  // The top follows a choice made in step 2: from its list, or typed in its JSON body.
+  function followStep2(value) {
+    const kind = kindOf(value);
+    if (!kind || kind === paying) return;
+    paying = kind;
+    renderSteps();
+  }
+  document.addEventListener("change", (event) => {
+    const select = paySelect();
+    if (select && event.target === select) followStep2(select.value);
+  });
+  document.addEventListener("input", (event) => {
+    const block = quoteBlock();
+    if (!block || !(event.target instanceof HTMLTextAreaElement) || !block.contains(event.target)) return;
+    try {
+      const body = JSON.parse(event.target.value);
+      if (body && typeof body.preferred_payment_option === "string") followStep2(body.preferred_payment_option);
+    } catch {
+      // still being typed
+    }
+    checkPayBody();
+  });
+
+  let paying2 = false;
+  const paySoon = () => {
+    if (paying2 || !quoteStep) return;
+    paying2 = true;
+    requestAnimationFrame(() => {
+      paying2 = false;
+      syncPaySelect();
+      checkPayBody();
+    });
+  };
+
   let marking = false;
   const markSoon = () => {
     if (marking || !focusStep) return;
@@ -822,6 +912,8 @@
       radio.addEventListener("change", () => {
         paying = value;
         renderSteps();
+        syncPaySelect();
+        checkPayBody();
       });
       orderChoices.push(radio);
       pills.push(
@@ -919,6 +1011,7 @@
         card.setAttribute("aria-current", "step");
         const details = element("div", { class: "adv-step-body" }, element("p", {}, ...rich(step.about)));
         if (notice) details.append(element("p", { class: "adv-notice" }, notice));
+        if (payWarning && step === quoteStep) details.append(element("p", { class: "adv-warn" }, ...rich(payWarning)));
         const tip = roundTip(item) || (step.pattern && step.help);
         if (tip) details.append(element("p", { class: "adv-tip" }, ...rich(tip)));
         const fill = fillRows(step);
@@ -1016,7 +1109,10 @@
     plugins: [StepBadges],
     onComplete: () => {
       copyGuide();
-      new MutationObserver(markSoon).observe(document.getElementById("swagger-ui"), { childList: true, subtree: true });
+      new MutationObserver(() => {
+        markSoon();
+        paySoon();
+      }).observe(document.getElementById("swagger-ui"), { childList: true, subtree: true });
     },
     requestInterceptor: (request) => {
       try {

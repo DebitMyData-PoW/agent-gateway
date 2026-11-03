@@ -273,3 +273,7 @@ background:var(--red-deep);color:#fff;font:700 22px/1 var(--sans);cursor:pointer
 .to-top:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 .adv-step.all-done .adv-button{margin-left:6px;vertical-align:middle}
 @media (max-width:600px){.to-top{right:8px}}
+/* Step 2's request body names another payment option than the one picked at the top */
+.vp-warn{margin-top:6px;padding:6px 8px;border-radius:6px;background:#fde8e8;color:#8a1c1c;font-size:12px;font-weight:600}
+.adv-warn{background:#fde8e8;color:#8a1c1c;border-radius:8px;padding:8px 12px;font-weight:600;font-size:.95rem}
+.vp-warn code,.adv-warn code{color:#8a1c1c}

@@ -142,6 +142,10 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     assert '"Back to the top of the page"' in script
     # The payment option is picked from a list, not pasted: no Copy button for it.
     assert "pick: true" in script and "if (!found.pick)" in script
+    # Step 2's payment option and "How the agent pays" stay the same: the form's list follows
+    # the top and the top follows the list; a JSON body that names another option is flagged.
+    assert "function syncPaySelect()" in script and "function followStep2(value)" in script
+    assert "is not a payment option open on this server" in script
     assert "body.dmd-focusing" in docs_pages._HELPER_CSS
     # In the open step, the required fields and the ones to paste stay bright; the optional
     # ones and the technical details (type, pattern, "Send empty value") are dimmed.
