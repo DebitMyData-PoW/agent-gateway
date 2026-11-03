@@ -248,7 +248,35 @@ makes the node load it at every start from now on) before starting the worker. T
 and the chain data stay as they are: from v1.3.3 to v1.3.5, the main chain's rules and the
 data formats did not change. The monitor may send one node alert during the restart.
 
-## 9. Go-live checklist
+## 9. Suspending, reactivating or revoking a DID
+
+When a DID is misused (impersonation, fraud, a compromised key, a payment that left the chain)
+or its holder asks, change its status on the server with `dmd-gateway-admin`. Nothing on the
+public API can do it. The [DID policy](https://api.debitmydata.io/policies/did) says when DebitMyData may.
+
+```bash
+sudo dmd-gateway-admin did show <DID>
+sudo dmd-gateway-admin did suspend <DID> --reason "Reported impersonation, under review" --by "Tyler"
+sudo dmd-gateway-admin did reactivate <DID> --reason "Review closed: no misuse" --by "Tyler"
+sudo dmd-gateway-admin did revoke <DID> --reason "Fraud confirmed" --by "Tyler"
+```
+
+`<DID>` can be the DID (`did:web:api.debitmydata.io:agents:...`), its `did.json` address, its
+identity ID (`dmd_identity_...`) or its registration ID (`dmd_did_intent_...`).
+
+- **Suspend** is temporary: the DID document answers **410 Gone**, the DID's entitlements
+  and credential show as suspended, until it is reactivated.
+- **Revoke** is permanent: it asks you to type the end of the identity ID to confirm, and
+  revokes the credential and the entitlements too. A revoked DID never comes back.
+- Every change is written to the audit trail with the reason and the name given in `--by`
+  (the database refuses to edit or delete it), and the monitor sends an alert within two
+  minutes. `did show` prints the DID's whole history. Never put secrets or personal data in a
+  reason: it is kept for good and sent in the alert.
+- The registration status and `dmd_get_registration_status` (MCP) show the DID's status in
+  `did_status`, the identity record in `status`. The payment is not refunded (see the
+  [refund policy](https://api.debitmydata.io/policies/refunds)).
+
+## 10. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set

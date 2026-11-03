@@ -102,7 +102,7 @@ place; the application logic comes with the related phase.
 - [x] ID-10 Signed registration credential/receipt (W3C VC 2.0, `eddsa-jcs-2022`, DEC-06)
 - [ ] ID-11 Entitlements: `dmd_did_holder` done; product and marketplace eligibility open
 - [ ] ID-12 Controller rotation with proof and audit history
-- [ ] ID-13 Suspension/revocation/recovery without deleting history
+- [x] ID-13 Suspension and revocation without deleting history: `dmd-gateway-admin did suspend|reactivate|revoke` on the server only, every change in the write-once audit trail with its reason and operator, an alert for each, `did_status` in the registration status; open: recovery (with ID-12) and a public status list in new credentials
 - [ ] ID-14 Transfer/new-registration policy for material controller changes
 - [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); open: key rotation procedure
 
@@ -115,7 +115,7 @@ place; the application logic comes with the related phase.
   `dmd_register_did`, `dmd_catalog`, `dmd_get_purchase_quote`, `dmd_purchase`,
   `dmd_marketplace_provider_requirements`, plus `dmd_get_registration_status`; all call the REST API in-process
 - [x] Public MCP address on staging: `https://staging-api.debitmydata.io/mcp`
-- [ ] Public MCP address in production: `https://api.debitmydata.io/mcp`
+- [x] Public MCP address in production: `https://api.debitmydata.io/mcp`
 - [ ] Marketplace provider requirements: publish them, then return them from the tool
 - [ ] Integration with the Agentic Superhighway MCP, if its owners share it
 

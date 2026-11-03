@@ -9,7 +9,8 @@ Each check looks at one thing and returns what is wrong, as findings (``alerts.F
   price      the DMD price is fresh, and its parameters are not past their review
   dmd_chain  the gateway's DebitMyData mainnet node agrees with the public explorer on the height
   audit      alerts recorded by the worker (a payment reorganized out of the chain after its
-             DID or receipt was issued) and payments that need a refund
+             DID or receipt was issued), payments that need a refund, and every DID suspended,
+             reactivated or revoked with dmd-gateway-admin
   payments   USDC settlements with an unknown outcome, and payments confirming for too long
   receiving  the receiving addresses in use did not change since the last run; a change that
              was not approved in writing is the first sign of a compromised server
@@ -34,7 +35,7 @@ from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.base import AdapterUnavailable
 from dmd_gateway.adapters.dmd_rpc import DmdRpcClient
-from dmd_gateway.db.models import AuditEvent, PaymentIntent, X402Authorization
+from dmd_gateway.db.models import AgentIdentity, AuditEvent, PaymentIntent, X402Authorization
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.monitoring.alerts import Finding, Severity, redact
@@ -47,6 +48,7 @@ from dmd_gateway.monitoring.state import (
 )
 from dmd_gateway.pricing.mining_cost import DmdExplorerFigures, latest_record
 from dmd_gateway.runtime import Runtime
+from dmd_gateway.services.identity_status import STATUS_CHANGED
 from dmd_gateway.settings import Settings
 
 C, W = Severity.CRITICAL, Severity.WARNING
@@ -236,7 +238,8 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
         select(AuditEvent)
         .where(
             AuditEvent.id > after,
-            AuditEvent.action.like("alert.%") | (AuditEvent.action == "payment.refund_due"),
+            AuditEvent.action.like("alert.%")
+            | AuditEvent.action.in_(("payment.refund_due", STATUS_CHANGED)),
         )
         .order_by(AuditEvent.id)
         .limit(AUDIT_BATCH)
@@ -245,6 +248,8 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
     for event in events:
         if event.action == "payment.refund_due":
             findings.append(_refund_finding(session, event))
+        elif event.action == STATUS_CHANGED:
+            findings.append(_status_finding(session, event))
         else:
             data = json.dumps(event.data, sort_keys=True)
             when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
@@ -265,6 +270,26 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
         newest = session.scalar(select(func.max(AuditEvent.id))) or after
     put_state(session, AUDIT_CURSOR, {"id": int(max(newest, after))}, now)
     return findings
+
+
+STATUS_WORDS = {"suspended": "suspended", "active": "reactivated", "revoked": "revoked"}
+
+
+def _status_finding(session: Session, event: AuditEvent) -> Finding:
+    data = event.data
+    identity = session.get(AgentIdentity, event.subject_id)
+    name = identity.display_name if identity else event.subject_id
+    word = STATUS_WORDS.get(str(data.get("to")), f"set to {data.get('to')}")
+    when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
+    return Finding(
+        f"audit.{event.id}",
+        W,
+        f"A DID was {word}: {name}",
+        f"{data.get('did')} went from {data.get('from')} to {data.get('to')} on {when} UTC, "
+        f"by {event.actor_id} (dmd-gateway-admin).\nReason: {redact(str(data.get('reason')))}\n"
+        "If nobody on the team made this change, someone else has access to the server.",
+        kind="event",
+    )
 
 
 def _refund_finding(session: Session, event: AuditEvent) -> Finding:

@@ -151,6 +151,9 @@ chown root:dmd "$DMD_CONF"
 chmod 640 "$DMD_CONF"
 grep -q '^regtest=1' "$DMD_CONF" && fail "$DMD_CONF is set for regtest: production runs on the main chain"
 install -m 755 "$SHARED/dmd-cli" /usr/local/bin/dmd-cli
+# Operator commands (suspend, reactivate or revoke a DID): sudo dmd-gateway-admin ...
+sed "s#@APP_DIR@#$APP_DIR#g" "$SHARED/dmd-gateway-admin" >/usr/local/sbin/dmd-gateway-admin
+chmod 755 /usr/local/sbin/dmd-gateway-admin
 install -m 644 "$FILES/debitmydata.service" /etc/systemd/system/debitmydata.service
 
 # ------------------------------------------------------------------ database

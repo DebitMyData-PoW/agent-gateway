@@ -260,6 +260,7 @@ class IssuedRegistration(BaseModel):
     status: str
     identity_id: str
     did: str
+    did_status: str = Field(description="The DID's status now: active, suspended or revoked.")
     did_document_url: str
     identity_url: str
     credential_id: str
@@ -282,6 +283,7 @@ def _issued_response(
         status="issued",
         identity_id=identity.id,
         did=identity.public_identifier,
+        did_status=identity.status,
         did_document_url=did_document_url(base_url, identity.id),
         identity_url=identity_record_url(base_url, identity.id),
         credential_id=credential.id,
@@ -414,6 +416,9 @@ class RegistrationStatus(BaseModel):
     next_action: str
     identity_id: str | None
     did: str | None
+    did_status: str | None = Field(
+        default=None, description="The DID's status now: active, suspended or revoked."
+    )
     expires_at: datetime
 
 
@@ -461,5 +466,6 @@ def registration_status(
             next_action=state.next_action,
             identity_id=state.identity.id if state.identity else None,
             did=state.identity.public_identifier if state.identity else None,
+            did_status=state.identity.status if state.identity else None,
             expires_at=registration.expires_at,
         )

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Operator commands on this server: show, suspend, reactivate or revoke a DID.
+# Run as root (sudo dmd-gateway-admin did show <DID>). It loads the gateway's settings and runs
+# dmd-gateway-admin as the gateway user; every change goes to the audit trail and the alerts.
+set -eu
+cd @APP_DIR@
+set -a
+# shellcheck disable=SC1091  # the settings file exists only on the server
+. /etc/dmd-gateway/gateway.env
+set +a
+exec runuser -u gateway -- @APP_DIR@/.venv/bin/dmd-gateway-admin "$@"

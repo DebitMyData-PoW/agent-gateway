@@ -396,6 +396,13 @@ The update installs the monitor (every 2 minutes) and the daily report (07:00 UT
 nothing until the email and Discord settings are in `/etc/dmd-gateway/gateway.env`: see
 [monitoring.md](monitoring.md), then run `dmd-gateway-monitor test` as shown there.
 
+## 8. Suspending or revoking a DID
+
+`sudo dmd-gateway-admin did show|suspend|reactivate|revoke <DID> ...` works the same as in
+production ([production.md](production.md#9-suspending-reactivating-or-revoking-a-did)): try
+it here on a test DID first, then check that its `did.json` answers 410 and that the alert
+arrives.
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |

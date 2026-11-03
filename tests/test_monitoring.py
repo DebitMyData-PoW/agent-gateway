@@ -560,6 +560,28 @@ def test_audit_check(db: Session) -> None:
     assert cursor is not None and cursor[0]["id"] >= 3
 
 
+@needs_db
+def test_audit_check_reports_did_status_changes(db: Session) -> None:
+    ctx = context()
+    assert mc.check_audit(ctx, db, NOW) == []  # the first run starts from now
+    record_audit_event(
+        db,
+        action="identity.status_changed",
+        subject_type="identity",
+        subject_id="dmd_identity_unknown",
+        actor_type="operator",
+        actor_id="Tyler",
+        data={"did": "did:web:x", "from": "active", "to": "suspended", "reason": "Under review"},
+    )
+    db.flush()
+    (finding,) = mc.check_audit(ctx, db, NOW)
+    assert (finding.severity, finding.kind) == (W, "event")
+    assert finding.title == "A DID was suspended: dmd_identity_unknown"
+    assert "did:web:x went from active to suspended" in finding.detail
+    assert "by Tyler (dmd-gateway-admin)" in finding.detail
+    assert "Reason: Under review" in finding.detail
+
+
 def _intent(db: Session, intent_id: str, *, status: str, **changes: Any) -> PaymentIntent:
     values: dict[str, Any] = {
         "id": intent_id,

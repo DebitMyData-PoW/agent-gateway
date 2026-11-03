@@ -102,7 +102,7 @@ def identity(request: Request, identity_id: str = Path(pattern=IDENTITY_ID)) -> 
 
 class CredentialRecord(BaseModel):
     credential_id: str
-    status: str
+    status: str = Field(description="active, suspended (with its DID) or revoked")
     format: str
     issued_at: datetime
     revoked_at: datetime | None
@@ -122,9 +122,16 @@ def credential(
         record = session.get(Credential, credential_id)
         if record is None:
             raise ApiError(404, "not_found", "Unknown credential.")
+        identity = session.get(AgentIdentity, record.identity_id)
+        status = "active"
+        if record.revoked_at:
+            status = "revoked"
+        elif identity is not None and identity.status != "active":
+            # A suspended DID's credential is suspended with it (ID-13).
+            status = identity.status
         return CredentialRecord(
             credential_id=record.id,
-            status="revoked" if record.revoked_at else "active",
+            status=status,
             format=record.format,
             issued_at=record.issued_at,
             revoked_at=record.revoked_at,
