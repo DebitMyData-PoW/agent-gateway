@@ -265,3 +265,11 @@ font:600 12px/1.4 var(--sans);text-decoration:underline;cursor:pointer}
 .swagger-ui .parameter__type,.swagger-ui .parameter__in,.swagger-ui .parameter__extension,
 .swagger-ui .parameter__empty_value_toggle{transition:none}
 }
+/* Back to the top, above the panel */
+.to-top{position:fixed;right:16px;bottom:120px;z-index:1000;width:48px;height:48px;border-radius:50%;border:0;
+background:var(--red-deep);color:#fff;font:700 22px/1 var(--sans);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.to-top:hover{background:var(--red)}
+.to-top[hidden]{display:none}
+.to-top:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+.adv-step.all-done .adv-button{margin-left:6px;vertical-align:middle}
+@media (max-width:600px){.to-top{right:8px}}

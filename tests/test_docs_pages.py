@@ -109,7 +109,10 @@ def test_the_staging_steps_are_numbered_with_their_endpoints(
     assert steps[0]["operation_id"].startswith("create_test_agent_key")
     assert steps[2]["operation_id"].startswith("create_test_payment")
     assert "private_key below" in steps[5]["help"] and "PAYMENT-SIGNATURE empty" in steps[7]["help"]
-    assert steps[1]["needs"] == ["controller_public_key"]  # the wallet stays optional
+    # The wallet stays optional; the payment option is the one picked at the top of the page.
+    assert steps[1]["needs"] == ["controller_public_key", "preferred_payment_option"]
+    # Step 8: in the order of the page, the header (PAYMENT-SIGNATURE, USDC only) first.
+    assert steps[7]["needs"] == ["PAYMENT-SIGNATURE", "registration_intent_id"]
     assert steps[4]["needs"] == ["registration_intent_id"]  # controller_type left empty
     assert steps[5]["needs"] == ["challenge_id", "private_key"]
     assert steps[6]["needs"] == ["registration_intent_id", "challenge_id", "signature"]
@@ -134,6 +137,9 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     # step is open, the rest of the page is dimmed (Esc or a click elsewhere shows it all).
     assert "clear: (Original, system)" in script and "dmd-next-go" in script
     assert "Show the whole page (Esc)" in script
+    # Start over opens the page again at its plain address (forms and values all cleared).
+    assert "window.location.replace(window.location.origin + window.location.pathname)" in script
+    assert '"Back to the top of the page"' in script
     assert "body.dmd-focusing" in docs_pages._HELPER_CSS
     # In the open step, the required fields and the ones to paste stay bright; the optional
     # ones and the technical details (type, pattern, "Send empty value") are dimmed.
@@ -239,6 +245,7 @@ def test_each_step_card_has_its_text_and_endpoint(
         assert data["x402_open"] in (True, False)
     # The test settings open no payment option: the page shows USDC as not open yet.
     assert client.app.state.docs_steps()["x402_open"] is False
+    assert client.app.state.docs_steps()["payment_options"] == {}
 
 
 def test_a_key_and_a_wallet_are_proven_one_round_after_the_other() -> None:

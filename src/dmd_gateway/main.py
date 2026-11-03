@@ -411,7 +411,8 @@ PANEL_AGAIN_WHEN = {
 PANEL_NEEDS = {
     # The key alone: the usual way. A wallet is optional (its address stays in the panel's
     # values); with both, each is proven (steps 5 to 7 once for each).
-    ("post", "/v1/dids/registration-quotes"): ["controller_public_key"],
+    # preferred_payment_option: the option picked in "How the agent pays" at the top of the page.
+    ("post", "/v1/dids/registration-quotes"): ["controller_public_key", "preferred_payment_option"],
     ("post", "/v1/staging/test-payments"): ["payment_intent_id"],
     ("get", "/v1/payments/{payment_intent_id}"): ["payment_intent_id"],
     # controller_type stays empty: the gateway picks the controller still to prove.
@@ -424,7 +425,8 @@ PANEL_NEEDS = {
         "challenge_id",
         "signature",
     ],
-    ("post", "/v1/dids/registrations"): ["registration_intent_id", "PAYMENT-SIGNATURE"],
+    # In the order of the page: PAYMENT-SIGNATURE is a header, above the request body.
+    ("post", "/v1/dids/registrations"): ["PAYMENT-SIGNATURE", "registration_intent_id"],
 }
 PANEL_OUTSIDE_NEEDS = {
     "Pay, outside this page": ["recipient", "amount"],
@@ -501,11 +503,16 @@ def panel_steps(app: FastAPI) -> dict[str, Any]:
                 step["again_when"] = PANEL_AGAIN_WHEN[request]
         steps.append(step)
     notes = {name: note.format(**minutes) for name, note in PANEL_ORDER_NOTES[page].items()}
-    options = [rail_id for rail_id, _ in app.state.registry.enabled_rails(DID_REGISTRATION)]
+    rails = app.state.registry.enabled_rails(DID_REGISTRATION)
+    # The payment option for each choice of "How the agent pays": the first one open of each kind.
+    options: dict[str, str] = {}
+    for rail_id, rail in rails:
+        options.setdefault("x402" if rail.protocol == "x402" else "dmd", rail_id)
     return {
         "steps": steps,
         "x402_order": PANEL_X402_ORDER[page],
-        "x402_open": any(option.startswith("x402_") for option in options),
+        "x402_open": "x402" in options,
+        "payment_options": options,
         "order_notes": notes,
     }
 

@@ -188,6 +188,26 @@
   );
   document.body.append(panel);
 
+  // Back to the top: shown once the page is scrolled down, just above the panel.
+  const toTop = element(
+    "button",
+    { type: "button", class: "to-top", "aria-label": "Back to the top of the page", title: "Back to the top" },
+    "↑"
+  );
+  toTop.hidden = true;
+  toTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" }));
+  document.body.append(toTop);
+  const placeToTop = () => {
+    toTop.style.bottom = `${panel.offsetHeight + 28}px`;
+  };
+  if (window.ResizeObserver) new ResizeObserver(placeToTop).observe(panel);
+  placeToTop();
+  const showToTop = () => {
+    toTop.hidden = window.scrollY < 600;
+  };
+  window.addEventListener("scroll", showToTop, { passive: true });
+  showToTop();
+
   function setOpen(open) {
     body.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
@@ -199,6 +219,12 @@
     opened = true;
     setOpen(body.hidden);
   });
+  // Start over: this page again at its plain address (no #/... of an endpoint), so every form,
+  // answer and value is cleared; nothing is kept anywhere else.
+  function startAgain() {
+    window.location.replace(window.location.origin + window.location.pathname);
+  }
+
   function startOver() {
     kept.clear();
     done.clear();
@@ -484,6 +510,10 @@
       case "amount": {
         const value = keptValue("selected_payment_option.amount");
         return value && { value, note: kept.get("selected_payment_option.amount").unit };
+      }
+      case "preferred_payment_option": {
+        const value = (settings.payment_options || {})[paying];
+        return value && { value, note: "as picked in “How the agent pays” at the top of the page" };
       }
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
@@ -801,7 +831,8 @@
       );
     }
     const restart = element("button", { type: "button", class: "adv-button secondary small" }, "Start over");
-    restart.addEventListener("click", startOver);
+    restart.title = "Clear every form, answer and value, and open this page again";
+    restart.addEventListener("click", startAgain);
     cardsBox.append(
       element(
         "div",
@@ -893,7 +924,9 @@
       cards.push(card);
     }
     if (!next) {
-      cards.push(element("li", { class: "adv-step all-done" }, element("p", {}, "✓ All steps done. ", element("strong", {}, "Start over"), " to register another DID.")));
+      const again = element("button", { type: "button", class: "adv-button secondary small" }, "Start over");
+      again.addEventListener("click", startAgain);
+      cards.push(element("li", { class: "adv-step all-done" }, element("p", {}, "✓ All steps done. To register another DID: ", again)));
     }
     cardList.replaceChildren(...cards);
   }
