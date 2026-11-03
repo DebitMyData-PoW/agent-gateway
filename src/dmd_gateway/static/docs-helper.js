@@ -204,6 +204,7 @@
     done.clear();
     notice = "";
     paying = "dmd";
+    openedKey = null;
     controllers = 1;
     rounds = ["key", "wallet"];
     quoteControllers.clear();
@@ -301,6 +302,12 @@
   const methods = new Map(); // request URL -> method, to recognise each step's answers
   const quoteControllers = new Map(); // quote request URL -> how many controllers it names
   let notice = ""; // what just changed, shown with the next step
+  // The Go button: grey once the next step is opened (it is being done), red again with a
+  // short pulse when an answer moves on to the step after it.
+  let openedKey = null; // the step opened with Go, its card's button or its chip
+  let lastNextKey = null;
+  let goHere = false;
+  let goReady = false;
 
   // The steps in the order they are done: one entry per step, and per round.
   function entries() {
@@ -548,14 +555,18 @@
     }
     const entry = nextEntry();
     const parts = [];
+    goHere = Boolean(entry) && openedKey === entry.key;
+    goReady = Boolean(entry) && lastNextKey !== null && lastNextKey !== entry.key;
+    lastNextKey = entry ? entry.key : null;
     if (!entry) {
       parts.push(element("div", { class: "vp-next-line" }, element("span", { class: "vp-next-text" }, "✓ All steps done")));
     } else {
       const step = entry.step;
       let action;
       if (step.pattern) {
-        action = element("button", { type: "button", class: "vp-go" }, "Go ↓");
-        action.addEventListener("click", () => goTo(step));
+        action = element("button", { type: "button", class: `vp-go${goState()}` }, "Go ↓");
+        if (goHere) action.title = "You opened this step: fill it in and click Execute. Go takes you back to it.";
+        action.addEventListener("click", () => openStep(entry));
       } else if (step.number === lastNumber && kept.has("did_document_url")) {
         action = element(
           "a",
@@ -571,7 +582,7 @@
         element(
           "div",
           { class: "vp-next-line" },
-          element("span", { class: "vp-next-text" }, "Next: ", element("strong", {}, `Step ${entry.label}`), ` · ${step.title}${forRound(entry)}`),
+          element("span", { class: "vp-next-text" }, goHere ? "Now: " : "Next: ", element("strong", {}, `Step ${entry.label}`), ` · ${step.title}${forRound(entry)}`),
           action
         )
       );
@@ -597,12 +608,21 @@
         },
         isDone ? `${item.label} ✓` : item.label
       );
-      chip.addEventListener("click", () => goTo(item.step));
+      chip.addEventListener("click", () => (entry && item.key === entry.key ? openStep(item) : goTo(item.step)));
       chips.append(chip);
     }
     parts.push(chips);
     nextBar.replaceChildren(...parts);
     renderCards(entry);
+  }
+
+  // " here" while the next step is open (grey), " ready" when it has just become the next one.
+  const goState = () => (goHere ? " here" : goReady ? " ready" : "");
+
+  function openStep(entry) {
+    openedKey = entry.key;
+    goTo(entry.step);
+    renderSteps();
   }
 
   // ------------------------------------------------------------------ the steps' cards
@@ -666,9 +686,9 @@
     const step = entry.step;
     const size = isNext ? "adv-button" : "adv-button secondary small";
     if (step.pattern) {
-      const open = element("button", { type: "button", class: size }, isNext ? `Open step ${entry.label} ↓` : "Open ↓");
+      const open = element("button", { type: "button", class: `${size}${isNext ? goState() : ""}` }, isNext ? `Open step ${entry.label} ↓` : "Open ↓");
       open.setAttribute("aria-label", `Open step ${entry.label}: ${step.title}`);
-      open.addEventListener("click", () => goTo(step));
+      open.addEventListener("click", () => (isNext ? openStep(entry) : goTo(step)));
       return open;
     }
     if (!isNext) return null;

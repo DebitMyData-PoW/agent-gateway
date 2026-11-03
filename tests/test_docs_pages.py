@@ -127,6 +127,9 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     assert "OperationSummaryPath" in script and "wrapComponents" in script
     assert "layoutActions.show" in script
     assert '"Go ↓"' in script
+    # Go is grey while its step is open ("Now: Step N"), and pulses when the next is ready.
+    assert 'goHere ? "Now: " : "Next: "' in script
+    assert '" here"' in script and '" ready"' in script
 
 
 def test_redoc_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
