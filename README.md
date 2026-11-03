@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.26.0`). The whole registration flow (quote,
+This is an early development release (`0.26.1`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -156,7 +156,7 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
 | Receive the DID, signed credential and entitlements (x402: pay here, see below) | `POST /v1/dids/registrations` |
 | Optionally report the payment transaction (a hint only) | `POST /v1/payments/{payment_intent_id}/references` |
-| Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` |
+| Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` (the identity ID or the DID itself) |
 | Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
 | Read the terms, privacy, payment, refund, DID and security policies | `/policies`, `GET /v1/policies` |
 

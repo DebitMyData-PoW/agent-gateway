@@ -11,6 +11,7 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 import pytest
@@ -353,6 +354,28 @@ def test_payment_options_and_identifiers(api: TestClient) -> None:
     unknown = "dmd_purchase_" + "0" * 26
     assert error(api.get(f"/v1/products/purchases/{unknown}"), 404)["code"] == "not_found"
     assert error(complete(api, unknown), 404)["code"] == "not_found"
+
+
+@needs_db
+def test_the_did_itself_names_it_in_the_public_records(api: TestClient) -> None:
+    issued = issue(api)
+    did, iid = issued["did"], issued["identity_id"]
+    bought(api, did)
+    # What BottyBotty checks: the entitlements, by the DID itself (the ':' of the host's port
+    # written %3A or not, or URL-encoded once more) or by the identity ID.
+    for name in (did, did.replace("%3A", ":"), quote(did, safe=":"), iid):
+        response = api.get(f"/v1/entitlements/{name}")
+        assert response.status_code == 200, (name, response.text)
+        assert response.json()["did"] == did
+        assert PRODUCT in {row["entitlement"] for row in response.json()["entitlements"]}
+        assert api.get(f"/v1/dids/{name}").json()["identity_id"] == iid
+    # A DID naming another host is not this gateway's, even with the same ending.
+    other = did.replace("localhost%3A8000", "evil.example")
+    assert error(api.get(f"/v1/entitlements/{other}"), 404)["code"] == "not_found"
+    assert error(api.get(f"/v1/dids/{other}"), 404)["code"] == "not_found"
+    assert error(buy(api, other), 404)["code"] == "unknown_did"
+    assert api.get("/v1/entitlements/not-a-did").status_code == 422
+    assert api.get("/v1/entitlements/did:web:x/../agents").status_code in (404, 422)
 
 
 # --------------------------------------------------------------------------- the signer

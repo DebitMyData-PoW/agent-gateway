@@ -32,9 +32,7 @@ def upgrade() -> None:
         "ix_purchases_subject_identity_id", "purchases", ["subject_identity_id"], unique=False
     )
     op.add_column("purchases", sa.Column("subject_did", sa.Text(), nullable=True))
-    op.add_column(
-        "purchases", sa.Column("covers_until", sa.DateTime(timezone=True), nullable=True)
-    )
+    op.add_column("purchases", sa.Column("covers_until", sa.DateTime(timezone=True), nullable=True))
     op.add_column(
         "entitlements", sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True)
     )

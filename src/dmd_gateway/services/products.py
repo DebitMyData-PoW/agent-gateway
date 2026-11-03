@@ -39,7 +39,7 @@ from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.domain.routes import ProductConfig, RailConfig
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.credentials import ProductFacts, product_receipt
-from dmd_gateway.services.identity_status import StatusChangeError, find_identity
+from dmd_gateway.services.identity_status import public_identity
 from dmd_gateway.services.policy_pages import policy_links
 from dmd_gateway.services.quotes import (
     Money,
@@ -184,10 +184,9 @@ def _rail(ctx: QuoteContext, product_id: str, product: ProductConfig, rail_id: s
 
 
 def _active_identity(session: Session, text: str, *, lock: bool = False) -> AgentIdentity:
-    try:
-        identity = find_identity(session, text, lock=lock)
-    except StatusChangeError as exc:
-        raise ApiError(404, "unknown_did", "No DID with this identifier on this gateway.") from exc
+    identity = public_identity(session, text, lock=lock)
+    if identity is None:
+        raise ApiError(404, "unknown_did", "No DID with this identifier on this gateway.")
     if identity.status != "active":
         raise ApiError(
             409, "did_not_active", f"This DID is {identity.status}: it cannot buy products."

@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import unquote
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -37,6 +38,9 @@ REASON_LENGTH = (3, 300)
 OPERATOR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$")
 ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
 _IN_DID_OR_URL = re.compile(rf"agents[:/]({ULID})(?:/did\.json)?$")
+_PUBLIC_DID = re.compile(rf"did:web:[^/?#\s]+:agents:({ULID})")
+# The path parameter of the public records: an identity ID or a DID of this gateway.
+IDENTITY_OR_DID = rf"^(dmd_identity_{ULID}|did:web:[^/?#\s]{{1,253}}:agents:{ULID})$"
 
 
 class StatusChangeError(ValueError):
@@ -78,6 +82,27 @@ def find_identity(session: Session, text: str, *, lock: bool = False) -> AgentId
     identity = session.scalars(query).first()
     if identity is None:
         raise StatusChangeError(f"No DID found for {value!r} on this gateway.")
+    return identity
+
+
+def public_identity(session: Session, text: str, *, lock: bool = False) -> AgentIdentity | None:
+    """The identity named exactly by its identity ID (dmd_identity_...) or by its DID as this
+    gateway issued it (the ``:`` of a host's port may be written ``%3A`` or not), else None.
+
+    For the public API and products: unlike ``find_identity`` (for operators), a DID that
+    names another host is not this gateway's DID, even with the same ending."""
+    value = text.strip()
+    if re.fullmatch(rf"dmd_identity_{ULID}", value):
+        identity_id = value
+    elif match := _PUBLIC_DID.fullmatch(value):
+        identity_id = f"dmd_identity_{match.group(1)}"
+    else:
+        return None
+    identity = session.get(AgentIdentity, identity_id, with_for_update=lock)
+    if identity is None:
+        return None
+    if value.startswith("did:") and unquote(identity.public_identifier) != unquote(value):
+        return None
     return identity
 
 

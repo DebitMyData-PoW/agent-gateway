@@ -85,7 +85,10 @@ EOF
     umask 022
 fi
 # Settings added after the first install: appended once, never changed if already set.
-add_setting() { grep -qE "^$1=" "$ENV_FILE" || printf '%s=%s\n' "$1" "$2" >>"$ENV_FILE"; }
+# A settings file edited by hand may lack its final line break: add it before appending, so
+# that a new setting never lands on the end of the last line.
+end_line() { [ -z "$(tail -c1 "$ENV_FILE" 2>/dev/null)" ] || echo >>"$ENV_FILE"; }
+add_setting() { grep -qE "^$1=" "$ENV_FILE" || { end_line && printf '%s=%s\n' "$1" "$2" >>"$ENV_FILE"; }; }
 add_setting DMD_GW_STAGING_TEST_TOOLS true  # test tools on the docs page (never in production)
 add_setting DMD_GW_STAGING_PAYER_WALLET payer-test
 # DMD mainnet reference price, from the public explorer (this server's node is regtest).
@@ -148,6 +151,7 @@ step "Preparing the x402 rail: USDC on Base Sepolia (test USDC only)"
 # A test wallet that signs the docs page's x402 test payments. It also receives them, so its
 # test USDC is never used up (the facilitator pays the network fee, so it needs no ETH).
 if [ -z "$(env_value DMD_STAGING_BASE_PAYER_KEY)" ]; then
+    end_line
     printf 'DMD_STAGING_BASE_PAYER_KEY=0x%s\n' "$(secret)" >>"$ENV_FILE"
 fi
 TEST_WALLET="$(DMD_KEY="$(env_value DMD_STAGING_BASE_PAYER_KEY)" "$APP_DIR/.venv/bin/python" -c \

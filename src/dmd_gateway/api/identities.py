@@ -2,7 +2,10 @@
 
 GET /v1/dids/{identity_id}             identity record
 GET /v1/credentials/{credential_id}    signed registration credential
-GET /v1/entitlements/{identity_id}     entitlements of an identity
+GET /v1/entitlements/{identity_id}     entitlements of an identity (such as BottyBotty
+                                       protection, with the end of the period bought)
+
+{identity_id} is the identity ID (dmd_identity_...) or the DID itself.
 GET /agents/{id}/did.json              DID document (did:web resolution)
 GET /.well-known/did.json              issuer DID document (credential verification key)
 """
@@ -27,6 +30,7 @@ from dmd_gateway.identity.did import (
     issuer_did_document,
 )
 from dmd_gateway.identity.wallets import Wallet
+from dmd_gateway.services.identity_status import IDENTITY_OR_DID, public_identity
 from dmd_gateway.services.registrations import (
     IssuanceContext,
     active_entitlements,
@@ -37,7 +41,10 @@ from dmd_gateway.services.registrations import (
 router = APIRouter(tags=["identities"])
 
 ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
-IDENTITY_ID = rf"^dmd_identity_{ULID}$"
+IDENTITY_HELP = (
+    "The identity ID (`dmd_identity_...`) or the DID itself "
+    "(`did:web:api.debitmydata.io:agents:...`)."
+)
 CREDENTIAL_ID = rf"^dmd_credential_{ULID}$"
 DID_JSON = "application/did+json"
 
@@ -69,10 +76,13 @@ class IdentityRecord(BaseModel):
     summary="An issued DebitMyData identity",
     responses={404: {"description": "Unknown identity."}},
 )
-def identity(request: Request, identity_id: str = Path(pattern=IDENTITY_ID)) -> IdentityRecord:
+def identity(
+    request: Request,
+    identity_id: str = Path(pattern=IDENTITY_OR_DID, description=IDENTITY_HELP),
+) -> IdentityRecord:
     base = _ctx(request).public_base_url
     with transaction(request.app.state.session_factory) as session:
-        record = session.get(AgentIdentity, identity_id)
+        record = public_identity(session, identity_id)
         if record is None:
             raise ApiError(404, "not_found", "Unknown identity.")
         credentials = session.scalars(
@@ -158,12 +168,15 @@ class Entitlements(BaseModel):
 @router.get(
     "/v1/entitlements/{identity_id}",
     response_model=Entitlements,
-    summary="Entitlements granted to an identity",
+    summary="Entitlements of a DID, such as BottyBotty protection and the end of its period",
     responses={404: {"description": "Unknown identity."}},
 )
-def entitlements(request: Request, identity_id: str = Path(pattern=IDENTITY_ID)) -> Entitlements:
+def entitlements(
+    request: Request,
+    identity_id: str = Path(pattern=IDENTITY_OR_DID, description=IDENTITY_HELP),
+) -> Entitlements:
     with transaction(request.app.state.session_factory) as session:
-        record = session.get(AgentIdentity, identity_id)
+        record = public_identity(session, identity_id)
         if record is None:
             raise ApiError(404, "not_found", "Unknown identity.")
         rows = session.scalars(

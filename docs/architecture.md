@@ -306,7 +306,7 @@ registry are placeholders until DebitMyData sets them (`services/products.py`,
    Buying again before the end extends the period from its end.
 
 The entitlement follows its DID (suspended, reactivated and revoked with it) and is no longer
-active once its period ends; `GET /v1/entitlements/<identity>` shows it as `expired`. A
+active once its period ends; `GET /v1/entitlements/<DID>` shows it as `expired`. A
 purchase that could give nothing is refused before payment: an unknown or inactive DID, an
 entitlement already held with no end, or one revoked on its own (which never comes back).
 x402 rails are refused for products (they are paid in answer to the completion, not built
@@ -315,7 +315,9 @@ receipt. Through MCP, `dmd_catalog` lists products as `kind: "add_on"`, `dmd_pur
 `details.did` returns the quote, and `dmd_complete_purchase` returns the receipt. The daily
 report counts products apart from donations. What BottyBotty does for a protected agent is
 up to BottyBotty: it can check the receipt with the issuer DID document alone, or the
-entitlement at `GET /v1/entitlements/<identity>`.
+entitlement at `GET /v1/entitlements/<DID>`. The public records (`/v1/dids/...`,
+`/v1/entitlements/...`) take the DID itself or its identity ID (`dmd_identity_...`); a DID
+with another host than this gateway's is unknown there, even with the same ending.
 
 ## Controller proof
 

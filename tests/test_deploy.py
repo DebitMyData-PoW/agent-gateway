@@ -1,4 +1,5 @@
-"""The staging nginx site: valid for nginx, with the request rate limits in place.
+"""The staging nginx site: valid for nginx, with the request rate limits in place; and the
+setup scripts' settings file, which a new setting must never corrupt.
 
 Needs the nginx binary (skipped without it); nothing is started, only ``nginx -t``.
 """
@@ -16,7 +17,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
-FILES = Path(__file__).resolve().parents[1] / "deploy" / "staging" / "files"
+DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
+FILES = DEPLOY / "staging" / "files"
+SETUP_SCRIPTS = (DEPLOY / "staging" / "setup.sh", DEPLOY / "production" / "setup.sh")
+BASH = shutil.which("bash")
 SITE = (FILES / "nginx-site.conf").read_text(encoding="utf-8")
 NGINX = shutil.which("nginx")
 
@@ -91,3 +95,36 @@ def test_every_location_is_rate_limited() -> None:
     # Refusals are JSON, like every other error of the gateway.
     assert "error_page 429 = @rate_limited;" in SITE
     assert '"code":"rate_limited"' in SITE
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+@pytest.mark.parametrize("script", SETUP_SCRIPTS, ids=["staging", "production"])
+def test_a_new_setting_never_lands_on_the_end_of_the_last_line(
+    script: Path, tmp_path: Path
+) -> None:
+    """A settings file edited by hand may lack its final line break: every append adds it
+    first, so that the new setting is a line of its own."""
+    lines = script.read_text(encoding="utf-8").splitlines()
+    helpers = [line for line in lines if line.startswith(("end_line()", "add_setting()"))]
+    for number, line in enumerate(lines):
+        if '>>"$ENV_FILE"' not in line or line in helpers:
+            continue
+        assert lines[number - 1].strip() == "end_line", f"{script}:{number + 1}: {line}"
+    assert any(line.startswith("end_line()") for line in helpers)
+    if any(line.startswith("add_setting()") for line in helpers):
+        assert "end_line &&" in next(h for h in helpers if h.startswith("add_setting()"))
+
+    settings = tmp_path / "gateway.env"
+    calls = "end_line; printf 'B=1\\n' >>\"$ENV_FILE\""
+    if len(helpers) == 2:
+        calls += "; add_setting C 2; add_setting C 3"  # once only, never replaced
+    added = "B=1\nC=2\n" if len(helpers) == 2 else "B=1\n"
+    for before in ("A='https://x'", "A='https://x'\n", ""):
+        settings.write_text(before, encoding="utf-8")
+        assert BASH is not None
+        subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+            [BASH, "-c", 'ENV_FILE="$1"\n' + "\n".join(helpers) + "\n" + calls, "_", str(settings)],
+            check=True,
+        )
+        expected = (before.rstrip("\n") + "\n" if before else "") + added
+        assert settings.read_text(encoding="utf-8") == expected

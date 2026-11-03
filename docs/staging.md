@@ -266,7 +266,8 @@ the advanced docs page:
    **products** › `GET /v1/products/purchases/{purchase_id}` until `next_action` is
    `complete_purchase` (about a minute).
 4. **products** › `POST /v1/products/purchases/{purchase_id}/complete`: the receipt signed by
-   DebitMyData; `GET /v1/dids/{identity}` now lists `bottybotty_protection`.
+   DebitMyData; `GET /v1/entitlements/{identity_id}` with the DID itself now lists
+   `bottybotty_protection` and the end of its period.
 
 A suspended or revoked DID is refused (409 `did_not_active`).
 

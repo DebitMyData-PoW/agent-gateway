@@ -38,6 +38,9 @@ step() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 secret() { python3 -c 'import secrets; print(secrets.token_hex(32))'; }
 env_value() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true; }
+# A settings file edited by hand may lack its final line break: add it before appending, so
+# that a new setting never lands on the end of the last line.
+end_line() { [ -z "$(tail -c1 "$ENV_FILE" 2>/dev/null)" ] || echo >>"$ENV_FILE"; }
 
 # ------------------------------------------------------------------ checks
 step "Checking prerequisites"
@@ -196,6 +199,7 @@ from dmd_gateway.identity.issuer import load_issuer_key
 print(load_issuer_key(Path(sys.argv[1]), sys.argv[2]).public_key_multibase)' "$ISSUER_KEY" "$ISSUER_DID")"
 CONFIGURED="$(env_value DMD_GW_ISSUER_PUBLIC_KEY)"
 if [ -z "$CONFIGURED" ]; then
+    end_line
     printf 'DMD_GW_ISSUER_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >>"$ENV_FILE"
 elif [ "$CONFIGURED" != "$PUBLIC_KEY" ]; then
     fail "the issuer key in $ISSUER_KEY does not match DMD_GW_ISSUER_PUBLIC_KEY: it was replaced. Restore the original key (docs/production.md, backups); a new key would make every credential issued so far unverifiable"

@@ -110,7 +110,8 @@ place; the application logic comes with the related phase.
   quote for an active DID, paid in DMD like the DID, completed with a signed
   `DebitMyDataProductReceipt` and the entitlement for the period (extended when bought again,
   expired after); REST (`/v1/products`), MCP (`dmd_catalog` add-ons, `dmd_purchase`,
-  `dmd_complete_purchase`), daily report. Open: the price and period (placeholders: 10.00 USD
+  `dmd_complete_purchase`), daily report; the entitlements looked up by the DID itself
+  (`GET /v1/entitlements/<DID>`). Open: the price and period (placeholders: 10.00 USD
   for 30 days), BottyBotty's side (activation for the agents that hold it), USDC through x402
 - [x] Get a DID: the DMD payment as a QR code and an "Open in my DMD wallet" link
   (`debitmydata:<address>?amount=<amount>`, the prefix DMD Core registers)
