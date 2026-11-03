@@ -188,7 +188,7 @@ and can be changed later.
   facilitator: Coinbase's CDP facilitator (it lists paid endpoints in the x402 Bazaar; free
   for the first 1,000 settlements a month). Open: DebitMyData's CDP API key. Staging uses the
   public x402.org test facilitator
-- [ ] DEC-09 Policy URLs and version owners: the pages are drafted and served by the gateway at `/policies` (terms, privacy, security, payment methods, refunds, DID policy); governing law and operator as in DebitMyData's website terms (Debit My Data, Inc., New York); open: DebitMyData's approval of the texts, and who owns each policy
+- [ ] DEC-09 Policy URLs and version owners: the pages are drafted and served by the gateway at `/policies` (terms, privacy, security, payment methods, refunds, DID policy); governing law and operator as in DebitMyData's website terms (Debit My Data, Inc., New York); the texts are published as approved (2026-11-02); open: who owns each policy
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds
 - [ ] DEC-12 Refund signing/approval thresholds

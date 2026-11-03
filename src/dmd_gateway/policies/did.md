@@ -1,7 +1,7 @@
 ---
 title: DID policy
 version: 2026-10-25
-status: draft
+status: approved
 summary: What a DebitMyData DID is and is not, how control is proven, what is public, and how a DID can be suspended or revoked.
 ---
 

@@ -179,6 +179,9 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
 
     listing = client.get("/v1/policies").json()
     assert listing["terms_version"] == "2026-10-25"
+    # Approved: no page says "Draft" any more.
+    assert {policy["status"] for policy in listing["policies"]} == {"approved"}
+    assert "Draft." not in page.text and "(draft)" not in index.text
     refunds = next(p for p in listing["policies"] if p["name"] == "refunds")
     assert refunds["url"] == "http://localhost:8000/policies/refunds"
     assert refunds["sha256"] == hashlib.sha256(markdown.content).hexdigest()
@@ -199,4 +202,4 @@ def test_test_server_notice_only_outside_production() -> None:
     with _app("production", BASE) as production:
         page = production.get("/policies/terms").text
         assert "Test server." not in page
-        assert "Draft." in page  # until DebitMyData approves the texts
+        assert "Draft." not in page  # the texts are approved

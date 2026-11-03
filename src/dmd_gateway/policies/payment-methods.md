@@ -1,7 +1,7 @@
 ---
 title: Payment methods
 version: 2026-10-27
-status: draft
+status: approved
 summary: How a DebitMyData DID registration is priced, quoted and paid, and which assets and networks are accepted.
 ---
 

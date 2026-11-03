@@ -1,7 +1,7 @@
 ---
 title: Terms of service
 version: 2026-10-25
-status: draft
+status: approved
 summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID.
 ---
 

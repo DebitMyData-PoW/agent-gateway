@@ -1,7 +1,7 @@
 ---
 title: Privacy policy
 version: 2026-10-25
-status: draft
+status: approved
 summary: What the DebitMyData Agent Gateway collects, what it publishes, who it shares data with, and how long it keeps it.
 ---
 

@@ -1,7 +1,7 @@
 ---
 title: Security
 version: 2026-10-27
-status: draft
+status: approved
 summary: How the gateway protects payments and identities, how to check you are talking to it, and how to report a vulnerability.
 ---
 

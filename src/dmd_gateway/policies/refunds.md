@@ -1,7 +1,7 @@
 ---
 title: Refund policy
 version: 2026-10-25
-status: draft
+status: approved
 summary: The DID registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
 
