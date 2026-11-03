@@ -282,6 +282,32 @@ class DonationConfig(_Strict):
         return self
 
 
+class ProductConfig(_Strict):
+    """A product bought for a DID that already exists, such as BottyBotty protection.
+
+    It is quoted and paid like the DID itself (quote-based rails only), then completed with a
+    receipt signed by DebitMyData and an entitlement on the DID, valid for ``period_days`` from
+    the purchase (or for good when unset; buying again before the end extends it). It is off
+    until the environment variable ``enable_env`` is true.
+    """
+
+    title: str
+    description: str = Field(max_length=1000)
+    path: str = Field(pattern=r"^/v1/products/[a-z][a-z0-9-]{1,40}$")
+    commercial_price: CommercialPrice
+    period_days: int | None = Field(default=None, ge=1, le=3660)
+    entitlement: str = Field(pattern=r"^[a-z][a-z0-9_]{2,63}$")
+    payment_options: tuple[str, ...] = Field(min_length=1)
+    enable_env: str = Field(pattern=ENV_NAME)
+    terms_version: str = Field(min_length=1, max_length=64)
+    policy_urls: dict[str, str] = {}
+
+    @field_validator("policy_urls")
+    @classmethod
+    def _policy_urls(cls, value: dict[str, str]) -> dict[str, str]:
+        return _check_policy_urls(value)
+
+
 class MiningCostParameters(_Strict):
     """Approved inputs of the DMD mining-cost price (DEC-01), reviewed every quarter.
 
@@ -329,6 +355,7 @@ class RegistryFile(_Strict):
     discovery_terms: tuple[str, ...] = ()
     services: dict[str, ServiceConfig]
     donations: dict[str, DonationConfig] = {}
+    products: dict[str, ProductConfig] = {}
     rails: dict[str, RailConfig]
     dmd_mining_cost: MiningCostParameters | None = None
 
@@ -355,6 +382,28 @@ class RegistryFile(_Strict):
                     raise ValueError(
                         f"donation {donation_id!r}: only x402 rails in a USD stablecoin can "
                         f"take donations ({rail_id!r} cannot)"
+                    )
+        entitlements = {"dmd_did_holder"}
+        for product_id, product in self.products.items():
+            if product_id in self.services or product_id in self.donations:
+                raise ValueError(f"product {product_id!r} has the ID of a service or donation")
+            if product.path in paths:
+                raise ValueError(f"product {product_id!r} reuses the path {product.path}")
+            paths.append(product.path)
+            if product.entitlement in entitlements:
+                raise ValueError(
+                    f"product {product_id!r} reuses the entitlement {product.entitlement}"
+                )
+            entitlements.add(product.entitlement)
+            for rail_id in product.payment_options:
+                rail = self.rails.get(rail_id)
+                if rail is None:
+                    raise ValueError(f"product {product_id!r} references unknown rail {rail_id!r}")
+                if rail.protocol == "x402":
+                    # x402 pays in answer to an HTTP 402 at completion: not built for products yet.
+                    raise ValueError(
+                        f"product {product_id!r}: only quote-based rails can be used ({rail_id!r} "
+                        "is x402)"
                     )
         return self
 
@@ -452,9 +501,11 @@ class PaymentRouteRegistry:
         data: RegistryFile,
         states: Mapping[str, RailState],
         donation_recipients: Mapping[tuple[str, str], str] | None = None,
+        products_on: Collection[str] = (),
     ) -> None:
         self._data = data
         self._states = dict(states)
+        self._products_on = frozenset(products_on)
         # (donation ID, rail ID) -> receiving address, for the configured ones only.
         self._donation_recipients = dict(donation_recipients or {})
 
@@ -475,6 +526,23 @@ class PaymentRouteRegistry:
             for rail_id in donation.payment_options
             if self._states[rail_id] is RailState.ENABLED
             and (donation_id, rail_id) in self._donation_recipients
+        ]
+
+    @property
+    def products(self) -> Mapping[str, ProductConfig]:
+        return self._data.products
+
+    def product_on(self, product_id: str) -> bool:
+        return product_id in self._products_on
+
+    def product_rails(self, product_id: str) -> list[tuple[str, RailConfig]]:
+        """Enabled payment options of a product that is switched on."""
+        if product_id not in self._products_on:
+            return []
+        return [
+            (rail_id, self._data.rails[rail_id])
+            for rail_id in self._data.products[product_id].payment_options
+            if self._states[rail_id] is RailState.ENABLED
         ]
 
     @property
@@ -550,4 +618,9 @@ def load_registry(
                     f"donation {donation_id!r}: {env} is not an EVM address (0x + 40 hex)"
                 )
             donation_recipients[(donation_id, rail_id)] = address
-    return PaymentRouteRegistry(data, states, donation_recipients)
+    products_on = [
+        product_id
+        for product_id, product in data.products.items()
+        if _flag_on(environ.get(product.enable_env))
+    ]
+    return PaymentRouteRegistry(data, states, donation_recipients, products_on)

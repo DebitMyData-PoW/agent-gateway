@@ -101,7 +101,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 | The DMD price is not being updated | warning | DMD quotes are refused until it is. Check the worker and the DebitMyData node or explorer. |
 | The DMD price parameters are due for their quarterly review | warning | Review the electricity price and machine efficiency in `config/payment_routes.yaml`. |
 | The gateway's DebitMyData node is N blocks behind / ahead of the explorer | warning | The node is syncing, stuck, or on another chain than the public explorer. |
-| A DID's / donation's payment left the chain after it was issued | critical | A chain reorganization removed the payment. The worker keeps watching it; if it does not come back, the DID or receipt was given without payment. On the DebitMyData chain this can be an attack (little mining power makes recent blocks cheap to rewrite): stop new DMD quotes at once with `DMD_RAIL_DMD_POW_NATIVE_KILL=true` in `/etc/dmd-gateway/gateway.env` and `systemctl restart dmd-gateway-api`, compare the node with the public explorer, and remove the kill switch only once the cause is understood. Settled DMD payments are watched for 7 days (`watch_after_settlement_hours` in `config/payment_routes.yaml`), other payments for 24 hours. |
+| A DID's / donation's / product's payment left the chain after it was issued | critical | A chain reorganization removed the payment. The worker keeps watching it; if it does not come back, the DID or receipt was given without payment. On the DebitMyData chain this can be an attack (little mining power makes recent blocks cheap to rewrite): stop new DMD quotes at once with `DMD_RAIL_DMD_POW_NATIVE_KILL=true` in `/etc/dmd-gateway/gateway.env` and `systemctl restart dmd-gateway-api`, compare the node with the public explorer, and remove the kill switch only once the cause is understood. Settled DMD payments are watched for 7 days (`watch_after_settlement_hours` in `config/payment_routes.yaml`), other payments for 24 hours. |
 | A payment needs a refund | warning | An overpayment, a late payment or a second payment arrived. Refund it as the refund policy says. |
 | A DID was suspended / reactivated / revoked | warning | Someone changed a DID's status with `dmd-gateway-admin` on the server; the alert gives who (`--by`), when and why. If nobody on the team made this change, someone else has access to the server: check its logins (`last`, `journalctl -u ssh`). |
 | USDC payments with an unknown settlement outcome | warning | Sent to the facilitator more than 30 minutes ago and still not found on chain. |
@@ -117,8 +117,9 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 
 Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
 
-- **Last 24 hours**: quotes, DIDs issued, donations, payments settled per payment option with
-  the amounts received, payments that failed or need a refund.
+- **Last 24 hours**: quotes, DIDs issued, donations, products bought for a DID (such as
+  BottyBotty protection, apart from donations), payments settled per payment option with the
+  amounts received, payments that failed or need a refund.
 - **Since the start**: DIDs issued and amounts received per payment option.
 - **Receiving destinations in use**: the USDC addresses, and the DMD wallet shown by its key
   origin and a short fingerprint (never its public key, which would reveal all its addresses).

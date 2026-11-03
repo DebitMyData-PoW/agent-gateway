@@ -302,7 +302,35 @@ would now be refused, and suspend it if it impersonates DebitMyData:
 sudo dmd-gateway-admin names check
 ```
 
-## 11. Go-live checklist
+## 11. BottyBotty protection (a product for a DID)
+
+Agents with a DID can buy BottyBotty protection for it: a quote, a DMD payment like the DID's,
+then a receipt signed by DebitMyData and the `bottybotty_protection` entitlement on the DID
+for the period bought ([architecture.md](architecture.md#products-for-a-did-bottybotty-protection)).
+It is **off** until switched on, and stays off in production until:
+
+- DebitMyData has set the price and the period: they are placeholders today (10.00 USD for
+  30 days) in `config/payment_routes.yaml`, under `products: bottybotty_protection:`
+  (`commercial_price`, `period_days`); a change there comes with a gateway update;
+- BottyBotty (Suyash's team) protects the agents that hold it, so that nothing is sold
+  before it is delivered;
+- the terms and refund policy cover it (`terms_version` in the same place).
+
+Then switch it on and check it is offered:
+
+```bash
+echo "DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED=true" | sudo tee -a /etc/dmd-gateway/gateway.env
+sudo systemctl restart dmd-gateway-api
+curl -s https://api.debitmydata.io/v1/products
+```
+
+To stop selling it, set the value to `false` and restart the API: purchases already paid
+can still be completed, and entitlements already granted stay until their end. A purchase
+paid for a DID that is suspended before it is completed waits until the DID is reactivated;
+if the DID is revoked, the purchase stays paid without a receipt and is refunded by hand as
+the refund policy says.
+
+## 12. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set

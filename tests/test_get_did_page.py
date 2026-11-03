@@ -8,7 +8,11 @@ import base64
 import hashlib
 import json
 import re
+import shutil
+import subprocess
+from importlib.resources import files
 
+import pytest
 from fastapi.testclient import TestClient
 
 from dmd_gateway.api import get_did_page
@@ -152,3 +156,62 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
             assert ('href="/docs">Guided test' in page) is staging, path
             assert ('href="https://api.debitmydata.io/' in page) is staging, path  # Real API
             assert page.count("aria-current=page") >= 1, path
+
+
+# --------------------------------------------------------------------------- the DMD payment link
+
+PAY = "debitmydata:dm1q2qkgztajr4qt2pv8zgw3g2mjeqqyeqd6zca7f2?amount=125.00000000"
+# The same texts drawn by an independent encoder (Nayuki's qrcodegen, level M, byte mode):
+# version, mask, and the SHA-256 of its rows of modules (1 = dark, rows joined by newlines).
+QR_REFERENCE = (
+    ("DMD", 1, 0, "35ad08347947657d28e719f4c2f662171c38615b28fc3dff53e29ff47d18b2ee"),
+    (PAY, 5, 2, "822d820fc62226c4168fcb4c5af397e9cbc9e5828902ac2e5c18321d9ceea700"),
+    (
+        PAY + "&label=" + "DebitMyData%20DID%20registration%20" * 3,  # version 10: version bits
+        10,
+        4,
+        "83a63ff4299bdfbb7486da35a0a87fd83d5282e0fe1b58e7f9160942a9bc3691",
+    ),
+)
+_DRAW = """
+const qr = require(process.argv[1]);
+const rows = (modules) => modules.map((row) => row.map((dark) => (dark ? "1" : "0")).join(""));
+const drawn = JSON.parse(process.argv[2]).map((text) => {
+  const symbol = qr.build(text);
+  return [symbol.version, symbol.mask, rows(symbol.modules).join("\\n")];
+});
+process.stdout.write(JSON.stringify(drawn));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs Node.js to run the page's script")
+def test_the_qr_code_is_the_one_an_independent_encoder_draws() -> None:
+    encoder = str(files("dmd_gateway") / "static" / "qr.js")
+    texts = [text for text, *_ in QR_REFERENCE]
+    node = shutil.which("node")
+    assert node is not None
+    result = subprocess.run(  # noqa: S603 (fixed arguments, the package's own file)
+        [node, "-e", _DRAW, encoder, json.dumps(texts)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    drawn = json.loads(result.stdout)
+    for (text, version, mask, digest), (got_version, got_mask, rows) in zip(
+        QR_REFERENCE, drawn, strict=True
+    ):
+        assert (got_version, got_mask) == (version, mask), text
+        assert hashlib.sha256(rows.encode()).hexdigest() == digest, text
+
+
+def test_dmd_payments_get_a_qr_code_and_a_wallet_link() -> None:
+    script = get_did_page._SCRIPT
+    # The encoder is part of the page's own script (no code from elsewhere), loaded first.
+    assert script.index("const DmdQr") < script.index("DmdQr.svg(")
+    # The link DMD wallets open: DMD Core registers "debitmydata:" and refuses other prefixes.
+    assert re.findall(r"`(\w+):\$\{recipient\}", script) == ["debitmydata"]
+    assert "?amount=${amount}`" in script
+    assert "Open in my DMD wallet" in script and "check both" in script
+    # Once a payment arrives (or the quote expires) they are removed, so nobody pays twice.
+    assert 'querySelector(".pay-qr")' in script

@@ -93,6 +93,11 @@ is missing, links to Circle's faucet with the wallet's address to copy, and hold
 back until the balance is enough; it checks again when the visitor comes back from the
 faucet's tab, or on **Check again**.
 
+On the "Get a DID" page (`/get-did`), a DMD payment also shows a QR code and an **Open in my
+DMD wallet** button with the payment link (`debitmydata:<address>?amount=<amount>`): scan it
+with a DMD wallet app to check that the wallet fills in the address and the amount (on
+staging, regtest addresses start with `dmrt1`, which a mainnet wallet refuses).
+
 Each step shows the values it filled in and, under "What was sent and what came back", the
 whole request and answer, so a developer can see the API at work. The test agent's private
 key never leaves the page and is not shown. Like the test tools, the page only exists when
@@ -246,6 +251,24 @@ Without the `PAYMENT-SIGNATURE` field, step 2 answers **402** with what to pay. 
 donations go back to the test wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, set by `setup.sh`),
 so its test USDC is never used up. In production they go to the "AgenticInference Pay"
 wallet.
+
+### BottyBotty protection for a DID (agents)
+
+`setup.sh` switches the product on (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED=true`); its
+price and period are placeholders. With a DID from the guided page (its `did:web:...`), from
+the advanced docs page:
+
+1. **products** › `GET /v1/products`: the product, its price, period and payment options.
+2. **products** › `POST /v1/products/{product}/quotes` with `product`
+   `bottybotty-protection` and `{"did": "did:web:...", "preferred_payment_option":
+   "dmd_pow_native"}`: the amount, the address and `purchase_id`.
+3. **staging** › `POST /v1/staging/test-payments` with the quote's `payment_intent_id`, then
+   **products** › `GET /v1/products/purchases/{purchase_id}` until `next_action` is
+   `complete_purchase` (about a minute).
+4. **products** › `POST /v1/products/purchases/{purchase_id}/complete`: the receipt signed by
+   DebitMyData; `GET /v1/dids/{identity}` now lists `bottybotty_protection`.
+
+A suspended or revoked DID is refused (409 `did_not_active`).
 
 ### Checking the routes with Coinbase's Bazaar validator
 

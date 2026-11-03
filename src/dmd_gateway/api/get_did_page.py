@@ -7,6 +7,10 @@ another wallet or the agent's own tools). The page never asks for a private key 
 phrase and never sends money. It keeps the registration's IDs in the browser so that a reload
 continues where it stopped.
 
+For a DMD payment, step 2 also shows the payment as a QR code and an "Open in my DMD wallet"
+button: the payment link ``debitmydata:ADDRESS?amount=AMOUNT``, the link DMD wallets open
+(DMD Core registers that prefix with the system and reads the address and the amount from it).
+
 It is at /get-did on every server, the address to link from DebitMyData's sites; on
 production the docs address (/docs) and the site root lead there too, and the Swagger UI page
 is the advanced option (/docs/advanced). On staging it adds a "Pay with test coins" button.
@@ -35,7 +39,10 @@ DOCS_PATH = "/docs"
 ADVANCED_PATH = brand.ADVANCED_PATH
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
-_SCRIPT = (_STATIC / "get-did.js").read_text(encoding="utf-8")
+# The QR code encoder (qr.js) runs first: step 2 draws the DMD payment link with it.
+_SCRIPT = "\n".join(
+    (_STATIC / name).read_text(encoding="utf-8") for name in ("qr.js", "get-did.js")
+)
 FONTS = (
     "mada-latin-400-normal.woff2",
     "mada-latin-600-normal.woff2",

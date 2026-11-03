@@ -182,3 +182,70 @@ def donation_receipt(facts: DonationFacts, issuer: Issuer) -> dict[str, Any]:
         },
     }
     return issuer.sign(document, created=facts.issued_at)
+
+
+PRODUCT_RECEIPT_TYPE = "DebitMyDataProductReceipt"
+
+
+@dataclass(frozen=True)
+class ProductFacts:
+    receipt_url: str
+    purchase_id: str
+    product_id: str
+    product_name: str
+    entitlement: str
+    did: str
+    currency: str
+    amount: str
+    terms_version: str
+    covers_from: datetime
+    covers_until: datetime | None  # None: for good
+    payment_intent_id: str
+    payment_option: str
+    asset: str
+    network: str
+    amount_paid: str
+    recipient: str
+    transactions: Sequence[str]
+    issued_at: datetime
+
+
+def product_receipt(facts: ProductFacts, issuer: Issuer) -> dict[str, Any]:
+    """The receipt of a product bought for a DID (BottyBotty protection), signed like the DID
+    credential. Its subject is the DID; ``validUntil`` is the end of the period it covers, so a
+    service such as BottyBotty can check it with the issuer DID document alone."""
+    product: dict[str, Any] = {
+        "productId": facts.product_id,
+        "name": facts.product_name,
+        "purchaseId": facts.purchase_id,
+        "entitlement": facts.entitlement,
+        "price": {"currency": facts.currency, "amount": facts.amount},
+        "termsVersion": facts.terms_version,
+        "coversFrom": xml_datetime(facts.covers_from),
+    }
+    if facts.covers_until is not None:
+        product["coversUntil"] = xml_datetime(facts.covers_until)
+    document: dict[str, Any] = {
+        "@context": VC_CONTEXT,
+        "id": facts.receipt_url,
+        "type": ["VerifiableCredential", PRODUCT_RECEIPT_TYPE],
+        "issuer": {"id": issuer.did, "name": "DebitMyData"},
+        "validFrom": xml_datetime(facts.issued_at),
+        "credentialSubject": {
+            "id": facts.did,
+            "product": product,
+            "payment": {
+                "paymentIntentId": facts.payment_intent_id,
+                "paymentOption": facts.payment_option,
+                "asset": facts.asset,
+                "network": facts.network,
+                "amount": facts.amount_paid,
+                "recipient": facts.recipient,
+                "transactions": list(facts.transactions),
+                "status": "settled",
+            },
+        },
+    }
+    if facts.covers_until is not None:
+        document["validUntil"] = xml_datetime(facts.covers_until)
+    return issuer.sign(document, created=facts.issued_at)

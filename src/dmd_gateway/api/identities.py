@@ -9,7 +9,7 @@ GET /.well-known/did.json              issuer DID document (credential verificat
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Path, Request
@@ -141,8 +141,11 @@ def credential(
 
 class EntitlementItem(BaseModel):
     entitlement: str
-    status: str
+    status: str = Field(description="active, expired, suspended or revoked")
     granted_at: datetime
+    expires_at: datetime | None = Field(
+        default=None, description="End of the period bought (null: no end)."
+    )
     source_credential_id: str | None
 
 
@@ -168,14 +171,20 @@ def entitlements(request: Request, identity_id: str = Path(pattern=IDENTITY_ID))
             .where(Entitlement.subject_id == record.id)
             .order_by(Entitlement.entitlement)
         )
+        now = datetime.now(UTC)
         return Entitlements(
             subject_id=record.id,
             did=record.public_identifier,
             entitlements=[
                 EntitlementItem(
                     entitlement=row.entitlement,
-                    status=row.status,
+                    status=(
+                        "expired"
+                        if row.status == "active" and row.expires_at and row.expires_at <= now
+                        else row.status
+                    ),
                     granted_at=row.granted_at,
+                    expires_at=row.expires_at,
                     source_credential_id=row.source_credential_id,
                 )
                 for row in rows

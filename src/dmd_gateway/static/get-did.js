@@ -115,6 +115,38 @@
     return button;
   }
 
+  // The DMD payment link that DMD wallets open (DMD Core registers "debitmydata:" with the
+  // system): the address and the exact amount, in coins with at most 8 decimals.
+  function paymentLink(recipient, amount) {
+    if (!DMD_ADDRESS.test(recipient || "") || !/^\d{1,10}(\.\d{1,8})?$/.test(String(amount))) return null;
+    return `debitmydata:${recipient}?amount=${amount}`;
+  }
+
+  function paymentQr(link) {
+    let code;
+    try {
+      code = DmdQr.svg(link, "QR code of the payment: the address and the exact amount, for your DMD wallet");
+    } catch {
+      return null; // the page still shows the amount and the address to copy
+    }
+    const open = element("a", { class: "button secondary", href: link }, "Open in my DMD wallet");
+    return element(
+      "div",
+      { class: "pay-qr" },
+      code,
+      element(
+        "div",
+        { class: "open" },
+        open,
+        element(
+          "p",
+          { class: "small" },
+          "Scan the code with your DMD wallet app, or tap the button on the device where your DMD wallet is installed. Your wallet fills in the address and the amount: check both against this page before you send."
+        )
+      )
+    );
+  }
+
   function announce(text) {
     announcer.textContent = text;
   }
@@ -388,11 +420,13 @@
     const status = element("p", { class: "status busy" }, "Waiting for your payment…");
     const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
     check.addEventListener("click", () => checkPayment(status));
+    const link = paymentLink(state.recipient, state.amount);
     const parts = [
       element("p", {}, "Send exactly"),
       element("div", { class: "copyline" }, element("span", { class: "amount" }, `${amountText(state.amount)} ${state.asset}`), copyButton(state.amount, "Copy amount")),
       element("p", {}, "to this address:"),
       element("div", { class: "copyline" }, element("code", {}, state.recipient), copyButton(state.recipient, "Copy address")),
+      link && paymentQr(link),
       element(
         "ul",
         { class: "rules" },
@@ -416,7 +450,7 @@
       });
       parts.push(element("div", { class: "actions" }, testPay));
     }
-    body(2).replaceChildren(...parts);
+    body(2).replaceChildren(...parts.filter(Boolean));
     checkPayment(status);
   }
 
@@ -441,6 +475,11 @@
     const seen = payment.confirmations || 0;
     const again = () => (pollTimer = setTimeout(() => checkPayment(status), POLL_MS));
     status.className = "status busy";
+    if (payment.status !== "created" && payment.status !== "awaiting_payment") {
+      // Paid, or too late: the QR code and the wallet button go, so nobody pays twice.
+      const payLink = body(2).querySelector(".pay-qr");
+      if (payLink) payLink.remove();
+    }
     switch (payment.status) {
       case "created":
       case "awaiting_payment":

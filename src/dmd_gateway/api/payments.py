@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from dmd_gateway.db.models import PaymentEvent, PaymentIntent
+from dmd_gateway.db.models import PaymentEvent, PaymentIntent, Purchase
 from dmd_gateway.db.session import transaction
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
@@ -62,7 +62,7 @@ def unknown_payment(session: Session, payment_intent_id: str) -> ApiError:
 class PaymentStatusResponse(BaseModel):
     payment_intent_id: str
     registration_intent_id: str | None  # a DID registration's payment
-    purchase_id: str | None = None  # a donation's payment
+    purchase_id: str | None = None  # a donation's or a product's payment
     payment_option: str
     status: PaymentStatus
     asset: str
@@ -104,7 +104,13 @@ def payment_status(
         refund = int(detail.get("refund_due_base_units", 0))
         status = PaymentStatus(intent.status)
         next_action = NEXT_ACTIONS[status]
-        if intent.purchase_id is not None:
+        purchase = session.get(Purchase, intent.purchase_id) if intent.purchase_id else None
+        if purchase is not None and purchase.subject_did is not None:
+            # A product for a DID (such as BottyBotty protection): paid like the DID itself,
+            # then completed for the receipt and the entitlement.
+            if status is PaymentStatus.SETTLED:
+                next_action = "complete_purchase"
+        elif intent.purchase_id is not None:
             # Donations are paid in one call: there is nothing to send, only to wait.
             next_action = "read_donation_status"
         elif intent.adapter == X402_ADAPTER and status is PaymentStatus.AWAITING_PAYMENT:

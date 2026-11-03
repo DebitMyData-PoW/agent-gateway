@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.audit import record_audit_event
@@ -417,7 +417,12 @@ def active_entitlements(session: Session, identity_id: str) -> list[str]:
     return list(
         session.scalars(
             select(Entitlement.entitlement)
-            .where(Entitlement.subject_id == identity_id, Entitlement.status == "active")
+            .where(
+                Entitlement.subject_id == identity_id,
+                Entitlement.status == "active",
+                # A product bought for a period (BottyBotty protection) ends then.
+                Entitlement.expires_at.is_(None) | (Entitlement.expires_at > func.now()),
+            )
             .order_by(Entitlement.entitlement)
         )
     )

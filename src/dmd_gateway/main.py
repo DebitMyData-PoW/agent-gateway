@@ -31,6 +31,7 @@ from dmd_gateway.api import (
     payments,
     policies,
     prices,
+    products,
     quotes,
     registrations,
     staging,
@@ -151,6 +152,7 @@ def create_app(
     app.include_router(payments.router)
     app.include_router(registrations.router)
     app.include_router(donations.router)
+    app.include_router(products.router)
     app.include_router(identities.router)
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
@@ -195,6 +197,12 @@ def _openapi_tags(settings: Settings) -> list[dict[str, str]]:
         {
             "name": "identities",
             "description": "Issued DIDs, signed credentials, entitlements and DID documents.",
+        },
+        {
+            "name": "products",
+            "description": "Products bought for a DID that already exists, such as BottyBotty "
+            "protection: a quote for the DID, the payment, then a receipt signed by DebitMyData "
+            "and the product's entitlement on the DID for the period bought.",
         },
         {"name": "health", "description": "Liveness and readiness checks."},
     ]

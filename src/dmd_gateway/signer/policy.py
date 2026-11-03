@@ -8,7 +8,10 @@ signing it:
   proof for it is verified, the display name and participant type are the registration's,
   and no credential exists for it yet;
 * a donation receipt (``DebitMyDataDonationReceipt``): the donation exists, is paid and has no
-  receipt yet, and the payment it names belongs to it and is settled.
+  receipt yet, and the payment it names belongs to it and is settled;
+* a product receipt (``DebitMyDataProductReceipt``, BottyBotty protection): the purchase exists,
+  is for the product and the DID the receipt names, is paid and has no receipt yet, and the
+  payment it names belongs to it and is settled.
 
 Anything else is refused. Both documents must name this issuer.
 """
@@ -30,7 +33,12 @@ from dmd_gateway.db.models import (
     RegistrationIntent,
 )
 from dmd_gateway.domain.payment_status import PaymentStatus
-from dmd_gateway.identity.credentials import CREDENTIAL_TYPE, RECEIPT_TYPE, VC_CONTEXT
+from dmd_gateway.identity.credentials import (
+    CREDENTIAL_TYPE,
+    PRODUCT_RECEIPT_TYPE,
+    RECEIPT_TYPE,
+    VC_CONTEXT,
+)
 
 SETTLED = PaymentStatus.SETTLED.value
 
@@ -55,7 +63,7 @@ def _text(value: Any, *path: str) -> str:
 
 
 def kind_of(document: Mapping[str, Any], issuer_did: str) -> str:
-    """``registration_credential`` or ``donation_receipt``, or refuse."""
+    """``registration_credential``, ``donation_receipt`` or ``product_receipt``, or refuse."""
     if document.get("@context") != VC_CONTEXT:
         raise Refused("unexpected @context")
     if "proof" in document:
@@ -67,7 +75,9 @@ def kind_of(document: Mapping[str, Any], issuer_did: str) -> str:
         return "registration_credential"
     if types == ["VerifiableCredential", RECEIPT_TYPE]:
         return "donation_receipt"
-    raise Refused("only DID registration credentials and donation receipts are signed")
+    if types == ["VerifiableCredential", PRODUCT_RECEIPT_TYPE]:
+        return "product_receipt"
+    raise Refused("only DID registration credentials, donation and product receipts are signed")
 
 
 def check(session: Session, document: Mapping[str, Any], issuer_did: str) -> dict[str, str]:
@@ -75,6 +85,8 @@ def check(session: Session, document: Mapping[str, Any], issuer_did: str) -> dic
     kind = kind_of(document, issuer_did)
     if kind == "registration_credential":
         return _check_registration(session, document)
+    if kind == "product_receipt":
+        return _check_product(session, document)
     return _check_donation(session, document)
 
 
@@ -140,3 +152,22 @@ def _check_donation(session: Session, document: Mapping[str, Any]) -> dict[str, 
     if payment.purchase_id != purchase.id:
         raise Refused("the payment belongs to another purchase")
     return {"kind": "donation_receipt", "purchase": purchase.id, "payment": payment.id}
+
+
+def _check_product(session: Session, document: Mapping[str, Any]) -> dict[str, str]:
+    subject = _field(document, "credentialSubject")
+    did = _text(subject, "id")
+    purchase_id = _text(subject, "product", "purchaseId")
+    product_id = _text(subject, "product", "productId")
+    payment_id = _text(subject, "payment", "paymentIntentId")
+    purchase = session.get(Purchase, purchase_id)
+    if purchase is None or purchase.subject_did is None:
+        raise Refused("unknown product purchase")
+    if purchase.product_id != product_id or purchase.subject_did != did:
+        raise Refused("the receipt names another product or DID than the purchase")
+    if purchase.status != "paid" or purchase.receipt is not None:
+        raise Refused(f"the purchase is {purchase.status}")
+    payment = _settled_payment(session, payment_id)
+    if payment.purchase_id != purchase.id:
+        raise Refused("the payment belongs to another purchase")
+    return {"kind": "product_receipt", "purchase": purchase.id, "payment": payment.id}

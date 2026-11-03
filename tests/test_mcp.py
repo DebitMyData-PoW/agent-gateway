@@ -2,7 +2,8 @@
 
 Without a database: tool listing, discovery tools, error reporting and transport checks.
 With TEST_DATABASE_URL: the whole registration through MCP tools only, from the offer to
-the DID, with a scripted chain behind the DMD adapter.
+the DID, and an add-on (BottyBotty protection) bought for that DID, with a scripted chain
+behind the DMD adapter.
 """
 
 from __future__ import annotations
@@ -313,3 +314,83 @@ async def test_a_wallet_proves_control_through_mcp(
         nxt = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
         assert nxt["controller"] == AGENT_CONTROLLER
         assert "Ed25519" in nxt["how_to_answer"]
+
+
+async def _issued_through_mcp(mcp: Client, app: FastAPI, name: str, txid: str) -> str:
+    quote = await call(
+        mcp,
+        "dmd_create_did_payment_quote",
+        display_name=name,
+        participant_type="ai_agent",
+        controller_public_key=AGENT_CONTROLLER,
+        preferred_payment_option="dmd_pow_native",
+    )
+    rid, pid = quote["registration_intent_id"], quote["payment_intent_id"]
+    SCRIPTED.pay(pid, int(quote["selected_payment_option"]["amount_base_units"]), txid=txid)
+    SCRIPTED.confirm(pid, 6)
+    tick(app)
+    challenge = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
+    await call(
+        mcp,
+        "dmd_prove_wallet_control",
+        registration_intent_id=rid,
+        challenge_id=challenge["challenge_id"],
+        signature=sign_challenge(challenge["message"]),
+    )
+    return (await call(mcp, "dmd_register_did", registration_intent_id=rid))["did"]
+
+
+@needs_db
+async def test_an_add_on_is_bought_through_mcp_only(
+    ready_registry: Path,  # noqa: F811
+    engine: Engine,
+) -> None:
+    SCRIPTED.reset()
+    issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did(BASE))
+    environ = {
+        "DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true",
+        "DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED": "true",
+    }
+    app = _app_client(ready_registry, engine, issuer_key=issuer, environ=environ).app
+    async with mcp_client(app) as mcp:
+        did = await _issued_through_mcp(mcp, app, "McpAddOn-01", "5d" * 32)
+        catalog = await call(mcp, "dmd_catalog")
+        (add_on,) = [p for p in catalog["products"] if p["kind"] == "add_on"]
+        assert add_on["product_id"] == "bottybotty_protection"
+        assert (add_on["period_days"], add_on["payment_options"]) == (30, ["dmd_pow_native"])
+        assert "active DebitMyData DID" in add_on["requires"]
+        offer = await call(mcp, "dmd_get_purchase_quote", product_id="bottybotty_protection")
+        assert offer["payment_options"] == ["dmd_pow_native"]
+
+        unknown = await call_error(
+            mcp,
+            "dmd_purchase",
+            product_id="bottybotty_protection",
+            preferred_payment_option="dmd_pow_native",
+            details={"did": "did:web:localhost%3A8000:agents:" + "0" * 26},
+        )
+        assert unknown["error"]["code"] == "unknown_did"
+
+        quote = await call(
+            mcp,
+            "dmd_purchase",
+            product_id="bottybotty_protection",
+            preferred_payment_option="dmd_pow_native",
+            details={"did": did},
+        )
+        purchase_id, pid = quote["purchase_id"], quote["payment_intent_id"]
+        early = await call_error(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
+        assert early["error"]["code"] == "purchase_not_ready"
+        units = int(quote["selected_payment_option"]["amount_base_units"])
+        SCRIPTED.pay(pid, units, txid="6e" * 32)
+        SCRIPTED.confirm(pid, 6)
+        tick(app)
+        payment = await call(mcp, "dmd_get_payment_status", payment_intent_id=pid)
+        assert (payment["status"], payment["next_action"]) == ("settled", "complete_purchase")
+        done = await call(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
+        again = await call(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
+
+    assert (done["status"], done["did"]) == ("completed", did)
+    assert done["entitlement"] == "bottybotty_protection"
+    assert verify_proof(done["receipt"], issuer.public_key_multibase)
+    assert again["receipt"] == done["receipt"]

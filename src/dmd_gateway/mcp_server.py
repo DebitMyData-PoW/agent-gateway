@@ -60,6 +60,11 @@ payment settles.
 6. dmd_register_did: receive your DID, a signed credential (also your receipt) and your \
 entitlements. dmd_get_registration_status shows what is still missing at any time.
 
+Add-ons for a DID you have (dmd_catalog, kind "add_on", such as BottyBotty protection): \
+dmd_purchase with details {"did": ...} gives a quote; pay it like the DID; when \
+dmd_get_payment_status says "settled", dmd_complete_purchase returns the receipt signed by \
+DebitMyData, and the add-on's entitlement is on your DID for the period bought.
+
 DebitMyData never asks for private keys, seed phrases or wallet access."""
 
 ABOUT = (
@@ -177,6 +182,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
     async def payment_options(service: str) -> dict[str, Any]:
         return await api.call("GET", "/v1/payment-options", params={"service": service})
+
+    async def add_ons() -> list[dict[str, Any]]:
+        return await api.call("GET", "/v1/products")
 
     async def create_quote(body: dict[str, Any], idempotency_key: str | None) -> dict[str, Any]:
         headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
@@ -442,6 +450,21 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                     "payment_options": [o["id"] for o in options["supported_payment_options"]],
                 }
             )
+        for add_on in await add_ons():
+            products.append(
+                {
+                    "product_id": add_on["product_id"],
+                    "kind": "add_on",
+                    "title": add_on["name"],
+                    "description": add_on["description"],
+                    "commercial_price": add_on["commercial_price"],
+                    "period_days": add_on["period_days"],
+                    "entitlement": add_on["entitlement"],
+                    "requires": "an active DebitMyData DID (details.did in dmd_purchase)",
+                    "accepting_payments": bool(add_on["payment_options"]),
+                    "payment_options": add_on["payment_options"],
+                }
+            )
         return {"products": products}
 
     @server.tool(title="Purchase quote options", annotations=READ_ONLY)
@@ -453,6 +476,10 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         offer = next((o for o in await offers() if o["id"] == product_id), None)
         if offer is None:
             offer = next((d for d in await donations() if d["id"] == product_id), None)
+        if offer is None:
+            add_on = next((a for a in await add_ons() if a["product_id"] == product_id), None)
+            if add_on is not None:
+                return {"offer": add_on, "payment_options": add_on["payment_options"]}
         if offer is None:
             raise ToolError(
                 json.dumps({"error": {"code": "unknown_product", "message": "See dmd_catalog."}})
@@ -470,7 +497,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                 "participant_type, controller_public_key and/or controller_wallet_address "
                 "(with optional controller_network), and optionally metadata. For a "
                 "donation (inference_donation): amount_usd, and optionally donor_name and "
-                "donor_did"
+                "donor_did. For an add-on (bottybotty_protection): did, the DID it is for"
             ),
         ],
         ctx: Context,
@@ -495,6 +522,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
         did_registration: returns a payable quote (the same as dmd_create_did_payment_quote).
 
+        Add-ons for a DID (bottybotty_protection): returns a payable quote for details.did.
+        Pay it, wait for dmd_get_payment_status to say "settled", then dmd_complete_purchase.
+
         Donations (inference_donation, USDC on Base through x402): call with the amount; it
         fails with the x402 payment requirements. Sign them with your wallet and call again
         with the same details and x402_payment. The answer is the donation with a receipt
@@ -503,6 +533,19 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         if product_id == DID_REGISTRATION:
             body = await create_quote(
                 {**details, "preferred_payment_option": preferred_payment_option}, idempotency_key
+            )
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(body))], structured_content=body
+            )
+        add_on = next((a for a in await add_ons() if a["product_id"] == product_id), None)
+        if add_on is not None:
+            body = await api.call(
+                "POST",
+                urlsplit(add_on["quote_url"]).path,
+                json_body={
+                    "did": details.get("did", ""),
+                    "preferred_payment_option": preferred_payment_option,
+                },
             )
             return CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(body))], structured_content=body
@@ -552,6 +595,22 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             structured_content=body,
             meta={"x402/payment-response": settlement} if settlement else None,
         )
+
+    @server.tool(title="Complete a purchase", annotations=CREATES)
+    async def dmd_complete_purchase(
+        purchase_id: Annotated[
+            str,
+            Field(
+                description="purchase_id from dmd_purchase (an add-on such as BottyBotty "
+                "protection)",
+                pattern=r"^dmd_purchase_[0-9A-HJKMNP-TV-Z]{26}$",
+            ),
+        ],
+    ) -> dict[str, Any]:
+        """Once the add-on's payment is settled: the receipt signed by DebitMyData, and the
+        add-on's entitlement on your DID until covers_until. Safe to call again: a completed
+        purchase is returned as it is. Before settlement it fails with next_action."""
+        return await api.call("POST", f"/v1/products/purchases/{purchase_id}/complete")
 
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)
     async def dmd_marketplace_provider_requirements() -> dict[str, Any]:

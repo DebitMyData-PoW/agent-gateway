@@ -194,6 +194,13 @@ The directive's example quotes show rail-specific statuses (`awaiting_authorizat
 therefore report `payment_status: awaiting_payment` plus a `next_action`
 (`prove_wallet_control` for x402, `send_payment` for DMD) until this is confirmed.
 
+On the "Get a DID" page, a DMD payment is also shown as a QR code and an "Open in my DMD
+wallet" button: the payment link `debitmydata:<address>?amount=<amount>` (BIP 21 style). DMD
+Core registers the `debitmydata:` prefix with the system and reads the address and the amount
+from it; other prefixes (such as `dmd:`) open nothing. The QR code is drawn by the page's own
+script (`static/qr.js`), so the page still runs no code from elsewhere; both disappear once a
+payment arrives or the quote expires.
+
 ## x402 payments (USDC on Base)
 
 x402 payments follow x402 protocol version 2, scheme `exact` with EIP-3009
@@ -273,6 +280,42 @@ validator posts an empty body first) answers `402` with the terms of an example 
 can never be paid. A payment refused by the facilitator closes its donation at once; if a
 completed donation's payment is later reorganized out of the chain, an alert is recorded in
 the audit trail. Through MCP, `dmd_catalog` lists the donation and `dmd_purchase` pays it.
+
+## Products for a DID (BottyBotty protection)
+
+Some products are bought for a DID that already exists: the first is BottyBotty protection
+(Preska Thomas, October 2026: "include BottyBotty for the Agentics to purchase for protecting
+themselves"). They are defined under `products` in the route registry (title, price, period,
+entitlement, payment options, terms version) and offered only once switched on with their
+`enable_env` (`DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED`). The price and the period in the
+registry are placeholders until DebitMyData sets them (`services/products.py`,
+`api/products.py`):
+
+1. `GET /v1/products` lists the products switched on, with their price, period, entitlement
+   and payment options.
+2. `POST /v1/products/<product>/quotes` with the DID (`did`) and the payment option: only an
+   active DID can buy. It stores a `purchases` row naming the DID and a payment intent with a
+   fresh address, exactly like a DID quote (same price source, same 15 minutes).
+3. The agent pays as for its DID; the worker verifies the payment and the purchase follows it
+   (`awaiting_payment` → `paid`, or `failed`). `GET /v1/products/purchases/<id>` and
+   `GET /v1/payments/<id>` give `next_action` (`complete_purchase` once settled).
+4. `POST /v1/products/purchases/<id>/complete` issues a receipt signed by DebitMyData
+   (`DebitMyDataProductReceipt`, signed like the DID credential, through the signer in
+   production) whose subject is the DID, with `validUntil` at the end of the period, and
+   grants the product's entitlement on the DID until then (`expires_at`). It is idempotent.
+   Buying again before the end extends the period from its end.
+
+The entitlement follows its DID (suspended, reactivated and revoked with it) and is no longer
+active once its period ends; `GET /v1/entitlements/<identity>` shows it as `expired`. A
+purchase that could give nothing is refused before payment: an unknown or inactive DID, an
+entitlement already held with no end, or one revoked on its own (which never comes back).
+x402 rails are refused for products (they are paid in answer to the completion, not built
+yet). The signer checks the purchase, the DID and the settled payment before signing a
+receipt. Through MCP, `dmd_catalog` lists products as `kind: "add_on"`, `dmd_purchase` with
+`details.did` returns the quote, and `dmd_complete_purchase` returns the receipt. The daily
+report counts products apart from donations. What BottyBotty does for a protected agent is
+up to BottyBotty: it can check the receipt with the issuer DID document alone, or the
+entitlement at `GET /v1/entitlements/<identity>`.
 
 ## Controller proof
 

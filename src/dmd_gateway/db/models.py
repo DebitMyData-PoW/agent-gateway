@@ -176,6 +176,11 @@ class Purchase(Base):
     # Optional, given by the donor and shown in the receipt.
     donor_name: Mapped[str | None] = mapped_column(Text)
     donor_did: Mapped[str | None] = mapped_column(Text)
+    # A product bought for a DID (BottyBotty protection): the DID it is for, and once
+    # completed, until when it covers that DID (None: for good).
+    subject_identity_id: Mapped[str | None] = mapped_column(ForeignKey("identities.id"), index=True)
+    subject_did: Mapped[str | None] = mapped_column(Text)
+    covers_until: Mapped[datetime | None] = mapped_column(Timestamp)
     terms_version: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     receipt: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -474,6 +479,8 @@ class Entitlement(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     granted_at: Mapped[datetime] = created_at()
     revoked_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    # A product entitlement bought for a period ends then (None: no end).
+    expires_at: Mapped[datetime | None] = mapped_column(Timestamp)
 
 
 class IdempotencyKey(Base):

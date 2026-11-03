@@ -65,7 +65,7 @@ AUDIT_TITLES = {
         "A DID's payment left the chain after the DID was issued"
     ),
     "alert.completed_purchase_payment_reorged": (
-        "A donation's payment left the chain after its receipt was issued"
+        "A donation's or product's payment left the chain after its receipt was issued"
     ),
 }
 

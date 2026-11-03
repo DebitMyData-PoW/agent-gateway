@@ -73,6 +73,10 @@ outline:3px solid var(--red);outline-offset:2px}
 .copyline code{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:8px 10px;
 overflow-wrap:anywhere;font-size:.95rem}
 ul.rules{margin:4px 0 8px;padding-left:20px;color:#3d3b3b}
+.pay-qr{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:4px 0 14px}
+.pay-qr svg{width:200px;height:200px;flex:0 0 auto;border:1px solid var(--line);border-radius:8px}
+.pay-qr .open{flex:1 1 240px}
+.pay-qr .open p{margin:8px 0 0}
 pre.message{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:10px 12px;white-space:pre-wrap;
 overflow-wrap:anywhere;font-size:.85rem;margin:8px 0}
 details.paste{margin-top:14px}

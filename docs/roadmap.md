@@ -100,11 +100,20 @@ place; the application logic comes with the related phase.
 - [x] ID-08 Verified proof bound to the registration and the identity
 - [x] ID-09 Identity issued only after settlement, verified proof and policy checks; idempotent
 - [x] ID-10 Signed registration credential/receipt (W3C VC 2.0, `eddsa-jcs-2022`, DEC-06)
-- [ ] ID-11 Entitlements: `dmd_did_holder` done; product and marketplace eligibility open
+- [ ] ID-11 Entitlements: `dmd_did_holder` done; products bought for a DID with a period (`bottybotty_protection`, ID-17) done; marketplace eligibility open
 - [ ] ID-12 Controller rotation with proof and audit history
 - [x] ID-13 Suspension and revocation without deleting history: `dmd-gateway-admin did suspend|reactivate|revoke` on the server only, every change in the write-once audit trail with its reason and operator, an alert for each, `did_status` in the registration status; open: recovery (with ID-12) and a public status list in new credentials
 - [ ] ID-14 Transfer/new-registration policy for material controller changes
 - [x] ID-16 Display names that cannot pass for another one, checked when the quote is requested (before payment): no hidden characters, one alphabet per word, DebitMyData's own names (DebitMyData, DMD, BottyBotty, AgenticSpaces and their lookalikes) only for the company's controllers (`DMD_GW_BRAND_NAME_CONTROLLERS`); `dmd-gateway-admin names check` for the DIDs issued before
+- [x] ID-17 Products bought for a DID (Preska Thomas, October 2026: BottyBotty protection
+  for the agents): `products` in the route registry, each switched on with its own flag;
+  quote for an active DID, paid in DMD like the DID, completed with a signed
+  `DebitMyDataProductReceipt` and the entitlement for the period (extended when bought again,
+  expired after); REST (`/v1/products`), MCP (`dmd_catalog` add-ons, `dmd_purchase`,
+  `dmd_complete_purchase`), daily report. Open: the price and period (placeholders: 10.00 USD
+  for 30 days), BottyBotty's side (activation for the agents that hold it), USDC through x402
+- [x] Get a DID: the DMD payment as a QR code and an "Open in my DMD wallet" link
+  (`debitmydata:<address>?amount=<amount>`, the prefix DMD Core registers)
 - [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); open: key rotation procedure
 
 ## Phase 6 – MCP server
