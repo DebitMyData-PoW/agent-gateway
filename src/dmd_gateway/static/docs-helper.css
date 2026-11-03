@@ -240,17 +240,28 @@ animation:go-ready 1.1s ease-out 3}
 /* Focus on the open step: everything else dimmed, the step itself outlined */
 .dmd-focus-mark{display:none}
 .adv,.topbar,.site-footer,.swagger-ui .opblock-tag,.swagger-ui .opblock,.swagger-ui section.models,
-.swagger-ui .opblock-description-wrapper,.swagger-ui .responses-table{transition:opacity .25s ease}
+.swagger-ui .opblock-description-wrapper,.swagger-ui .responses-table,.swagger-ui .opblock tr,
+.swagger-ui .parameter__type,.swagger-ui .parameter__in,.swagger-ui .parameter__extension,
+.swagger-ui .parameter__empty_value_toggle{transition:opacity .25s ease}
 body.dmd-focusing .adv,body.dmd-focusing .topbar,body.dmd-focusing .site-footer,
 body.dmd-focusing .swagger-ui .opblock-tag,body.dmd-focusing .swagger-ui section.models,
 body.dmd-focusing .swagger-ui .opblock:not(:has(.dmd-focus-mark)),
 body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .opblock-body>.opblock-description-wrapper,
-body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .responses-table:not(.live-responses-table){opacity:.22}
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .responses-table:not(.live-responses-table),
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) tr[data-param-name]:not(.dmd-need),
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) tr[data-property-name]:not(.dmd-need),
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .parameter__type,
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .parameter__in,
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .parameter__extension,
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .parameter__empty_value_toggle,
+body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark) .opblock-section-request-body>.opblock-section-header>label{opacity:.22}
 body.dmd-focusing .swagger-ui .opblock:has(.dmd-focus-mark){box-shadow:0 0 0 4px rgba(200,8,21,.2)}
 .vp-unfocus{display:block;margin:8px 0 0;padding:0;border:0;background:transparent;color:var(--red);
 font:600 12px/1.4 var(--sans);text-decoration:underline;cursor:pointer}
 @media (prefers-reduced-motion:reduce){
 .swagger-ui .btn-group .btn.dmd-next-go{animation:none}
 .adv,.topbar,.site-footer,.swagger-ui .opblock-tag,.swagger-ui .opblock,.swagger-ui section.models,
-.swagger-ui .opblock-description-wrapper,.swagger-ui .responses-table{transition:none}
+.swagger-ui .opblock-description-wrapper,.swagger-ui .responses-table,.swagger-ui .opblock tr,
+.swagger-ui .parameter__type,.swagger-ui .parameter__in,.swagger-ui .parameter__extension,
+.swagger-ui .parameter__empty_value_toggle{transition:none}
 }

@@ -633,6 +633,7 @@
     nextBar.replaceChildren(...parts);
     renderCards(entry);
     notify();
+    markSoon();
   }
 
   // " here" while the next step is open (grey), " ready" when it has just become the next one.
@@ -658,6 +659,29 @@
 
   const focusedBlock = () =>
     focusStep && document.getElementById(`operations-${focusStep.tag}-${focusStep.operation_id}`);
+
+  // In the open step, the fields it needs stay bright: the required ones and the ones to paste
+  // ("needs"); the optional ones are dimmed with the rest. Swagger UI draws its fields again at
+  // times (another content type, the step closed and opened), so they are marked again then.
+  function markNeeded() {
+    const block = focusedBlock();
+    if (!block) return;
+    const needs = new Set(focusStep.needs || []);
+    for (const row of block.querySelectorAll("tr[data-param-name], tr[data-property-name]")) {
+      const name = row.getAttribute("data-param-name") || row.getAttribute("data-property-name");
+      const required = Boolean(row.querySelector(".parameter__name.required"));
+      row.classList.toggle("dmd-need", required || needs.has(name));
+    }
+  }
+  let marking = false;
+  const markSoon = () => {
+    if (marking || !focusStep) return;
+    marking = true;
+    requestAnimationFrame(() => {
+      marking = false;
+      markNeeded();
+    });
+  };
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") exitFocus();
@@ -953,7 +977,10 @@
     ...config,
     presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
     plugins: [StepBadges],
-    onComplete: () => copyGuide(),
+    onComplete: () => {
+      copyGuide();
+      new MutationObserver(markSoon).observe(document.getElementById("swagger-ui"), { childList: true, subtree: true });
+    },
     requestInterceptor: (request) => {
       try {
         const url = new URL(request.url, location.href);

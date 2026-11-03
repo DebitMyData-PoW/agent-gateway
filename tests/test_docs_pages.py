@@ -135,6 +135,11 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     assert "clear: (Original, system)" in script and "dmd-next-go" in script
     assert "Show the whole page (Esc)" in script
     assert "body.dmd-focusing" in docs_pages._HELPER_CSS
+    # In the open step, the required fields and the ones to paste stay bright; the optional
+    # ones and the technical details (type, pattern, "Send empty value") are dimmed.
+    assert "function markNeeded()" in script and "tr[data-property-name]:not(.dmd-need)" in (
+        docs_pages._HELPER_CSS
+    )
 
 
 def test_redoc_comes_at_an_exact_version_checked_by_fingerprint(client: TestClient) -> None:
