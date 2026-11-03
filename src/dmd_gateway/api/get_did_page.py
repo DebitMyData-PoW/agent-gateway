@@ -109,16 +109,19 @@ recovery phrase, and never sends money. You pay and sign in your own wallet.</p>
 placeholder="e.g. My research agent"></label>
 <label class=field for=kind>What is it for?<select id=kind>{participants}</select></label>
 <fieldset>
-<legend>Who controls it</legend>
+<legend>Who owns it</legend>
+<p class=small>Every DID needs an owner: a wallet or an agent's key. The owner proves it once
+by signing one message (free: signing sends nothing).</p>
 <label class=choice><input type=radio name=controller value=wallet checked>
 <strong>My wallet</strong><span class=tag>Recommended</span>
-<small>An Ethereum-style wallet (its address starts with 0x), such as MetaMask or
-Coinbase Wallet. The DID will belong to it, and you will sign one message with it (free:
-signing sends nothing). It is not the wallet you pay with: any DMD wallet can pay at
-step 2.</small></label>
+<small>Any Ethereum-style wallet, whose address starts with 0x: MetaMask, Coinbase Wallet,
+Rabby, Trust Wallet, a hardware wallet… It needs no balance (no USDC, no ETH): it only signs,
+nothing is paid with it. No browser extension needed: you can type the address and sign in
+your wallet app. You pay in DMD at step 2, with any DMD wallet.</small></label>
 <div id=wallet-box class=sub>
 <div class=wallets-holder></div>
-<label class=field for=wallet-address>Or type the wallet's address (0x…)
+<label class=field for=wallet-address><span id=wallet-address-label>Or type the wallet's
+address (0x…)</span>
 <input type=text id=wallet-address autocomplete=off spellcheck=false placeholder="0x…"></label>
 <p class=hint id=wallet-hint hidden aria-live=polite></p>
 </div>
@@ -146,13 +149,17 @@ DID registration is <a href="/policies/refunds" target=_blank>not refundable</a>
 </div>
 </section>
 <section class="card step waiting" id=s2>
-<div class=step-head><span class=num>2</span><h2>Pay</h2></div><div class=body></div>
+<div class=step-head><span class=num>2</span><h2>Pay</h2></div>
+<p class="small locked">Opens after <strong>Get my quote</strong> at step 1: you then pay in DMD,
+with any DMD wallet.</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s3>
-<div class=step-head><span class=num>3</span><h2>Prove it's yours</h2></div><div class=body></div>
+<div class=step-head><span class=num>3</span><h2>Prove it's yours</h2></div>
+<p class="small locked">Opens once the payment is confirmed.</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s4>
-<div class=step-head><span class=num>4</span><h2>Your DID</h2></div><div class=body></div>
+<div class=step-head><span class=num>4</span><h2>Your DID</h2></div>
+<p class="small locked">Opens once the owner has signed.</p><div class=body></div>
 </section>
 <p id=announcer class=sr-only aria-live=polite></p>
 </main>

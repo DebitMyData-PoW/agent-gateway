@@ -25,6 +25,9 @@ background:var(--grey);color:var(--muted)}
 .step.done .num{background:var(--green);color:#fff}
 .step.waiting{background:var(--grey);box-shadow:none}
 .step.waiting .step-head h2{color:var(--muted)}
+/* A step not open yet says when it opens; the note goes once it does. */
+.step .locked{margin:10px 0 0}
+.step:not(.waiting) .locked{display:none}
 .step .body{margin-top:12px}
 .step .summary{color:#3d3b3b;margin:8px 0 0;font-size:.97rem}
 label.field{display:block;font-weight:600;margin:0 0 14px}

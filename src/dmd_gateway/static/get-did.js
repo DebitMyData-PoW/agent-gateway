@@ -17,12 +17,16 @@
   const DMD_ADDRESS = /^(dm|td|dmrt)1[02-9ac-hj-np-z]{6,}$/i;
   const DMD_HINT =
     "This is a DMD address: you don't need one here. At step 2 the page gives you the amount and the address to pay, from any DMD wallet. Here, give the wallet the DID will belong to: an Ethereum-style wallet (0x…), or choose “My agent's public key”.";
+  // A wallet is not required: the DID needs an owner, a wallet of any kind (0x…) or an agent's key.
+  const NO_OWNER =
+    "Every DID needs an owner before step 2 opens: type the 0x… address of any Ethereum-style wallet (MetaMask, Coinbase Wallet, Rabby, Trust Wallet, a hardware wallet…; it needs no USDC or other balance), or choose “My agent's public key” above.";
 
   const form = $("#details");
   const nameInput = $("#name");
   const kindSelect = $("#kind");
   const walletBox = $("#wallet-box");
   const walletAddress = $("#wallet-address");
+  const walletLabel = $("#wallet-address-label");
   const keyBox = $("#key-box");
   const publicKey = $("#public-key");
   const optionsBox = $("#options");
@@ -77,6 +81,14 @@
   function problem(result) {
     const error = result.data && result.data.error;
     if (error && typeof error === "object") return error.message || `The request was refused (${error.code}).`;
+    // A field the gateway refused (422): say which and why, rather than "try again".
+    const detail = result.data && result.data.detail;
+    if (Array.isArray(detail) && detail.length) {
+      const message = String(detail[0].msg || "").replace(/^Value error, /, "");
+      if (/checksum/.test(message))
+        return "The capital letters in this address don't match its checksum, so it was probably mistyped. Copy the address from your wallet instead of typing it.";
+      return message ? `The gateway refused it: ${message}.` : `The request was refused (${result.status}).`;
+    }
     if (result.status === 429) return "Too many requests: wait a minute and try again.";
     return `The gateway answered ${result.status}. Try again in a moment.`;
   }
@@ -202,12 +214,13 @@
       return;
     }
     const list = walletList();
+    walletLabel.textContent = list.length ? "Or type the wallet's address (0x…)" : "The wallet's address (0x…)";
     if (!list.length) {
       holder.append(
         element(
           "p",
           { class: "small" },
-          "No browser wallet found in this browser. Add one (such as MetaMask or Coinbase Wallet) and reload this page, open this page in your wallet app's browser, or type your wallet's 0x… address below: you will then sign one message in your wallet app and paste the signature."
+          "No wallet extension in this browser, and you don't need one: type your wallet's 0x… address below. At step 3 you sign one message in your wallet app and paste the signature here."
         )
       );
       return;
@@ -279,6 +292,15 @@
     if (first) optionsBox.append(element("p", { class: "error" }, "No payment option is open on this page right now. Please come back later."));
   }
 
+  // Says what is wrong with a typed 0x address, so it can be fixed.
+  function addressProblem(address) {
+    if (!address.startsWith("0x")) return "An Ethereum-style address starts with 0x (a zero and a small x), then 40 characters: 0–9 and a–f.";
+    const rest = address.slice(2);
+    const wrong = [...new Set(rest.replace(/[0-9a-fA-F]/g, ""))].map((c) => (/\s/.test(c) ? "a space" : `“${c}”`));
+    if (wrong.length) return `This address has characters an Ethereum-style address can't have: ${wrong.join(", ")}. After 0x it uses only 0–9 and a–f.`;
+    return `This address has ${rest.length} characters after 0x: an Ethereum-style address has exactly 40 (0–9 and a–f).`;
+  }
+
   function readDetails() {
     const name = nameInput.value.trim();
     if (!name) return { error: "Give the DID a name." };
@@ -288,13 +310,15 @@
     let controller;
     if (controllerChoice() === "wallet") {
       const address = (wallet ? wallet.address : walletAddress.value).trim();
-      if (DMD_ADDRESS.test(address)) return { error: "Use an Ethereum-style address (0x…) here: a DMD address can't hold a DID (see the note above)." };
-      if (!WALLET_ADDRESS.test(address)) return { error: "Connect your wallet, or type its address: 0x followed by 40 characters." };
+      if (!address) return { error: NO_OWNER, focus: walletAddress };
+      if (DMD_ADDRESS.test(address)) return { error: "Use an Ethereum-style address (0x…) here: a DMD address can't hold a DID (see the note above).", focus: walletAddress };
+      if (!WALLET_ADDRESS.test(address)) return { error: addressProblem(address), focus: walletAddress };
       request.controller_wallet_address = address;
       controller = { kind: "wallet", value: address };
     } else {
       const key = publicKey.value.trim();
-      if (!PUBLIC_KEY.test(key)) return { error: "The public key should look like ed25519:z6Mk… (from your agent)." };
+      if (!key) return { error: "Every DID needs an owner: paste the agent's public key (ed25519:z6Mk…), or choose “My wallet” above.", focus: publicKey };
+      if (!PUBLIC_KEY.test(key)) return { error: "The public key should look like ed25519:z6Mk… (from your agent).", focus: publicKey };
       request.controller_public_key = key;
       controller = { kind: "key", value: key };
     }
@@ -309,6 +333,7 @@
     detailsError.hidden = !details.error;
     if (details.error) {
       detailsError.textContent = details.error;
+      if (details.focus && !details.focus.disabled) details.focus.focus();
       return;
     }
     busy = true;

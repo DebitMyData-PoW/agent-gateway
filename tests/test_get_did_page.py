@@ -110,6 +110,27 @@ def test_a_dmd_address_in_the_wallet_box_is_explained() -> None:
     assert "id=wallet-hint" in get_did_page.page_html(staging=False)
 
 
+def test_the_page_says_the_did_needs_an_owner_not_a_particular_wallet() -> None:
+    # No wallet extension is required: the owner is any Ethereum-style wallet (its address typed,
+    # the signature pasted from the wallet app) or an agent's key, and the page says so.
+    html = get_did_page.page_html(staging=False)
+    assert "<legend>Who owns it</legend>" in html
+    assert "Every DID needs an owner: a wallet or an agent's key." in html
+    assert "No browser extension needed" in html
+    assert "id=wallet-address-label" in html
+    # the steps not open yet say when they open
+    assert html.count('class="small locked"') == 3
+    assert "Opens after <strong>Get my quote</strong> at step 1" in html
+    script = get_did_page._SCRIPT
+    assert "It needs no balance (no USDC, no ETH)" in html
+    assert "Every DID needs an owner before step 2 opens: type the 0x… address" in script
+    assert "No wallet extension in this browser, and you don't need one" in script
+    # a wrong address says what is wrong with it
+    assert "characters an Ethereum-style address can't have" in script
+    assert "so it was probably mistyped" in script
+    assert "Connect your wallet, or type its address" not in script
+
+
 def test_every_page_for_people_has_the_same_top_bar_and_footer(
     client: TestClient,
     staging_client: TestClient,  # noqa: F811
