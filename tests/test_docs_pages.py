@@ -140,6 +140,8 @@ def test_the_page_marks_each_step_and_offers_the_next_one() -> None:
     # Start over opens the page again at its plain address (forms and values all cleared).
     assert "window.location.replace(window.location.origin + window.location.pathname)" in script
     assert '"Back to the top of the page"' in script
+    # The payment option is picked from a list, not pasted: no Copy button for it.
+    assert "pick: true" in script and "if (!found.pick)" in script
     assert "body.dmd-focusing" in docs_pages._HELPER_CSS
     # In the open step, the required fields and the ones to paste stay bright; the optional
     # ones and the technical details (type, pattern, "Send empty value") are dimmed.

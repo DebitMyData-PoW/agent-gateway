@@ -513,7 +513,8 @@
       }
       case "preferred_payment_option": {
         const value = (settings.payment_options || {})[paying];
-        return value && { value, note: "as picked in “How the agent pays” at the top of the page" };
+        // Picked from a list, not pasted: shown without a Copy button.
+        return value && { value, note: "pick the same in the list, as in “How the agent pays” at the top", pick: true };
       }
       case "message":
         return keptValue("message") && { value: keptValue("message"), note: "sign it exactly as it is" };
@@ -528,8 +529,11 @@
       const found = source(field);
       if (!found) continue;
       const value = element("span", { class: "vp-fill-value", title: found.value }, found.value);
-      const button = element("button", { type: "button", class: "vp-copy" }, "Copy");
-      button.addEventListener("click", () => copy(button, found.value, value));
+      let button = null;
+      if (!found.pick) {
+        button = element("button", { type: "button", class: "vp-copy" }, "Copy");
+        button.addEventListener("click", () => copy(button, found.value, value));
+      }
       rows.push(
         element(
           "div",
