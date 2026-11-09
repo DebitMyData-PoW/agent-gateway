@@ -3,7 +3,7 @@
 // and its icons, so that the app still opens without a network (and says it is offline). The
 // page itself always comes from the network first, so a new version shows at once. It never
 // touches anything else: the API calls (/v1/...) go straight to the gateway, never cached.
-const CACHE = "dmd-did-app-3"; // a new name drops the old copies (new icons)
+const CACHE = "dmd-did-app-4"; // a new name drops the old copies (new icons)
 const PAGE = "/";
 const FILES = [
   "/fonts/mada-latin-400-normal.woff2",
@@ -11,6 +11,7 @@ const FILES = [
   "/fonts/mada-latin-700-normal.woff2",
   "/fonts/mada-latin-800-normal.woff2",
   "/favicon.png",
+  "/logo.png",
   "/app/icon-192.png",
 ];
 

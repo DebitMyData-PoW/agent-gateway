@@ -21,7 +21,7 @@ box-shadow:0 4px 18px rgba(17,17,26,.06)}
 flex-wrap:wrap}
 .topbar .in{gap:12px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:800;font-size:1.15rem}
-.brand img{width:34px;height:34px}
+.brand img{width:auto;height:40px}
 .brand:hover{color:var(--red)}
 .modes{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;font-size:.95rem}
 .modes a{padding:6px 14px;border-radius:999px;color:var(--red);font-weight:600;text-decoration:none}

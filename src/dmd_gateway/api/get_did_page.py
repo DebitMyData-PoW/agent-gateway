@@ -68,7 +68,7 @@ APP_SHORT_NAME = "DID DebitMyData"
 THEME_COLOR = "#640000"  # the top bar's red
 APP_ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png")
 # Raised whenever the icons change, so installed apps and browsers fetch the new ones.
-ICON_VERSION = "2"
+ICON_VERSION = "3"
 DESCRIPTION = (
     "Get your DebitMyData DID: a verifiable identity for an AI agent, a bot, a person or an "
     "organization, with a credential signed by DebitMyData."

@@ -160,6 +160,7 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
             page = response.text
             assert '<header class="topbar' in page and '<footer class="site-footer' in page, path
             assert brand.CSS in page, path  # the shared font and colours
+            assert f'<a class=brand href="/">{brand.LOGO}DebitMyData</a>' in page, path
             assert "font-src 'self'" in response.headers["content-security-policy"], path
             assert ('href="/docs">Guided test' in page) is staging, path
             # On staging, "Real site": the same page in production (Get a DID: the app).
@@ -173,6 +174,15 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
                 }.get(path, real)
                 assert real == expected, path
             assert page.count("aria-current=page") >= 1, path
+        # The DebitMyData logo in the top bar, wider than high (151 x 120).
+        logo = server.get("/logo.png")
+        assert logo.status_code == 200 and logo.headers["content-type"] == "image/png"
+        assert _png_size(logo.content) == (151, 120)
+
+
+def _png_size(png: bytes) -> tuple[int, int]:
+    assert png.startswith(b"\x89PNG\r\n\x1a\n") and png[12:16] == b"IHDR"
+    return int.from_bytes(png[16:20], "big"), int.from_bytes(png[20:24], "big")
 
 
 # --------------------------------------------------------------------------- the DMD payment link
@@ -259,7 +269,7 @@ def test_the_app_host_serves_the_page_at_its_root_with_what_installs_it(
     for tag in (
         '<link rel=manifest href="/manifest.webmanifest">',
         '<meta name=theme-color content="#640000">',
-        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v=2">',
+        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v=3">',
         "<meta name=apple-mobile-web-app-capable content=yes>",
         '<meta name=apple-mobile-web-app-title content="DID DebitMyData">',
     ):
@@ -283,10 +293,12 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
     assert manifest["name"] == manifest["short_name"] == "DID DebitMyData"
     sizes = {(icon["sizes"], icon["purpose"]) for icon in manifest["icons"]}
     assert {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")} <= sizes
-    for icon in manifest["icons"] + [{"src": "/app/apple-touch-icon.png"}]:
+    for icon in manifest["icons"] + [{"src": "/app/apple-touch-icon.png", "sizes": "180x180"}]:
         image = app_client.get(icon["src"])
         assert image.status_code == 200 and image.headers["content-type"] == "image/png"
-        assert image.content.startswith(b"\x89PNG")
+        # Each image is the size it is listed with.
+        width, height = map(int, icon["sizes"].split("x"))
+        assert _png_size(image.content) == (width, height), icon["src"]
     assert app_client.get("/app/other.png").status_code == 404
 
 

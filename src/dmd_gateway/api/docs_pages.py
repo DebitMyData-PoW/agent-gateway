@@ -1,4 +1,5 @@
-"""The interactive API docs (/docs, /redoc) and the DebitMyData favicon.
+"""The interactive API docs (/docs, /redoc), the DebitMyData favicon and the logo in the
+pages' top bar.
 
 FastAPI's built-in docs pages are switched off in ``create_app`` and served here instead,
 so that they carry the DebitMyData logo and open with "Try it out" already enabled. The
@@ -46,6 +47,7 @@ _STATIC = files("dmd_gateway") / "static"
 _ICONS = {
     "favicon.ico": "image/x-icon",
     "favicon.png": "image/png",
+    "logo.png": "image/png",
 }
 FAVICON_URL = "/favicon.png"
 
@@ -246,3 +248,9 @@ def favicon_ico() -> Response:
 @router.get("/favicon.png")
 def favicon_png() -> Response:
     return _icon("favicon.png")
+
+
+# The DebitMyData logo (the coin side of debitmydata.com's logo) in every page's top bar.
+@router.get("/logo.png")
+def logo_png() -> Response:
+    return _icon("logo.png")

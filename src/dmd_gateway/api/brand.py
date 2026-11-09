@@ -30,6 +30,9 @@ POLICIES_PATH = "/policies"
 NO_TRANSFORM = "no-transform"
 
 HOME_PATH = "/"  # the site root: the Get a DID page (the guided test on staging)
+# DebitMyData's logo, the left side of debitmydata.com's (the coin, its band and the binary
+# lines), 151 x 120 pixels: shown 40 pixels high, sharp on high-density screens.
+LOGO = '<img src="/logo.png" alt="" width=50 height=40>'
 SOURCE_CODE = "https://github.com/DebitMyData-PoW/agent-gateway"
 CONTACT = "info@debitmydata.com"
 POLICY_LINKS = (
@@ -90,7 +93,7 @@ def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
         )
     return (
         '<header class="topbar"><div class=in>'
-        f'<a class=brand href="{HOME_PATH}"><img src="/favicon.png" alt="">DebitMyData</a>'
+        f'<a class=brand href="{HOME_PATH}">{LOGO}DebitMyData</a>'
         '<input type=checkbox id=menu-toggle class=menu-toggle aria-label="Menu" '
         "aria-controls=site-menu>"
         "<label for=menu-toggle class=menu-button aria-hidden=true><span></span></label>"
