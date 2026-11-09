@@ -6,7 +6,9 @@ each page's own inline style, and ``header`` and ``footer`` give every page the 
 and footer. The links are the same on every page: "Get a DID" at /get-did, the guided test
 (staging only) at /docs, the advanced API docs at /docs/advanced and the policies. On a
 phone the top bar's links fold into a menu button; it needs no script (a checkbox and its
-label), so it works under every page's Content-Security-Policy.
+label), so it works under every page's Content-Security-Policy. The "back to top" button is
+a plain link too: it fades in as the page scrolls down (CSS scroll-driven animation), and
+browsers without that show it all the time.
 """
 
 from __future__ import annotations
@@ -114,5 +116,14 @@ def footer(staging: bool = False, get_did: str = GET_DID_PATH) -> str:
     return (
         f'<footer class="site-footer"><div class=in><div class=cols>{columns}</div>'
         "<p class=legal>DebitMyData Agent Gateway · DIDs and payments for agents and people"
-        "</p></div></footer>"
+        f"</p></div></footer>{TO_TOP}"
     )
+
+
+# Fixed at the bottom right; "#top" scrolls to the top of the page.
+TO_TOP = (
+    '<a class=to-top href="#top" aria-label="Back to top" title="Back to top">'
+    '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">'
+    '<path d="M12 5l-7 7m7-7l7 7M12 5v14" fill="none" stroke="currentColor" stroke-width="2.4" '
+    'stroke-linecap="round" stroke-linejoin="round"/></svg></a>'
+)

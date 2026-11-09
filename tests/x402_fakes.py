@@ -254,7 +254,9 @@ class FakeFacilitator(FacilitatorClient):
         if self.settle_mode == "down":
             raise FacilitatorUnavailable("timeout")
         if self.settle_mode == "fail":
-            return SettleResult(False, "", self.network, payer, "insufficient_funds")
+            return SettleResult(
+                False, "", self.network, payer, "insufficient_funds", "balance below value"
+            )
         tx = self.chain.transfer_with_authorization(authorization)
         if self.settle_mode == "down_after_broadcast":
             raise FacilitatorUnavailable("timeout after broadcast")

@@ -35,6 +35,7 @@ from dmd_gateway.identity.crypto import verify_proof
 from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import IssuerKey
 from dmd_gateway.main import create_app
+from dmd_gateway.services import x402_payments
 from dmd_gateway.services.settlement import process_intent, run_pass
 from dmd_gateway.services.x402_payments import encode_header
 from dmd_gateway.settings import Settings
@@ -476,14 +477,36 @@ def test_a_forged_signature_is_refused(client: TestClient) -> None:
     assert "invalid_exact_evm_payload_signature" in response.json()["error"]["message"]
 
 
-def test_failed_settlement_charges_nothing(client: TestClient, engine: Engine) -> None:
+def test_failed_settlement_charges_nothing(
+    client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
     q, required = ready(client)
     FACILITATOR.settle_mode = "fail"
+    warnings: list[tuple[str, Any]] = []
+    monkeypatch.setattr(
+        x402_payments.log, "warning", lambda message, **kw: warnings.append((message, kw))
+    )
     response = register(client, q["registration_intent_id"], TestPayer().header(required))
     assert response.status_code == 402
     assert response.json()["error"]["code"] == "payment_failed"
     assert authorization_statuses(engine, q["payment_intent_id"]) == ["settle_rejected"]
     assert MERCHANT.lower() not in CHAIN.balances
+    # What the facilitator said is logged, to find out why it refused.
+    assert warnings == [
+        (
+            "x402 settlement refused",
+            {
+                "extra": {
+                    "event": {
+                        "payment_intent_id": q["payment_intent_id"],
+                        "network": required["accepts"][0]["network"],
+                        "reason": "insufficient_funds",
+                        "message": "balance below value",
+                    }
+                }
+            },
+        )
+    ]
 
 
 def test_lost_facilitator_answer_is_recovered_from_the_chain(

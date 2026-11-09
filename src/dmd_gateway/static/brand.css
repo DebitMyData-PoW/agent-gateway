@@ -53,3 +53,14 @@ background:#fff;border-radius:2px;transition:transform .2s,background .2s}
 .site-footer .col:last-child{grid-column:1/-1}
 }
 @media (prefers-reduced-motion:reduce){.menu-button span,.menu-button span::before,.menu-button span::after{transition:none}}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+.to-top{position:fixed;right:18px;bottom:18px;z-index:50;display:grid;place-items:center;width:46px;height:46px;
+border-radius:50%;background:var(--red);color:#fff;box-shadow:0 8px 20px rgba(200,8,21,.3);text-decoration:none}
+.to-top:hover{background:var(--red-hover);color:#fff}
+.to-top:focus-visible{outline:3px solid var(--red-deep);outline-offset:3px}
+@supports (animation-timeline:scroll()){
+.to-top{animation:to-top-in linear both;animation-timeline:scroll(root);animation-range:150px 450px}
+@keyframes to-top-in{from{opacity:0;visibility:hidden;transform:translateY(12px)}
+to{opacity:1;visibility:visible;transform:none}}
+}
+@media print{.to-top{display:none}}

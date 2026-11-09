@@ -369,3 +369,6 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
                 assert f'href="{href}"' in page.split('<footer class="site-footer">')[1], href
             guided = '<a href="/docs">Guided test</a>' in page.split("<footer")[1]
             assert guided is staging, path
+            # The "back to top" button: a plain link, faded in by CSS as the page scrolls.
+            assert '<a class=to-top href="#top" aria-label="Back to top"' in page, path
+            assert "animation-timeline:scroll(root)" in page, path

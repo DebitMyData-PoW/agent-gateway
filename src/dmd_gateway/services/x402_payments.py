@@ -808,6 +808,18 @@ def _verify_and_settle(ctx: X402Context, prepared: _Prepared) -> None:
         _update(ctx, prepared.authorization_id, "submitted", reason="settled without a hash")
     else:
         reason = result.error_reason or "the facilitator could not settle the payment"
+        # Nothing was sent. What the facilitator said goes to the logs, to find out why.
+        log.warning(
+            "x402 settlement refused",
+            extra={
+                "event": {
+                    "payment_intent_id": prepared.payment_intent_id,
+                    "network": result.network,
+                    "reason": reason,
+                    "message": result.error_message,
+                }
+            },
+        )
         _update(ctx, prepared.authorization_id, "settle_rejected", reason=reason)
         raise _payment_required_error(
             prepared.required, f"Payment failed: {reason}", code="payment_failed"

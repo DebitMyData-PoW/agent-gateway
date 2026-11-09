@@ -45,6 +45,7 @@ class SettleResult:
     network: str
     payer: str | None
     error_reason: str | None
+    error_message: str | None = None  # the facilitator's explanation, for the logs only
 
     def as_payment_response(self) -> dict[str, Any]:
         """The ``SettlementResponse`` object for the PAYMENT-RESPONSE header."""
@@ -170,6 +171,7 @@ class FacilitatorClient:
             network=str(data.get("network") or requirements.get("network") or ""),
             payer=_short(data.get("payer"), 64),
             error_reason=_short(data.get("errorReason") or data.get("errorMessage")),
+            error_message=_short(data.get("errorMessage"), 300),
         )
 
     def close(self) -> None:
