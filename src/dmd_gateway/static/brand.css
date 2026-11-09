@@ -4,6 +4,8 @@ src:url(/fonts/mada-latin-400-normal.woff2) format("woff2")}
 src:url(/fonts/mada-latin-600-normal.woff2) format("woff2")}
 @font-face{font-family:Mada;font-style:normal;font-weight:700;font-display:swap;
 src:url(/fonts/mada-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:Mada;font-style:normal;font-weight:800;font-display:swap;
+src:url(/fonts/mada-latin-800-normal.woff2) format("woff2")}
 :root{--red:#c80815;--red-hover:#e12330;--red-deep:#640000;--red-brand:#bf030c;--pink:#fff0f1;
 --grey:#f5f5f5;--line:#e6e6e6;--text:#211f1f;--muted:#7d8797;--green:#098551;--green-hover:#0ead6a;
 --warn:#b35900;--code:#f6f6f6;--sans:Mada,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;

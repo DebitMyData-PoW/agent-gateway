@@ -62,7 +62,8 @@ with `{"status":"ready",...}`.
 Then, from any computer: <https://staging-api.debitmydata.io/v1/discovery>,
 <https://staging-api.debitmydata.io/docs> (the guided test page) and
 <https://staging-api.debitmydata.io/docs/advanced> (every endpoint, by hand). The top bar of
-every staging page also has **Real API ↗**: the same page on <https://api.debitmydata.io>.
+every staging page also has **Real site ↗**: the same page in production (for Get a DID and
+the guided test, the app at <https://id.debitmydata.io>).
 
 | What | Where |
 | --- | --- |

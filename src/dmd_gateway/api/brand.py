@@ -21,6 +21,7 @@ GET_DID_PATH = "/get-did"
 GUIDED_PATH = "/docs"  # staging
 STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
 PRODUCTION_SITE = "https://api.debitmydata.io"
+PRODUCTION_APP = "https://id.debitmydata.io/"  # the Get a DID app (production)
 ADVANCED_PATH = "/docs/advanced"
 POLICIES_PATH = "/policies"
 # For every HTML page: Cloudflare must not change it on the way. Its email protection rewrites
@@ -60,12 +61,13 @@ def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, s
     return pages
 
 
-# On staging, the same page on the real (production) server; the guided test has none.
+# On staging, the same page on the real (production) site; the guided test has none, so it
+# leads to the Get a DID app too.
 _PRODUCTION_PAGE = {
-    "get-did": GET_DID_PATH,
-    "guided": GET_DID_PATH,
-    "advanced": ADVANCED_PATH,
-    "policies": POLICIES_PATH,
+    "get-did": PRODUCTION_APP,
+    "guided": PRODUCTION_APP,
+    "advanced": PRODUCTION_SITE + ADVANCED_PATH,
+    "policies": PRODUCTION_SITE + POLICIES_PATH,
 }
 
 
@@ -81,10 +83,10 @@ def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
         for key, path, label in _pages(staging, get_did)
     )
     if staging:
-        page = _PRODUCTION_PAGE.get(current, GET_DID_PATH)
+        page = _PRODUCTION_PAGE.get(current, PRODUCTION_APP)
         links += (
-            f'<a class=real href="{PRODUCTION_SITE}{page}" title="The same page on the real API, '
-            'api.debitmydata.io (production)">Real API ↗</a>'
+            f'<a class=real href="{page}" title="The same page on the real site (production)">'
+            "Real site ↗</a>"
         )
     return (
         '<header class="topbar"><div class=in>'

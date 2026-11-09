@@ -162,7 +162,16 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
             assert brand.CSS in page, path  # the shared font and colours
             assert "font-src 'self'" in response.headers["content-security-policy"], path
             assert ('href="/docs">Guided test' in page) is staging, path
-            assert ('href="https://api.debitmydata.io/' in page) is staging, path  # Real API
+            # On staging, "Real site": the same page in production (Get a DID: the app).
+            assert ("class=real href=" in page) is staging, path
+            if staging:
+                real = page.split("class=real href=")[1].split('"')[1]
+                expected = {
+                    "/get-did": "https://id.debitmydata.io/",
+                    "/docs": "https://id.debitmydata.io/",
+                    "/policies/terms": "https://api.debitmydata.io/policies",
+                }.get(path, real)
+                assert real == expected, path
             assert page.count("aria-current=page") >= 1, path
 
 
@@ -252,7 +261,7 @@ def test_the_app_host_serves_the_page_at_its_root_with_what_installs_it(
         '<meta name=theme-color content="#640000">',
         '<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v=2">',
         "<meta name=apple-mobile-web-app-capable content=yes>",
-        '<meta name=apple-mobile-web-app-title content="DebitMyData DID">',
+        '<meta name=apple-mobile-web-app-title content="DID DebitMyData">',
     ):
         assert tag in page
     # "Get a DID" in the top bar is the app's root; the old address leads there.
@@ -270,7 +279,8 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
     manifest = response.json()
     assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
     assert manifest["display"] == "standalone"
-    assert manifest["name"] == "DebitMyData DID" and len(manifest["short_name"]) <= 12
+    # "DID" first: a home screen that shortens the name still shows what the app is for.
+    assert manifest["name"] == manifest["short_name"] == "DID DebitMyData"
     sizes = {(icon["sizes"], icon["purpose"]) for icon in manifest["icons"]}
     assert {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")} <= sizes
     for icon in manifest["icons"] + [{"src": "/app/apple-touch-icon.png"}]:
@@ -381,3 +391,33 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
             # Cloudflare must not rewrite the page (its email protection would hide the
             # address behind a script the CSP refuses).
             assert "no-transform" in test_client.get(path).headers["cache-control"], path
+
+
+# --------------------------------------------------------------------------- explaining DIDs
+
+
+def test_the_page_explains_dids_before_the_steps(client: TestClient) -> None:
+    page = client.get("/get-did").text
+    # Big buttons to the steps and to the explanation; the steps come after it.
+    assert '<a class="button go" href="#start">Get my DID</a>' in page
+    assert '<a class="button ghost" href="#what">What is a DID?</a>' in page
+    order = [
+        page.index(marker)
+        for marker in ("class=stats", "id=what", "id=agents", "id=how", "id=start", "id=s1")
+    ]
+    assert order == sorted(order)
+    # The numbers, and the explanations in plain words.
+    for number, label in (("$25", "paid once"), ("4", "simple steps"), ("0", "accounts")):
+        assert f"<b>{number}</b><span class=label>{label}" in page
+    for text in (
+        "DID stands for Decentralized Identifier",
+        "large language\nmodels (LLMs)",
+        "You hold the key",
+        "AI agents and bots",
+        "Prove it is yours",
+    ):
+        assert text in page, text
+    assert '<ul class="features three">' in page  # three cards in a row on a computer
+    # Icons are drawn in the page: nothing loads from elsewhere.
+    assert page.count('<svg viewBox="0 0 24 24"') >= 11
+    assert '<img src="http' not in page

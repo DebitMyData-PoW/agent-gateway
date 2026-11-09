@@ -55,6 +55,7 @@ FONTS = (
     "mada-latin-400-normal.woff2",
     "mada-latin-600-normal.woff2",
     "mada-latin-700-normal.woff2",
+    "mada-latin-800-normal.woff2",  # the headlines
 )
 
 
@@ -62,8 +63,8 @@ FONTS = (
 APP_ROOT = "/"
 MANIFEST_PATH = "/manifest.webmanifest"
 WORKER_PATH = "/sw.js"
-APP_NAME = "DebitMyData DID"
-APP_SHORT_NAME = "DebitMyData"
+APP_NAME = "DID DebitMyData"  # "DID" first: what people see under the icon
+APP_SHORT_NAME = "DID DebitMyData"
 THEME_COLOR = "#640000"  # the top bar's red
 APP_ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png")
 # Raised whenever the icons change, so installed apps and browsers fetch the new ones.
@@ -126,6 +127,148 @@ debitmydata.io</a>. DMD is not listed on any exchange yet.</p>
 </div>"""
 
 
+def _icon(paths: str) -> str:
+    return (
+        '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '
+        f'focusable="false">{paths}</svg>'
+    )
+
+
+ICONS = {
+    "tag": _icon('<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.5"/>'),
+    "steps": _icon(
+        '<path d="M10 6h10M10 12h10M10 18h10"/><circle cx="5" cy="6" r="1.5"/>'
+        '<circle cx="5" cy="12" r="1.5"/><circle cx="5" cy="18" r="1.5"/>'
+    ),
+    "clock": _icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+    "no-account": _icon(
+        '<circle cx="10" cy="8" r="4"/><path d="M3 21c1.2-3.8 3.8-6 7-6 1.4 0 2.7.4 3.8 1.2"/>'
+        '<path d="M16 15l5 5M21 15l-5 5"/>'
+    ),
+    "globe": _icon(
+        '<circle cx="12" cy="12" r="9"/>'
+        '<path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>'
+    ),
+    "key": _icon('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>'),
+    "badge": _icon(
+        '<rect x="3" y="4" width="18" height="12" rx="2"/><circle cx="12" cy="10" r="2.5"/>'
+        '<path d="M9.5 20l2.5-1.5 2.5 1.5v-4"/>'
+    ),
+    "shield": _icon(
+        '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/>'
+    ),
+    "bot": _icon(
+        '<rect x="4" y="8" width="16" height="11" rx="3"/><path d="M12 5v3"/>'
+        '<circle cx="12" cy="4" r="1"/><path d="M9 13h.01M15 13h.01M9.5 16h5"/>'
+    ),
+    "person": _icon('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+    "building": _icon(
+        '<rect x="5" y="3" width="14" height="18" rx="1"/>'
+        '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M11 21v-3h2v3"/>'
+    ),
+}
+
+
+def _cards(items: tuple[tuple[str, str, str], ...], cls: str = "features") -> str:
+    cards = "".join(
+        f"<li class=feature><span class=icon>{ICONS[icon]}</span><h3>{title}</h3><p>{text}</p></li>"
+        for icon, title, text in items
+    )
+    return f'<ul class="{cls}">{cards}</ul>'
+
+
+STATS = (
+    ("tag", "$25", "paid once"),
+    ("steps", "4", "simple steps"),
+    ("clock", "~15 min", "start to finish"),
+    ("no-account", "0", "accounts or passwords"),
+)
+WHAT_IS_A_DID = (
+    (
+        "globe",
+        "Its own address",
+        "Your DID is a web address with a public document that tells anyone how to check "
+        "that it is really you.",
+    ),
+    (
+        "key",
+        "You hold the key",
+        "Only the owner of the wallet or key can prove they control the DID. DebitMyData "
+        "never sees a private key.",
+    ),
+    (
+        "badge",
+        "A signed credential",
+        "It comes with a verifiable credential signed by DebitMyData, which apps and agents "
+        "can check on their own.",
+    ),
+    (
+        "shield",
+        "Trust without passwords",
+        "Agents and apps recognise each other by their DIDs, with no account or password to steal.",
+    ),
+)
+WHO_IT_IS_FOR = (
+    (
+        "bot",
+        "AI agents and bots",
+        "Register by themselves through the API or the MCP server, pay automatically and "
+        "prove control with their own key.",
+    ),
+    (
+        "person",
+        "People",
+        "Get a personal DID right here in four steps, with your own wallet or key.",
+    ),
+    (
+        "building",
+        "Businesses",
+        "Give your company and each of its agents an identity that partners can verify.",
+    ),
+)
+HOW_IT_WORKS = (
+    ("Tell us about it", "A name, what it is for, and the wallet or key that will own it."),
+    ("Pay $25", "Once, with the payment option you choose."),
+    ("Prove it is yours", "Sign a one-time message with your wallet or key. Nothing is sent."),
+    ("Get your DID", "Your DID document and signed credential, ready to use."),
+)
+
+
+def _landing() -> str:
+    """What a DID is, before the steps: numbers, what it is, who it is for, how it works."""
+    stats = "".join(
+        f"<li class=stat><span class=icon>{ICONS[icon]}</span><b>{number}</b>"
+        f"<span class=label>{label}</span></li>"
+        for icon, number, label in STATS
+    )
+    steps = "".join(
+        f"<li><span class=n>{n}</span><h3>{title}</h3><p>{text}</p></li>"
+        for n, (title, text) in enumerate(HOW_IT_WORKS, start=1)
+    )
+    return f"""<ul class=stats aria-label="In numbers">{stats}</ul>
+<section class=intro id=what aria-labelledby=what-title>
+<h2 class=section-title id=what-title>What is a <span class=accent>DID</span>?</h2>
+<p class=lead>DID stands for Decentralized Identifier, an open standard of the W3C, the
+organization behind web standards. Think of it as an ID card for the internet, made for people
+and for software alike.</p>
+{_cards(WHAT_IS_A_DID)}
+</section>
+<section class=intro id=agents aria-labelledby=agents-title>
+<h2 class=section-title id=agents-title>Why <span class=accent>AI agents</span> need one</h2>
+<p class=lead>AI agents are programs that act on their own, often built on large language
+models (LLMs), the technology behind AI assistants. They search, buy and talk to other agents
+for the people and companies they work for. A DID lets an agent prove which agent it is and who
+stands behind it, so that others can trust it.</p>
+{_cards(WHO_IT_IS_FOR, "features three")}
+</section>
+<section class=intro id=how aria-labelledby=how-title>
+<h2 class=section-title id=how-title>How it <span class=accent>works</span></h2>
+<ol class=how>{steps}</ol>
+<p class=cta><a class="button go" href="#start">Start now</a></p>
+</section>"""
+
+
 def _body(staging: bool, app: bool = False) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
@@ -142,19 +285,25 @@ def _body(staging: bool, app: bool = False) -> str:
 {brand.header("get-did", staging, APP_ROOT if app else PAGE_PATH)}
 <main>
 <section class=hero>
-<p class=eyebrow>Verifiable identity</p>
+<p class=eyebrow>Identity for the agentic web</p>
 <h1>Get your <span class=accent>DebitMyData</span> DID</h1>
-<p>A DID is a verifiable identity for an AI agent, a bot, a person or an organization: a
-DID document anyone can check, a credential signed by DebitMyData, and the DID holder
-entitlement.</p>
-<ul class=perks><li>Signed by DebitMyData</li><li>Checkable by anyone</li><li>No account
+<p>A DID is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
+bot, a <strong>person</strong> or an <strong>organization</strong> is, with a credential signed
+by DebitMyData that anyone can check.</p>
+<ul class=perks><li>Signed by DebitMyData</li><li>W3C standard</li><li>No account
 needed</li></ul>
+<p class=cta><a class="button go" href="#start">Get my DID</a>
+<a class="button ghost" href="#what">What is a DID?</a></p>
 <span class=price id=price>$25 USD, paid once</span>
 </section>
 {staging_note}
+<div id=resume class=resume hidden aria-live=polite></div>
+{_landing()}
+<section class=start id=start aria-labelledby=start-title>
+<h2 class=section-title id=start-title>Get your <span class=accent>DID</span></h2>
 <p class=safe><strong>Safe by design:</strong> this page never asks for a private key or a
 recovery phrase, and never sends money. You pay and sign in your own wallet.</p>
-<div id=resume class=resume hidden aria-live=polite></div>
+</section>
 
 <section class="card step current" id=s1>
 <div class=step-head><span class=num>1</span><h2>About your DID</h2></div>
