@@ -23,6 +23,10 @@ STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
 PRODUCTION_SITE = "https://api.debitmydata.io"
 ADVANCED_PATH = "/docs/advanced"
 POLICIES_PATH = "/policies"
+# For every HTML page: Cloudflare must not change it on the way. Its email protection rewrites
+# mailto: links into "[email protected]" and needs a script the pages' CSP refuses, and any
+# other rewrite would break the CSP's hashes.
+NO_TRANSFORM = "no-transform"
 
 HOME_PATH = "/"  # the site root: the Get a DID page (the guided test on staging)
 SOURCE_CODE = "https://github.com/DebitMyData-PoW/agent-gateway"
@@ -94,13 +98,20 @@ def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
 
 
 def _column(title: str, links: list[tuple[str, str]]) -> str:
-    items = "".join(f'<a href="{path}">{label}</a>' for path, label in links)
+    # Footer links open in a new tab, so the page in hand (a DID being registered) stays.
+    items = "".join(
+        f'<a href="{path}">{label}</a>'
+        if path.startswith("mailto:")
+        else f'<a href="{path}" target=_blank rel=noopener>{label}</a>'
+        for path, label in links
+    )
     return f"<div class=col><p class=head>{title}</p>{items}</div>"
 
 
-def footer(staging: bool = False, get_did: str = GET_DID_PATH) -> str:
+def footer(staging: bool = False, get_did: str = GET_DID_PATH, to_top: bool = True) -> str:
     """The footer, in columns like the Agentic Spaces site: the gateway's pages, the
-    developers' links, the policies, DebitMyData's other sites and the contact address."""
+    developers' links, the policies, DebitMyData's other sites and the contact address.
+    ``to_top`` adds the "back to top" button (the API docs page has its own)."""
     pages = [(get_did, "Get a DID")]
     if staging:
         pages.append((GUIDED_PATH, "Guided test"))
@@ -116,13 +127,13 @@ def footer(staging: bool = False, get_did: str = GET_DID_PATH) -> str:
     return (
         f'<footer class="site-footer"><div class=in><div class=cols>{columns}</div>'
         "<p class=legal>DebitMyData Agent Gateway · DIDs and payments for agents and people"
-        f"</p></div></footer>{TO_TOP}"
+        f"</p></div></footer>{TO_TOP if to_top else ''}"
     )
 
 
 # Fixed at the bottom right; "#top" scrolls to the top of the page.
 TO_TOP = (
-    '<a class=to-top href="#top" aria-label="Back to top" title="Back to top">'
+    '<a class=back-to-top href="#top" aria-label="Back to top" title="Back to top">'
     '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">'
     '<path d="M12 5l-7 7m7-7l7 7M12 5v14" fill="none" stroke="currentColor" stroke-width="2.4" '
     'stroke-linecap="round" stroke-linejoin="round"/></svg></a>'

@@ -66,6 +66,8 @@ APP_NAME = "DebitMyData DID"
 APP_SHORT_NAME = "DebitMyData"
 THEME_COLOR = "#640000"  # the top bar's red
 APP_ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png")
+# Raised whenever the icons change, so installed apps and browsers fetch the new ones.
+ICON_VERSION = "2"
 DESCRIPTION = (
     "Get your DebitMyData DID: a verifiable identity for an AI agent, a bot, a person or an "
     "organization, with a credential signed by DebitMyData."
@@ -83,7 +85,7 @@ CSP = (
     "form-action 'none'; frame-ancestors 'none'"
 )
 HEADERS = {
-    "Cache-Control": "no-store",
+    "Cache-Control": f"no-store, {brand.NO_TRANSFORM}",
     "Content-Security-Policy": CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -231,7 +233,7 @@ def page_html(staging: bool, app: bool = False) -> str:
         "<meta name=apple-mobile-web-app-capable content=yes>"
         f'<meta name=apple-mobile-web-app-title content="{APP_NAME}">'
         "<meta name=apple-mobile-web-app-status-bar-style content=black>"
-        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png">'
+        f'<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v={ICON_VERSION}">'
         if app
         else ""
     )
@@ -287,10 +289,20 @@ def _app_only(request: Request) -> None:
 
 def manifest_json() -> dict[str, object]:
     icons = [
-        {"src": "/app/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-        {"src": "/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
         {
-            "src": "/app/icon-maskable-512.png",
+            "src": f"/app/icon-192.png?v={ICON_VERSION}",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": f"/app/icon-512.png?v={ICON_VERSION}",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": f"/app/icon-maskable-512.png?v={ICON_VERSION}",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable",

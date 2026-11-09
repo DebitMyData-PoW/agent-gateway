@@ -39,7 +39,7 @@ CSP = (
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 HTML_HEADERS = {
-    "Cache-Control": CACHE,
+    "Cache-Control": f"{CACHE}, {brand.NO_TRANSFORM}",
     "Content-Security-Policy": CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",

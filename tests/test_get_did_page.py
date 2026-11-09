@@ -72,7 +72,7 @@ def test_only_the_page_own_script_style_and_font_may_run(client: TestClient) -> 
     ):
         assert rule in csp
     assert "unsafe" not in csp and "googleapis" not in response.text
-    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["cache-control"] == "no-store, no-transform"
 
 
 def test_the_font_is_served_here(client: TestClient) -> None:
@@ -250,7 +250,7 @@ def test_the_app_host_serves_the_page_at_its_root_with_what_installs_it(
     for tag in (
         '<link rel=manifest href="/manifest.webmanifest">',
         '<meta name=theme-color content="#640000">',
-        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png">',
+        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v=2">',
         "<meta name=apple-mobile-web-app-capable content=yes>",
         '<meta name=apple-mobile-web-app-title content="DebitMyData DID">',
     ):
@@ -367,8 +367,17 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
                 "mailto:info@debitmydata.com",
             ):
                 assert f'href="{href}"' in page.split('<footer class="site-footer">')[1], href
-            guided = '<a href="/docs">Guided test</a>' in page.split("<footer")[1]
+            guided = ">Guided test</a>" in page.split("<footer")[1]
             assert guided is staging, path
-            # The "back to top" button: a plain link, faded in by CSS as the page scrolls.
-            assert '<a class=to-top href="#top" aria-label="Back to top"' in page, path
-            assert "animation-timeline:scroll(root)" in page, path
+            # The "back to top" button: a plain link, faded in by CSS as the page scrolls. The
+            # API docs page keeps its own (placed above its panel): one button per page.
+            button = '<a class=back-to-top href="#top" aria-label="Back to top"' in page
+            assert button is (path != "/docs/advanced"), path
+            assert page.count("<a class=back-to-top ") == (0 if path == "/docs/advanced" else 1)
+            # Footer links open in a new tab; the email address is a plain mailto: link.
+            footer = page.split('<footer class="site-footer">')[1]
+            assert '<a href="/policies/terms" target=_blank rel=noopener>Terms</a>' in footer
+            assert '<a href="mailto:info@debitmydata.com">info@debitmydata.com</a>' in footer
+            # Cloudflare must not rewrite the page (its email protection would hide the
+            # address behind a script the CSP refuses).
+            assert "no-transform" in test_client.get(path).headers["cache-control"], path

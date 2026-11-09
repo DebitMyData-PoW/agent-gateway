@@ -67,7 +67,7 @@ def test_only_the_page_own_script_and_style_may_run(staging_client: TestClient) 
     assert f"style-src 'sha256-{_sha256(style)}'" in csp
     assert "default-src 'none'" in csp and "connect-src 'self'" in csp
     assert "frame-ancestors 'none'" in csp
-    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["cache-control"] == "no-store, no-transform"
     assert response.headers["referrer-policy"] == "no-referrer"
 
 
