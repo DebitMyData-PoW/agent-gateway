@@ -92,7 +92,7 @@ Developers: the same steps by hand, and every other endpoint, are in the
 
 
 def _body() -> str:
-    return brand.header("guided", staging=True) + _BODY + brand.footer()
+    return brand.header("guided", staging=True) + _BODY + brand.footer(staging=True)
 
 
 def page_html() -> str:

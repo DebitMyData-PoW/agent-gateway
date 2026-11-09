@@ -196,7 +196,7 @@ def swagger_html(
         f"{_external('link', *SWAGGER_UI_CSS)}<style>{_HELPER_CSS}</style></head>"
         f"<body>{brand.header('advanced', staging)}{_intro(staging, version)}"
         '<div id="swagger-ui"></div>'
-        f"{brand.footer()}"
+        f"{brand.footer(staging)}"
         f'<script type="application/json" id="swagger-config">{config}</script>'
         f"{_external('script', *SWAGGER_UI_JS)}<script>{_HELPER_JS}</script></body></html>"
     )

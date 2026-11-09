@@ -115,8 +115,17 @@ listen=0
 rpcbind=127.0.0.1
 rpcallowip=127.0.0.1
 fallbackfee=0.0001
+maxtipage=315360000
 rpcauth=$RPCAUTH
 EOF
+fi
+# The private test chain only gets a block when a test runs. Without maxtipage, a node that
+# restarts more than a day after its last block thinks it is still catching up ("initial block
+# download"), and the gateway refuses DMD quotes until a block is mined. Ten years: never.
+DMD_RESTART=""
+if ! grep -q '^maxtipage=' "$DMD_CONF"; then
+    sed -i '/^\[regtest\]$/a maxtipage=315360000' "$DMD_CONF"
+    DMD_RESTART=1
 fi
 chown root:dmd "$DMD_CONF"
 chmod 640 "$DMD_CONF"
@@ -177,6 +186,7 @@ run_as_gateway() {
 step "Starting the DMD node"
 $SYSTEMCTL daemon-reload
 $SYSTEMCTL enable --now debitmydata >/dev/null
+if [ -n "$DMD_RESTART" ]; then $SYSTEMCTL restart debitmydata; fi
 for _ in $(seq 1 60); do dmd-cli getblockchaininfo >/dev/null 2>&1 && break; sleep 1; done
 [ "$(dmd-cli getblockchaininfo | jq -r .chain)" = "regtest" ] || fail "the DMD node is not running on regtest"
 

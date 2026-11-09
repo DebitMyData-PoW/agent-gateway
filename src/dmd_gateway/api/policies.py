@@ -71,15 +71,16 @@ def _document(request: Request, title: str, current: str | None, body: str) -> s
         f"{escape(page.title)}</a>"
         for page in _pages(request).values()
     )
+    staging = bool(request.app.state.settings.staging_test_tools)
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{escape(title)} · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
         f"<style>{_STYLE}</style></head><body>"
-        f"{brand.header('policies', bool(request.app.state.settings.staging_test_tools))}"
+        f"{brand.header('policies', staging)}"
         f'<main><nav class=policies aria-label="Policies">{links}</nav>'
-        f"<article>{body}</article></main>{brand.footer()}"
+        f"<article>{body}</article></main>{brand.footer(staging)}"
         "</body></html>"
     )
 

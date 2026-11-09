@@ -35,4 +35,9 @@ balance="$(dmd-cli -rpcwallet=payer-test getbalance)"
 if python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) < 100 else 1)" "$balance"; then
     dmd-cli generatetoaddress 260 "$(dmd-cli -rpcwallet=payer-test getnewaddress)" >/dev/null
 fi
+# A node that still thinks it is catching up (its newest block is old) refuses DMD quotes;
+# one new block ends that.
+if [ "$(dmd-cli getblockchaininfo | jq -r .initialblockdownload)" = "true" ]; then
+    dmd-cli generatetoaddress 1 "$(dmd-cli -rpcwallet=payer-test getnewaddress)" >/dev/null
+fi
 echo "payer-test balance: $(dmd-cli -rpcwallet=payer-test getbalance) DMD (test coins, no value)"

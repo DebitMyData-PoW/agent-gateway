@@ -362,6 +362,16 @@ It pulls the latest commit and runs `setup.sh` again: packages, database schema 
 are updated; secrets, keys, wallets and data are kept. When Cloudflare changes its address
 ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 
+**DMD quotes answer "temporarily unavailable" (503, `payment_rail_unavailable`).** The test
+chain only gets a block when a test runs, and a node whose newest block is old thinks it is
+still catching up. The node setting `maxtipage` (added by `setup.sh`) prevents it, and the
+update mines one block if needed; to do it by hand:
+
+```bash
+dmd-cli generatetoaddress 1 "$(dmd-cli -rpcwallet=payer-test getnewaddress)"
+dmd-cli getblockchaininfo | jq .initialblockdownload   # false
+```
+
 ## 6. Request limits and load testing
 
 **Limits.** nginx counts requests per visitor address (the real one, passed on by

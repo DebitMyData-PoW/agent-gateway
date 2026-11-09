@@ -336,3 +336,36 @@ def test_usdc_comes_first_and_dmd_is_explained() -> None:
     assert "not listed on any exchange yet" in guide
     # Links to other sites open in a new tab, without giving them this page.
     assert guide.count("target=_blank") == guide.count("rel=noopener") == 4
+
+
+# --------------------------------------------------------------------------- top bar and footer
+
+
+def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
+    client: TestClient,
+    staging_client: TestClient,  # noqa: F811
+) -> None:
+    for test_client, staging in ((client, False), (staging_client, True)):
+        for path in ("/get-did", "/policies/terms", "/docs/advanced"):
+            page = test_client.get(path).text
+            # The DebitMyData name leads to the site's home, not to another site.
+            assert '<a class=brand href="/">' in page, path
+            # A checkbox and its label open the menu: no script, so every page's CSP allows it.
+            assert "<input type=checkbox id=menu-toggle class=menu-toggle" in page, path
+            assert "<label for=menu-toggle class=menu-button" in page, path
+            assert "<nav id=site-menu class=modes" in page, path
+            assert ".menu-toggle:checked~.modes{display:flex}" in page, path
+            # The footer, in columns.
+            for head in ("Get a DID", "Developers", "Policies", "DebitMyData", "Contact"):
+                assert f"<p class=head>{head}</p>" in page, (path, head)
+            for href in (
+                "/policies/terms",
+                "/policies/refunds",
+                "https://debitmydata.com/",
+                "https://pool.debitmydata.io/",
+                "https://github.com/DebitMyData-PoW/agent-gateway",
+                "mailto:info@debitmydata.com",
+            ):
+                assert f'href="{href}"' in page.split('<footer class="site-footer">')[1], href
+            guided = '<a href="/docs">Guided test</a>' in page.split("<footer")[1]
+            assert guided is staging, path

@@ -173,3 +173,21 @@ def test_nginx_also_answers_for_the_app_host_when_one_is_set(script: Path, tmp_p
         check=False,
     )
     assert refused.returncode == 1 and "must be a host name only" in refused.stderr
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+def test_the_staging_test_chain_never_looks_out_of_date(tmp_path: Path) -> None:
+    """A regtest node restarted days after its last block must not refuse DMD quotes."""
+    setup = (DEPLOY / "staging" / "setup.sh").read_text(encoding="utf-8")
+    assert setup.count("maxtipage=315360000") == 2  # new installs, and existing ones
+    command = next(line.strip() for line in setup.splitlines() if "sed -i '/^\\[regtest" in line)
+    conf = tmp_path / "debitmydata.conf"
+    conf.write_text("regtest=1\nserver=1\n[regtest]\nrpcbind=127.0.0.1\n", encoding="utf-8")
+    assert BASH is not None
+    subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        [BASH, "-c", command, "_"], env={"DMD_CONF": str(conf), "PATH": "/usr/bin:/bin"}, check=True
+    )
+    lines = conf.read_text(encoding="utf-8").splitlines()
+    assert lines[lines.index("[regtest]") + 1] == "maxtipage=315360000"
+    wallets = (DEPLOY / "staging" / "regtest-wallets.sh").read_text(encoding="utf-8")
+    assert "initialblockdownload" in wallets and "generatetoaddress 1" in wallets

@@ -218,7 +218,7 @@ with any DMD wallet.</p><div class=body></div>
 </section>
 <p id=announcer class=sr-only aria-live=polite></p>
 </main>
-{brand.footer()}
+{brand.footer(staging, APP_ROOT if app else PAGE_PATH)}
 """.strip()
 
 
