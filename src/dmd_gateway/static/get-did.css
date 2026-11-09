@@ -1,6 +1,6 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html{scroll-padding-top:20px}
+html{scroll-padding-top:84px}
 body{margin:0;background:#f6f6f8;color:var(--text);font:17px/1.55 var(--sans)}
 a{color:var(--red)}
 a:hover{color:var(--red-hover)}
@@ -74,9 +74,10 @@ a.button.ghost{background:#fff;color:var(--red);border-color:#ececf0;box-shadow:
 a.button.ghost:hover{background:var(--pink);color:var(--red)}
 .stats{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:0;margin:10px 0 8px}
 .stat{background:#fff;border:1px solid #ececf0;border-radius:18px;box-shadow:0 10px 30px rgba(17,17,26,.06);
-padding:18px 10px 16px;text-align:center}
-.stat .icon{display:block;color:var(--red);margin:0 0 6px}
-.stat b{display:block;font-size:2rem;font-weight:800;line-height:1.1}
+padding:24px 12px 20px;text-align:center}
+.stat .icon{display:block;color:var(--red);margin:0 0 8px}
+.stat .icon svg{width:36px;height:36px}
+.stat b{display:block;font-size:2.3rem;font-weight:800;line-height:1.1}
 .stat .label{display:block;margin-top:4px;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
 color:var(--muted)}
 .intro,.start{text-align:center;margin:56px 0 0}
@@ -88,9 +89,10 @@ color:var(--muted)}
 text-align:left}
 .features.three{grid-template-columns:repeat(3,minmax(0,1fr))}
 .feature{background:#fff;border:1px solid #ececf0;border-radius:18px;box-shadow:0 10px 30px rgba(17,17,26,.06);
-padding:20px 18px}
-.feature .icon{display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--pink);
-color:var(--red);margin:0 0 12px}
+padding:24px 20px}
+.feature .icon{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:var(--pink);
+color:var(--red);margin:0 0 16px}
+.feature .icon svg{width:32px;height:32px}
 .feature h3{font-size:.95rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;margin:0 0 6px}
 .feature p{font-size:.93rem;color:#55606e;margin:0}
 .how{list-style:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:0;margin:0 0 22px;
@@ -102,6 +104,28 @@ font-weight:800;margin:0 0 10px;box-shadow:0 6px 14px rgba(200,8,21,.28)}
 .how h3{font-size:1rem;font-weight:800;margin:0 0 4px}
 .how p{font-size:.92rem;color:#55606e;margin:0}
 .start .safe{text-align:left}
+/* The cards lift under the mouse (or when tapped on a phone), as on the Agentic Spaces site */
+.stat,.feature,.how li{transition:transform .25s ease,box-shadow .25s ease,border-color .25s ease;cursor:default}
+.feature .icon,.stat .icon{transition:transform .25s ease}
+.stat.lift,.feature.lift,.how li.lift{transform:translateY(-5px);border-color:#f7d4d7;
+box-shadow:0 20px 40px rgba(200,8,21,.13)}
+.feature.lift .icon,.stat.lift .icon{transform:scale(1.08)}
+@media (hover:hover){
+.stat:hover,.feature:hover,.how li:hover{transform:translateY(-5px);border-color:#f7d4d7;box-shadow:0 20px 40px rgba(200,8,21,.13)}
+.feature:hover .icon,.stat:hover .icon{transform:scale(1.08)}
+}
+/* ...and rise into view as the page scrolls (the script turns this on) */
+@keyframes rise{from{opacity:0;translate:0 22px}to{opacity:1;translate:0 0}}
+.reveal-on .reveal{opacity:0}
+.reveal-on .reveal.in{animation:rise .6s cubic-bezier(.2,.7,.3,1) both}
+.reveal-on :is(.stats,.features,.how)>li:nth-child(2).in{animation-delay:.08s}
+.reveal-on :is(.stats,.features,.how)>li:nth-child(3).in{animation-delay:.16s}
+.reveal-on :is(.stats,.features,.how)>li:nth-child(4).in{animation-delay:.24s}
+@media (prefers-reduced-motion:reduce){
+.reveal-on .reveal{opacity:1}
+.reveal-on .reveal.in{animation:none}
+.stat,.feature,.how li,.feature .icon,.stat .icon{transition:none}
+}
 button:hover,a.button:hover{background:var(--red-hover);border-color:var(--red-hover);color:#fff}
 button.secondary,a.button.secondary{background:#fff;color:var(--red)}
 button.secondary:hover,a.button.secondary:hover{background:var(--pink);color:var(--red)}
@@ -152,7 +176,7 @@ background:var(--green);color:#fff;margin:4px}
 a.big:hover{background:var(--green-hover);color:#fff}
 .result .links a{display:inline-block;margin:10px 10px 0}
 .result .actions{justify-content:center;margin:0 0 10px}
-#countdown{position:fixed;top:14px;right:14px;z-index:10;min-width:150px;text-align:center;border-radius:12px;
+#countdown{position:fixed;top:78px;right:14px;z-index:10;min-width:150px;text-align:center;border-radius:12px;
 padding:8px 14px;background:#fff;border:2px solid var(--red);box-shadow:0 4px 18px rgba(0,0,0,.15)}
 #countdown[hidden]{display:none}
 #countdown .label{display:block;font-size:.85rem;color:var(--muted)}
@@ -168,6 +192,10 @@ padding:8px 14px;background:#fff;border:2px solid var(--red);box-shadow:0 4px 18
 }
 @media (max-width:600px){
 main{padding-top:20px}
+.stats{grid-template-columns:minmax(0,1fr);gap:16px}
+.stat{padding:28px 16px 24px}
+.stat b{font-size:2.6rem}
+.feature{padding:26px 22px}
 .hero h1{font-size:1.9rem}
 .section-title{font-size:1.6rem}
 .intro{margin-top:44px}

@@ -762,6 +762,32 @@
   setTimeout(renderWallets, 300); // wallets announce themselves shortly after the page loads
   renderWallets();
   setInterval(tick, 1000);
+  // The explanation's cards rise into view as the page scrolls (not for people who prefer less
+  // motion), and lift when tapped, as they do under the mouse on a computer.
+  const cards = document.querySelectorAll(".stats > li, .features > li, .how > li");
+  if ("IntersectionObserver" in window && !reducedMotion) {
+    document.documentElement.classList.add("reveal-on");
+    const seen = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("in");
+          seen.unobserve(entry.target);
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px" }
+    );
+    for (const item of document.querySelectorAll(".stats > li, .features > li, .how > li, .intro .section-title, .intro .lead")) {
+      item.classList.add("reveal");
+      seen.observe(item);
+    }
+  }
+  for (const card of cards) {
+    card.addEventListener("click", () => {
+      for (const other of cards) if (other !== card) other.classList.remove("lift");
+      card.classList.toggle("lift");
+    });
+  }
   loadOptions();
   const previous = saved();
   if (previous) resume(previous);

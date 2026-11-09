@@ -1,5 +1,5 @@
 *{box-sizing:border-box}
-html{scroll-padding-top:90px}
+html{scroll-padding-top:150px}
 body{margin:0;background:#fff;color:var(--text);font:17px/1.55 var(--sans)}
 main{max-width:var(--page);margin:0 auto;padding:28px 16px 120px}
 h1{font-size:2.1rem;line-height:1.15;margin:0 0 8px}
@@ -67,7 +67,7 @@ a.big{display:inline-block;font-weight:700;font-size:1.15rem;text-decoration:non
 padding:14px 28px;background:var(--green);color:#fff;margin:4px}
 a.big:hover{background:var(--green-hover);color:#fff}
 a.plain{display:inline-block;margin:10px 8px 0}
-#countdown{position:fixed;top:14px;right:14px;z-index:10;min-width:150px;text-align:center;border-radius:12px;
+#countdown{position:fixed;top:78px;right:14px;z-index:10;min-width:150px;text-align:center;border-radius:12px;
 padding:8px 14px;background:#fff;border:2px solid var(--red);box-shadow:0 4px 18px rgba(0,0,0,.15)}
 #countdown[hidden]{display:none}
 #countdown .label{display:block;font-size:.85rem;color:var(--muted)}
