@@ -343,6 +343,14 @@ name, and `/get-did` stays as it is. People install it:
 - **iPhone (Safari):** Share, then **Add to Home Screen**;
 - **Android (Chrome):** the **Install app** prompt, or the menu, then **Install app**.
 
+On phones and tablets the page itself offers the app, at the bottom of the screen, and decides
+again at every visit, without remembering anything: the browser's own prompt can stay away for
+months after a "No thanks" or after the app was removed. Where the browser can install it
+(Chrome on Android), the bar has an **Install** button; elsewhere it says how to add it by hand.
+It never shows inside the app, nor when the browser says the app is installed: Chrome on
+Android tells the page (the manifest lists the app under `related_applications`). Safari on an
+iPhone can't tell, so there the bar shows until it is closed with its cross, for that visit.
+
 The app's identity is its address: once people have installed it, the host must not change.
 
 1. **Cloudflare, DNS:** add a record `id`, the same type and target as `api` (the server's

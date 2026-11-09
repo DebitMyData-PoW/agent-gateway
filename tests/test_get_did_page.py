@@ -300,6 +300,30 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
         width, height = map(int, icon["sizes"].split("x"))
         assert _png_size(image.content) == (width, height), icon["src"]
     assert app_client.get("/app/other.png").status_code == 404
+    # The app itself, so that the page can ask whether it is installed.
+    assert manifest["related_applications"] == [
+        {"platform": "webapp", "url": "/manifest.webmanifest", "id": f"https://{APP_HOST}/"}
+    ]
+    assert manifest["prefer_related_applications"] is False
+
+
+def test_the_app_offers_itself_until_it_is_installed(app_client: TestClient) -> None:
+    page = app_client.get("/").text
+    # A bar to install it, hidden until the page's script decides, at every visit.
+    assert "<div id=install class=install hidden" in page
+    assert '<img src="/app/icon-192.png?v=3"' in page
+    script = get_did_page._SCRIPT
+    for needed in (
+        'matchMedia("(display-mode: standalone)")',  # never inside the app
+        "navigator.getInstalledRelatedApps()",  # nor when the browser says it is installed
+        '"beforeinstallprompt"',  # the browser's install dialog, from our button
+        '"appinstalled"',
+        "Add to Home Screen",  # iPhone: by hand
+    ):
+        assert needed in script, needed
+    # Nothing is remembered between visits.
+    offer = script.split("function offerTheApp()")[1]
+    assert "localStorage" not in offer and "sessionStorage" not in offer and "cookie" not in offer
 
 
 def test_the_service_worker_never_touches_the_api(app_client: TestClient) -> None:
@@ -323,6 +347,7 @@ def test_the_app_exists_only_at_its_own_address(client: TestClient, settings: Se
     # An installed app is tied to one address: api.debitmydata.io offers none of it.
     page = client.get("/get-did").text
     assert "rel=manifest" not in page and "apple-touch-icon" not in page
+    assert "id=install" not in page
     for path in ("/manifest.webmanifest", "/sw.js", "/app/icon-192.png"):
         assert client.get(path).status_code == 404, path
     assert client.get("/", follow_redirects=False).headers["location"] == "/get-did"

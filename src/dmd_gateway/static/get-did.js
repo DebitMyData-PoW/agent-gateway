@@ -793,4 +793,69 @@
   if (previous) resume(previous);
   // The installable app (on its own address): keeps the page for opening without a network.
   if (config.app && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  offerTheApp();
+
+  // "Install the app" bar, on phones and tablets, decided again at every visit (nothing is
+  // remembered): the browser's own install prompt can stay away for months, after a "No thanks"
+  // or after the app was removed. Never shown inside the app, nor when the browser says the app
+  // is installed (Chrome on Android does; Safari on an iPhone can't tell, so there the bar says
+  // how to add it, and the cross closes it for this visit).
+  function offerTheApp() {
+    const bar = $("#install");
+    const inApp = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    if (!bar || inApp || !window.matchMedia("(pointer: coarse)").matches) return;
+    const how = $("#install-how");
+    const go = $("#install-go");
+    const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const byHand = iphone
+      ? "Tap Share, then Add to Home Screen."
+      : "Open the browser's menu (⋮), then Install app or Add to Home screen.";
+    let prompt = null;
+    let installed = false;
+    let closed = false;
+    const show = (text, button) => {
+      if (installed || closed) return;
+      how.textContent = text;
+      go.hidden = !button;
+      bar.hidden = false;
+    };
+    // The browser can install it: one tap on our button opens its install dialog.
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      prompt = event;
+      show("Add it to your home screen: free, no app store.", true);
+    });
+    go.addEventListener("click", async () => {
+      if (!prompt) return;
+      const asked = prompt;
+      prompt = null;
+      asked.prompt();
+      const choice = await asked.userChoice;
+      if (choice.outcome === "accepted") bar.hidden = true;
+      else show(byHand, false);
+    });
+    window.addEventListener("appinstalled", () => {
+      installed = true;
+      bar.hidden = true;
+    });
+    $("#install-close").addEventListener("click", () => {
+      closed = true;
+      bar.hidden = true;
+    });
+    const check =
+      "getInstalledRelatedApps" in navigator
+        ? navigator.getInstalledRelatedApps().then((apps) => apps.some((app) => app.platform === "webapp"), () => false)
+        : Promise.resolve(false);
+    check.then((yes) => {
+      if (yes) {
+        installed = true;
+        bar.hidden = true;
+        return;
+      }
+      // No install prompt from the browser after a moment: say how to do it by hand.
+      setTimeout(() => {
+        if (!prompt) show(byHand, false);
+      }, 2500);
+    });
+  }
 })();

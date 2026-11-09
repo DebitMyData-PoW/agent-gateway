@@ -280,8 +280,20 @@ def _body(staging: bool, app: bool = False) -> str:
         if staging
         else ""
     )
+    # The app only: a bar that offers to install it (get-did.js decides, at every visit).
+    install = (
+        '<div id=install class=install hidden role=region aria-label="Install the app">'
+        f'<img src="/app/icon-192.png?v={ICON_VERSION}" alt="" width=44 height=44>'
+        f"<p><strong>{APP_NAME} app</strong><span id=install-how></span></p>"
+        "<button type=button id=install-go class=install-go hidden>Install</button>"
+        '<button type=button id=install-close class=install-close aria-label="Not now">'
+        "&times;</button></div>"
+        if app
+        else ""
+    )
     return f"""
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
+{install}
 {brand.header("get-did", staging, APP_ROOT if app else PAGE_PATH)}
 <main>
 <section class=hero>
@@ -436,7 +448,7 @@ def _app_only(request: Request) -> None:
         raise HTTPException(status_code=404)
 
 
-def manifest_json() -> dict[str, object]:
+def manifest_json(app_host: str) -> dict[str, object]:
     icons = [
         {
             "src": f"/app/icon-192.png?v={ICON_VERSION}",
@@ -470,6 +482,13 @@ def manifest_json() -> dict[str, object]:
         "theme_color": THEME_COLOR,
         "categories": ["business", "utilities"],
         "icons": icons,
+        # The app itself, so that the page can ask the browser whether it is installed
+        # (navigator.getInstalledRelatedApps: Chrome on Android, and on computers from
+        # version 140). The page goes on offering it until then.
+        "related_applications": [
+            {"platform": "webapp", "url": MANIFEST_PATH, "id": f"https://{app_host}{APP_ROOT}"}
+        ],
+        "prefer_related_applications": False,
     }
 
 
@@ -477,7 +496,7 @@ def manifest_json() -> dict[str, object]:
 def manifest(request: Request) -> Response:
     _app_only(request)
     return Response(
-        json.dumps(manifest_json()),
+        json.dumps(manifest_json(request.app.state.settings.app_host)),
         media_type="application/manifest+json",
         headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
     )

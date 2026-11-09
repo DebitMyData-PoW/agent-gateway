@@ -3,7 +3,7 @@
 // and its icons, so that the app still opens without a network (and says it is offline). The
 // page itself always comes from the network first, so a new version shows at once. It never
 // touches anything else: the API calls (/v1/...) go straight to the gateway, never cached.
-const CACHE = "dmd-did-app-4"; // a new name drops the old copies (new icons)
+const CACHE = "dmd-did-app-5"; // a new name drops the old copies (new icons)
 const PAGE = "/";
 const FILES = [
   "/fonts/mada-latin-400-normal.woff2",
@@ -68,6 +68,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (FILES.includes(url.pathname)) {
-    event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
+    // "?v=..." only tells browsers a file changed; a new CACHE name drops the old copies.
+    event.respondWith(caches.match(request, { ignoreSearch: true }).then((cached) => cached || fetch(request)));
   }
 });

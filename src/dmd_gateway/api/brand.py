@@ -31,8 +31,9 @@ NO_TRANSFORM = "no-transform"
 
 HOME_PATH = "/"  # the site root: the Get a DID page (the guided test on staging)
 # DebitMyData's logo, the left side of debitmydata.com's (the coin, its band and the binary
-# lines), 151 x 120 pixels: shown 40 pixels high, sharp on high-density screens.
-LOGO = '<img src="/logo.png" alt="" width=50 height=40>'
+# lines, black on the website; the app's icons have them red, for dark home screens), 151 x 120
+# pixels: shown 40 pixels high, sharp on high-density screens. "?v=" changes with the file.
+LOGO = '<img src="/logo.png?v=2" alt="" width=50 height=40>'
 SOURCE_CODE = "https://github.com/DebitMyData-PoW/agent-gateway"
 CONTACT = "info@debitmydata.com"
 POLICY_LINKS = (
