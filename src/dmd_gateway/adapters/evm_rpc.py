@@ -46,6 +46,10 @@ class EvmRpcUnavailable(RuntimeError):
     """The node could not be reached or answered something unusable."""
 
 
+class EvmRpcRateLimited(EvmRpcUnavailable):
+    """The chain RPC refused because too many requests were sent (HTTP 429)."""
+
+
 class MethodNotAllowed(RuntimeError):
     pass
 
@@ -97,7 +101,7 @@ class EvmRpcClient:
         if response.status_code in (401, 403):
             raise EvmRpcUnavailable(f"{method}: chain RPC refused the request (check its URL/key)")
         if response.status_code == 429:
-            raise EvmRpcUnavailable(f"{method}: chain RPC rate limit reached")
+            raise EvmRpcRateLimited(f"{method}: chain RPC rate limit reached")
         try:
             body = response.json()
         except ValueError as exc:

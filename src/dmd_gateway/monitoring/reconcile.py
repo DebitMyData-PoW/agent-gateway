@@ -11,7 +11,9 @@ Once a day it answers three questions, by email and Discord:
    is checked on its chain again, read-only, with the same adapters the worker uses. A
    payment no longer found with its confirmations is a critical alert.
 
-The report holds counts, amounts and identifiers only: no names, keys or secrets.
+The report holds counts, amounts and identifiers only: no names, keys or secrets. The DIDs
+in DMD_GW_REPORT_EXCLUDED_DIDS (the company's own test DIDs) are left out of the figures,
+with their quotes, products and payments; the reconciliation still checks their payments.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import Select, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.base import AdapterUnavailable
@@ -40,6 +42,7 @@ from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.monitoring.alerts import Finding, Message, Severity
 from dmd_gateway.monitoring.checks import MonitorContext, receiving_destinations
 from dmd_gateway.services.settlement import expected_payment
+from dmd_gateway.settings import did_list
 
 C, W = Severity.CRITICAL, Severity.WARNING
 RECHECK_WINDOW = timedelta(days=30)
@@ -74,23 +77,51 @@ def _amount(units: Decimal | int | None, decimals: int) -> str:
     return format_base_units(int(units or 0), decimals).rstrip("0").rstrip(".") or "0"
 
 
+@dataclass(frozen=True)
+class _Excluded:
+    """What the report's figures leave out: the listed test DIDs, their registrations, the
+    products bought for them and the payments of both."""
+
+    dids: tuple[str, ...]
+
+    def registrations(self) -> Select[tuple[str]]:
+        return select(AgentIdentity.registration_intent_id).where(
+            AgentIdentity.public_identifier.in_(self.dids)
+        )
+
+    def payments(self) -> Select[tuple[str]]:
+        purchases = select(Purchase.id).where(Purchase.subject_did.in_(self.dids))
+        return select(PaymentIntent.id).where(
+            or_(
+                PaymentIntent.registration_intent_id.in_(self.registrations()),
+                PaymentIntent.purchase_id.in_(purchases),
+            )
+        )
+
+
 def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report:
     since = now - timedelta(days=1)
     report = Report(day=f"{now:%Y-%m-%d}")
     add = report.lines.append
     add(f"DebitMyData Agent Gateway ({ctx.settings.environment}), {now:%Y-%m-%d %H:%M} UTC")
     add("")
+    dids = tuple(did_list(ctx.settings.report_excluded_dids))
+    excluded = _Excluded(dids) if dids else None
 
     # ------------------------------------------------------------------ last 24 hours
     add("LAST 24 HOURS")
-    quotes = session.scalar(
-        select(func.count())
-        .select_from(RegistrationIntent)
-        .where(RegistrationIntent.created_at >= since)
-    )
-    issued = session.scalar(
-        select(func.count()).select_from(AgentIdentity).where(AgentIdentity.created_at >= since)
-    )
+    quoted = select(func.count()).select_from(RegistrationIntent)
+    quoted = quoted.where(RegistrationIntent.created_at >= since)
+    issued_query = select(func.count()).select_from(AgentIdentity)
+    purchases = Purchase.status == "completed"
+    if excluded:
+        quoted = quoted.where(RegistrationIntent.id.not_in(excluded.registrations()))
+        issued_query = issued_query.where(AgentIdentity.public_identifier.not_in(dids))
+        purchases = purchases & or_(
+            Purchase.subject_did.is_(None), Purchase.subject_did.not_in(dids)
+        )
+    quotes = session.scalar(quoted)
+    issued = session.scalar(issued_query.where(AgentIdentity.created_at >= since))
     completed = session.execute(
         select(
             Purchase.product_id,
@@ -98,7 +129,7 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
             func.count(),
             func.coalesce(func.sum(Purchase.commercial_price_amount), 0),
         )
-        .where(Purchase.status == "completed", Purchase.completed_at >= since)
+        .where(purchases, Purchase.completed_at >= since)
         .group_by(Purchase.product_id, Purchase.subject_did.is_not(None))
         .order_by(Purchase.product_id)
     ).all()
@@ -114,13 +145,13 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
             add(f"- Products completed, {product_id}: {count} ({total:.2f} USD)")
     else:
         add("- Products completed: none")
-    settled = _settled_since(session, since)
+    settled = _settled_since(session, since, excluded)
     if settled:
         for (rail_id, symbol, decimals), (count, units) in sorted(settled.items()):
             add(f"- Payments settled with {rail_id}: {count}, {_amount(units, decimals)} {symbol}")
     else:
         add("- Payments settled: none")
-    closed = session.scalar(
+    closed_query = (
         select(func.count())
         .select_from(PaymentEvent)
         .where(
@@ -129,6 +160,11 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
             PaymentEvent.from_status.is_distinct_from(PaymentEvent.to_status),
         )
     )
+    if excluded:
+        closed_query = closed_query.where(
+            PaymentEvent.payment_intent_id.not_in(excluded.payments())
+        )
+    closed = session.scalar(closed_query)
     refunds = session.scalar(
         select(func.count())
         .select_from(AuditEvent)
@@ -140,11 +176,16 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
 
     # ------------------------------------------------------------------ since the start
     add("SINCE THE START")
-    total_ids = session.scalar(select(func.count()).select_from(AgentIdentity))
+    total_ids = session.scalar(issued_query)
     add(f"- DIDs issued: {total_ids}")
-    totals = _settled_since(session, None)
+    totals = _settled_since(session, None, excluded)
     for (rail_id, symbol, decimals), (count, units) in sorted(totals.items()):
         add(f"- Settled with {rail_id}: {count} payment(s), {_amount(units, decimals)} {symbol}")
+    if excluded:
+        add(
+            f"- Left out of these figures: {len(dids)} test DID(s) "
+            "(DMD_GW_REPORT_EXCLUDED_DIDS), with their products and payments"
+        )
     add("")
 
     # ------------------------------------------------------------------ destinations
@@ -188,10 +229,10 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
 
 
 def _settled_since(
-    session: Session, since: datetime | None
+    session: Session, since: datetime | None, excluded: _Excluded | None = None
 ) -> dict[tuple[str, str, int], tuple[int, Decimal]]:
     """(rail, asset, decimals) -> (payments, base units credited) for payments that reached
-    settled (in the period, or ever)."""
+    settled (in the period, or ever), without the excluded test DIDs' payments."""
     query = (
         select(
             PaymentIntent.rail_id,
@@ -205,6 +246,8 @@ def _settled_since(
     )
     if since is not None:
         query = query.where(PaymentEvent.recorded_at >= since)
+    if excluded is not None:
+        query = query.where(PaymentIntent.id.not_in(excluded.payments()))
     counts = {(r, s, d): n for r, s, d, n in session.execute(query)}
     credited = select(
         PaymentIntent.rail_id,
@@ -214,6 +257,8 @@ def _settled_since(
     ).join(CreditedOutput, CreditedOutput.payment_intent_id == PaymentIntent.id)
     if since is not None:
         credited = credited.where(CreditedOutput.credited_at >= since)
+    if excluded is not None:
+        credited = credited.where(PaymentIntent.id.not_in(excluded.payments()))
     credited = credited.group_by(
         PaymentIntent.rail_id, PaymentIntent.asset_symbol, PaymentIntent.asset_decimals
     )

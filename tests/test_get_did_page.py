@@ -10,13 +10,19 @@ import json
 import re
 import shutil
 import subprocess
+from collections.abc import Iterator
 from importlib.resources import files
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlalchemy import create_engine
 
 from dmd_gateway.api import get_did_page
+from dmd_gateway.main import create_app
+from dmd_gateway.settings import Settings
 
+from .conftest import UNREACHABLE_DB
 from .test_staging_tools import staging_client  # noqa: F401
 
 
@@ -32,8 +38,8 @@ def _config(page: str) -> dict:
 def test_on_production_the_docs_address_leads_to_get_a_did(client: TestClient) -> None:
     response = client.get("/get-did")
     assert response.status_code == 200
-    assert "Get your DebitMyData DID" in response.text
-    assert _config(response.text) == {"staging": False}
+    assert "<h1>Get your <span class=accent>DebitMyData</span> DID</h1>" in response.text
+    assert _config(response.text) == {"staging": False, "app": False}
     assert 'href="/docs/advanced"' in response.text  # the advanced option
     assert "Staging server." not in response.text  # the test-coin button is staging's
     assert "Guided test" not in response.text  # staging only
@@ -44,7 +50,7 @@ def test_on_production_the_docs_address_leads_to_get_a_did(client: TestClient) -
 
 def test_on_staging_it_is_at_get_did_with_test_coins(staging_client: TestClient) -> None:  # noqa: F811
     page = staging_client.get("/get-did").text
-    assert _config(page) == {"staging": True}
+    assert _config(page) == {"staging": True, "app": False}
     assert "Staging server." in page and 'href="/docs">Guided test' in page
     assert "Try a DID registration" in staging_client.get("/docs").text  # still the guided test
 
@@ -60,6 +66,8 @@ def test_only_the_page_own_script_style_and_font_may_run(client: TestClient) -> 
         "default-src 'none'",
         "font-src 'self'",
         "connect-src 'self'",
+        "manifest-src 'self'",
+        "worker-src 'self'",
         "frame-ancestors 'none'",
     ):
         assert rule in csp
@@ -215,3 +223,116 @@ def test_dmd_payments_get_a_qr_code_and_a_wallet_link() -> None:
     assert "Open in my DMD wallet" in script and "check both" in script
     # Once a payment arrives (or the quote expires) they are removed, so nobody pays twice.
     assert 'querySelector(".pay-qr")' in script
+
+
+# --------------------------------------------------------------------------- the installable app
+
+APP_HOST = "id.debitmydata.io"
+
+
+@pytest.fixture
+def app_client(settings: Settings) -> Iterator[TestClient]:
+    """The production gateway as reached at the app's own address."""
+    engine = create_engine(UNREACHABLE_DB, connect_args={"connect_timeout": 1})
+    app = create_app(settings.model_copy(update={"app_host": APP_HOST}), environ={}, engine=engine)
+    with TestClient(app, base_url=f"https://{APP_HOST}") as test_client:
+        yield test_client
+
+
+def test_the_app_host_serves_the_page_at_its_root_with_what_installs_it(
+    app_client: TestClient,
+) -> None:
+    response = app_client.get("/")
+    assert response.status_code == 200
+    page = response.text
+    assert _config(page) == {"staging": False, "app": True}
+    assert response.headers["content-security-policy"] == get_did_page.CSP
+    for tag in (
+        '<link rel=manifest href="/manifest.webmanifest">',
+        '<meta name=theme-color content="#640000">',
+        '<link rel=apple-touch-icon href="/app/apple-touch-icon.png">',
+        "<meta name=apple-mobile-web-app-capable content=yes>",
+        '<meta name=apple-mobile-web-app-title content="DebitMyData DID">',
+    ):
+        assert tag in page
+    # "Get a DID" in the top bar is the app's root; the old address leads there.
+    assert '<a class=on aria-current=page href="/">Get a DID</a>' in page
+    moved = app_client.get("/get-did", follow_redirects=False)
+    assert moved.status_code == 307 and moved.headers["location"] == "/"
+    # The API the page calls is the same gateway.
+    assert app_client.get("/v1/payment-options?service=did_registration").status_code == 200
+
+
+def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
+    response = app_client.get("/manifest.webmanifest")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    manifest = response.json()
+    assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
+    assert manifest["display"] == "standalone"
+    assert manifest["name"] == "DebitMyData DID" and len(manifest["short_name"]) <= 12
+    sizes = {(icon["sizes"], icon["purpose"]) for icon in manifest["icons"]}
+    assert {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")} <= sizes
+    for icon in manifest["icons"] + [{"src": "/app/apple-touch-icon.png"}]:
+        image = app_client.get(icon["src"])
+        assert image.status_code == 200 and image.headers["content-type"] == "image/png"
+        assert image.content.startswith(b"\x89PNG")
+    assert app_client.get("/app/other.png").status_code == 404
+
+
+def test_the_service_worker_never_touches_the_api(app_client: TestClient) -> None:
+    response = app_client.get("/sw.js")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert response.headers["cache-control"] == "no-cache"
+    worker = response.text
+    code = "\n".join(line for line in worker.splitlines() if not line.startswith("//"))
+    # Only the page (network first), its font and icons are kept; nothing under /v1/.
+    assert "/v1/" not in code and 'request.method !== "GET"' in code
+    assert "fetch(request)" in worker and "You're offline" in worker
+    for name in get_did_page.FONTS:
+        assert f"/fonts/{name}" in worker
+    # The page registers it only in the app.
+    assert 'config.app && "serviceWorker" in navigator' in get_did_page._SCRIPT
+    assert 'register("/sw.js")' in get_did_page._SCRIPT
+
+
+def test_the_app_exists_only_at_its_own_address(client: TestClient, settings: Settings) -> None:
+    # An installed app is tied to one address: api.debitmydata.io offers none of it.
+    page = client.get("/get-did").text
+    assert "rel=manifest" not in page and "apple-touch-icon" not in page
+    for path in ("/manifest.webmanifest", "/sw.js", "/app/icon-192.png"):
+        assert client.get(path).status_code == 404, path
+    assert client.get("/", follow_redirects=False).headers["location"] == "/get-did"
+    # The setting takes a host name only.
+    for wrong in ("https://id.debitmydata.io", "id.debitmydata.io/app", "id debitmydata"):
+        with pytest.raises(ValidationError):
+            settings.model_validate({**settings.model_dump(), "app_host": wrong})
+    assert (
+        settings.model_validate(
+            {**settings.model_dump(), "app_host": "ID.DebitMyData.io "}
+        ).app_host
+        == APP_HOST
+    )
+
+
+def test_staging_root_is_still_the_guided_test(staging_client: TestClient) -> None:  # noqa: F811
+    moved = staging_client.get("/", follow_redirects=False)
+    assert moved.status_code == 307 and moved.headers["location"] == "/docs"
+
+
+# --------------------------------------------------------------------------- explaining DMD
+
+
+def test_usdc_comes_first_and_dmd_is_explained() -> None:
+    script = get_did_page._SCRIPT
+    assert 'option.asset === "USDC" ? 0 : option.asset === "DMD" ? 1 : 2' in script
+    assert "What is DMD, and how do I get it?" in script and 'aria-controls": "get-dmd"' in script
+    html = get_did_page.page_html(staging=False)
+    guide = re.search(r"<div id=get-dmd class=explain hidden>(.*?)</div>", html, re.S).group(1)
+    assert "native coin of the DebitMyData Proof-of-Work chain" in guide
+    assert "a payment method, not an investment" in guide
+    assert "https://pool.debitmydata.io/" in guide and "https://debitmydata.io/#wallet" in guide
+    assert "not listed on any exchange yet" in guide
+    # Links to other sites open in a new tab, without giving them this page.
+    assert guide.count("target=_blank") == guide.count("rel=noopener") == 4

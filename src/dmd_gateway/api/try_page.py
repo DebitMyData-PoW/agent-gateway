@@ -27,7 +27,7 @@ router = APIRouter(include_in_schema=False)
 
 PAGE_PATH = brand.GUIDED_PATH
 ADVANCED_PATH = brand.ADVANCED_PATH
-REDIRECTS = ("/", "/try")
+REDIRECTS = ("/try",)  # the site root: get_did_page._root
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "try.css").read_text(encoding="utf-8")
 _SCRIPT = (_STATIC / "try.js").read_text(encoding="utf-8")

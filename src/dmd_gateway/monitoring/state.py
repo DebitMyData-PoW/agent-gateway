@@ -13,6 +13,7 @@ from dmd_gateway.db.models import MonitorState
 WORKER_HEARTBEAT = "heartbeat.worker"
 AUDIT_CURSOR = "cursor.audit"
 RECEIVING = "receiving.destinations"
+RATE_LIMITED = "rails.rate_limited"  # rail -> checks in a row its provider refused (HTTP 429)
 
 
 def get_state(session: Session, key: str) -> tuple[dict[str, Any], datetime] | None:

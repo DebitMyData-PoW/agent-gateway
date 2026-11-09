@@ -32,8 +32,8 @@ FOOTER_LINKS = (
 )
 
 
-def _pages(staging: bool) -> list[tuple[str, str, str]]:
-    pages = [("get-did", GET_DID_PATH, "Get a DID")]
+def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, str]]:
+    pages = [("get-did", get_did, "Get a DID")]
     if staging:
         pages.append(("guided", GUIDED_PATH, "Guided test"))
     pages += [
@@ -52,15 +52,16 @@ _PRODUCTION_PAGE = {
 }
 
 
-def header(current: str, staging: bool) -> str:
+def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
     """The top bar: the DebitMyData name (to debitmydata.com) and the gateway's pages, with
     ``current`` (get-did, guided, advanced or policies) marked; on staging, a link to the
-    same page on the real API."""
+    same page on the real API. ``get_did`` is where "Get a DID" is (the installable app
+    serves it at its root)."""
     links = "".join(
         f'<a class=on aria-current=page href="{path}">{label}</a>'
         if key == current
         else f'<a href="{path}">{label}</a>'
-        for key, path, label in _pages(staging)
+        for key, path, label in _pages(staging, get_did)
     )
     if staging:
         page = _PRODUCTION_PAGE.get(current, GET_DID_PATH)

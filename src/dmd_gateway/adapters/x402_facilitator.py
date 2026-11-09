@@ -26,6 +26,10 @@ X402_VERSION = 2
 class FacilitatorUnavailable(RuntimeError):
     """No usable answer: for /settle this means the outcome is unknown."""
 
+    def __init__(self, message: str = "", *, rate_limited: bool = False) -> None:
+        super().__init__(message)
+        self.rate_limited = rate_limited  # HTTP 429: too many requests, usually passes
+
 
 @dataclass(frozen=True, slots=True)
 class VerifyResult:
@@ -121,8 +125,15 @@ class FacilitatorClient:
         url = f"{self._url}/supported"
         try:
             response = self._client.get(url, headers=self._auth_headers("GET", url))
+        except httpx.HTTPError as exc:
+            raise FacilitatorUnavailable("facilitator /supported unreachable") from exc
+        if response.status_code == 429:
+            raise FacilitatorUnavailable(
+                "facilitator /supported: rate limit reached", rate_limited=True
+            )
+        try:
             data = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
+        except ValueError as exc:
             raise FacilitatorUnavailable("facilitator /supported unreachable") from exc
         if response.status_code != 200 or not isinstance(data, dict):
             raise FacilitatorUnavailable(f"facilitator /supported: HTTP {response.status_code}")

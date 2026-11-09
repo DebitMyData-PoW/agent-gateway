@@ -264,7 +264,13 @@ $SYSTEMCTL enable --now dmd-gateway-monitor.timer dmd-gateway-report.timer \
 # ------------------------------------------------------------------ nginx + firewall
 step "Configuring nginx and the firewall (port 443 open to Cloudflare only)"
 install -m 644 "$SHARED/nginx-proxy.conf" /etc/nginx/snippets/dmd-gateway-proxy.conf
-sed "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" "$FILES/nginx-site.conf" >/etc/nginx/sites-available/dmd-gateway
+# The installable "Get a DID" app's own host name (DMD_GW_APP_HOST, e.g. id.debitmydata.io),
+# served by the same gateway; its DNS record and certificate: docs/production.md, step 12.
+APP_HOST="$(env_value DMD_GW_APP_HOST | tr -d "'\" " | tr '[:upper:]' '[:lower:]')"
+[[ -z "$APP_HOST" || "$APP_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] ||
+    fail "DMD_GW_APP_HOST must be a host name only, e.g. id.debitmydata.io"
+sed -e "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" -e "s#@APP_HOSTNAME@#${APP_HOST:+ $APP_HOST}#g" \
+    "$FILES/nginx-site.conf" >/etc/nginx/sites-available/dmd-gateway
 if [ ! -e /proc/net/if_inet6 ]; then  # no IPv6 on this server: listen on IPv4 only
     sed -i '/listen \[::\]/d' /etc/nginx/sites-available/dmd-gateway
 fi
@@ -283,6 +289,11 @@ curl -sk --noproxy '*' --resolve "$HOSTNAME_PUBLIC:443:127.0.0.1" "https://$HOST
 echo
 
 SYNC="$(dmd-cli getblockchaininfo | jq -r '"block \(.blocks) of \(.headers), \(.verificationprogress * 100 | floor)% verified"')"
+if [ -n "$APP_HOST" ]; then
+    curl -sfk --noproxy '*' --resolve "$APP_HOST:443:127.0.0.1" "https://$APP_HOST/manifest.webmanifest" \
+        >/dev/null || fail "nginx does not serve the app at $APP_HOST: check DMD_GW_APP_HOST and the certificate"
+    printf '\nGet a DID app: https://%s\n' "$APP_HOST"
+fi
 printf '\nDone. Production gateway: https://%s\n' "$HOSTNAME_PUBLIC"
 printf 'DebitMyData node: %s (wait for 100%% before switching DMD payments on).\n' "$SYNC"
 printf 'Issuer key (public, published at /.well-known/did.json): %s\n' "$PUBLIC_KEY"

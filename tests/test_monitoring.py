@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -46,6 +46,7 @@ from dmd_gateway.monitoring.cli import run
 from dmd_gateway.monitoring.reconcile import build_report
 from dmd_gateway.monitoring.state import (
     AUDIT_CURSOR,
+    RATE_LIMITED,
     RECEIVING,
     WORKER_HEARTBEAT,
     get_state,
@@ -370,12 +371,19 @@ def test_nothing_delivered_is_sent_again_next_time(engine: Engine) -> None:
 
 
 class StubAdapter:
-    def __init__(self, rail_id: str, recipient: str = MERCHANT, error: str | None = None) -> None:
+    def __init__(
+        self,
+        rail_id: str,
+        recipient: str = MERCHANT,
+        error: str | None = None,
+        rate_limited: bool = False,
+    ) -> None:
         self.rail_id, self.recipient, self.error = rail_id, recipient, error
+        self.rate_limited = rate_limited
 
     def check_ready(self) -> None:
         if self.error:
-            raise AdapterUnavailable(self.error)
+            raise AdapterUnavailable(self.error, rate_limited=self.rate_limited)
 
     def configured_recipient(self) -> str:
         return self.recipient
@@ -477,6 +485,47 @@ def test_rails_check(db: Session) -> None:
     assert finding.key == "rails.x402_usdc_base" and finding.severity == C
     assert finding.title == "USDC payments (x402_usdc_base) cannot be verified"
     assert "DMD_RAIL_X402_USDC_BASE_KILL=true" in finding.detail
+
+
+@needs_db
+def test_a_rate_limit_alerts_only_when_it_lasts(db: Session) -> None:
+    limited = context(
+        {
+            "x402_usdc_base": StubAdapter(
+                "x402_usdc_base",
+                error="eth_chainId: chain RPC rate limit reached",
+                rate_limited=True,
+            )
+        }
+    )
+    minute = timedelta(minutes=2)
+    # Two checks in a row refused: it usually passes by itself, so no alert yet.
+    assert mc.check_rails(limited, db, NOW) == []
+    assert mc.check_rails(limited, db, NOW + minute) == []
+    (finding,) = mc.check_rails(limited, db, NOW + 2 * minute)
+    assert finding.key == "rails.x402_usdc_base" and finding.severity == C
+    assert "(3 checks in a row;" in finding.detail
+    # Once it answers again, the count starts over.
+    ok = context({"x402_usdc_base": StubAdapter("x402_usdc_base")})
+    assert mc.check_rails(ok, db, NOW + 3 * minute) == []
+    assert get_state(db, RATE_LIMITED)[0] == {}
+    assert mc.check_rails(limited, db, NOW + 4 * minute) == []
+    # While an alert for the option is open, a refusal keeps it open rather than resolving it.
+    db.add(
+        AlertState(
+            key="rails.x402_usdc_base",
+            kind="condition",
+            severity="critical",
+            title="USDC payments (x402_usdc_base) cannot be verified",
+            detail="chain RPC unreachable",
+            first_seen_at=NOW,
+            last_seen_at=NOW,
+            notifications=1,
+        )
+    )
+    db.flush()
+    (finding,) = mc.check_rails(limited, db, NOW + 5 * minute)
+    assert "(2 checks in a row;" in finding.detail
 
 
 @needs_db
@@ -736,10 +785,9 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
                 register(client, q["registration_intent_id"]).headers["PAYMENT-REQUIRED"]
             )
         )
-        assert (
-            register(client, q["registration_intent_id"], TestPayer().header(required)).status_code
-            == 201
-        )
+        registered = register(client, q["registration_intent_id"], TestPayer().header(required))
+        assert registered.status_code == 201
+        did = registered.json()["did"]
         donation_402 = client.post("/v1/donations/inference", json={"amount_usd": "2.00"})
         donation_required = json.loads(
             __import__("base64").b64decode(donation_402.headers["PAYMENT-REQUIRED"])
@@ -773,6 +821,22 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
         message = report.message("staging")
         assert message.report and message.subject.endswith("all checks passed")
         assert message.subject.startswith("[DebitMyData Gateway staging] Daily report")
+
+        # The company's test DIDs are left out of the figures, with their payments, but those
+        # payments are still checked on the chain.
+        test_dids = Settings(
+            _env_file=None, database_url=TEST_DATABASE_URL, report_excluded_dids=f" {did} ,"
+        )
+        with transaction(factory) as session:
+            report = build_report(replace(ctx, settings=test_dids), session, now)
+        body = "\n".join(report.lines)
+        assert report.findings == []
+        assert body.count("- DIDs issued: 0") == 2  # the last 24 hours, and since the start
+        assert "- DID registration quotes: 0" in body
+        assert "- Payments settled with x402_usdc_base: 1, 2 USDC" in body  # the donation
+        assert "- Settled with x402_usdc_base: 1 payment(s), 2 USDC" in body
+        assert "- Left out of these figures: 1 test DID(s)" in body
+        assert "checked again on chain, all found" in body
 
         # The blocks holding both payments leave the chain.
         CHAIN.reorg()

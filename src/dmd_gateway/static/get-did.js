@@ -306,8 +306,10 @@
     if (fee && fee.amount) $("#price").textContent = `$${Number(fee.amount).toLocaleString("en-US")} ${fee.currency || "USD"}, paid once`;
     optionsBox.replaceChildren();
     let first = true;
-    for (const option of options) {
-      if (option.status !== "enabled") continue;
+    // USDC first, then the DebitMyData coin (DMD), then the others, as DebitMyData lists them.
+    const rank = (option) => (option.asset === "USDC" ? 0 : option.asset === "DMD" ? 1 : 2);
+    const open = options.filter((option) => option.status === "enabled").sort((a, b) => rank(a) - rank(b));
+    for (const option of open) {
       // USDC is paid by an x402 client when registering: not on this page yet.
       const onPage = option.payment_protocol !== "x402";
       const radio = element("input", { type: "radio", name: "option", value: option.id, disabled: !onPage, checked: onPage && first });
@@ -316,12 +318,34 @@
         ? option.asset === "DMD"
           ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
           : `Pay in ${option.asset}.`
-        : "Soon on this page: agents can already pay it through the API.";
+        : "Coming to this page soon. Agents can already pay with it through the API.";
       optionsBox.append(
-        element("label", { class: `choice${onPage ? "" : " unavailable"}` }, radio, element("strong", {}, option.name || option.id), element("small", {}, help))
+        element(
+          "label",
+          { class: `choice${onPage ? "" : " unavailable"}` },
+          radio,
+          element("strong", {}, option.name || option.id),
+          onPage ? null : element("span", { class: "tag soon" }, "Soon"),
+          element("small", {}, help)
+        )
       );
+      if (option.asset === "DMD") optionsBox.append(dmdHelpToggle());
     }
     if (first) optionsBox.append(element("p", { class: "error" }, "No payment option is open on this page right now. Please come back later."));
+  }
+
+  // Under the DMD option: a discreet "?" that opens the short guide to DMD below the options.
+  function dmdHelpToggle() {
+    const panel = $("#get-dmd");
+    const icon = element("span", { class: "icon", "aria-hidden": "true" }, "?");
+    const toggle = element("button", { type: "button", class: "help-toggle", "aria-expanded": "false", "aria-controls": "get-dmd" }, icon, "What is DMD, and how do I get it?");
+    toggle.addEventListener("click", () => {
+      const opening = panel.hidden;
+      panel.hidden = !opening;
+      toggle.setAttribute("aria-expanded", String(opening));
+      if (opening) panel.scrollIntoView({ block: "nearest", behavior: reducedMotion ? "auto" : "smooth" });
+    });
+    return element("p", { class: "option-help" }, toggle);
   }
 
   // Says what is wrong with a typed 0x address, so it can be fixed.
@@ -741,4 +765,6 @@
   loadOptions();
   const previous = saved();
   if (previous) resume(previous);
+  // The installable app (on its own address): keeps the page for opening without a network.
+  if (config.app && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 })();

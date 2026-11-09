@@ -24,7 +24,14 @@ from dmd_gateway.domain.routes import RailConfig
 
 
 class AdapterUnavailable(RuntimeError):
-    """The rail's node or provider cannot be used right now (or is misconfigured)."""
+    """The rail's node or provider cannot be used right now (or is misconfigured).
+
+    ``rate_limited``: the provider only refused because too many requests were sent (HTTP
+    429), which usually passes by itself; the monitor alerts on it only when it lasts."""
+
+    def __init__(self, message: str = "", *, rate_limited: bool = False) -> None:
+        super().__init__(message)
+        self.rate_limited = rate_limited
 
 
 @dataclass(frozen=True, slots=True)

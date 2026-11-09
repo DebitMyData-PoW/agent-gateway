@@ -97,7 +97,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 | The gateway API is not ready / not answering | critical | Agents cannot get quotes or register. `systemctl status dmd-gateway-api`; `curl http://127.0.0.1:8000/readyz` shows which part fails. In production, `credential_signer` unavailable means no DID or receipt can be issued: `systemctl status dmd-gateway-signer`. |
 | The payment worker has stopped | critical | Payments are not verified, so nothing is issued after payment. `systemctl status dmd-gateway-worker`, `journalctl -u dmd-gateway-worker`. |
 | The payment worker fails on some payments | warning | Some payments raise errors; see the worker's log. |
-| USDC/DMD payments cannot be verified | critical | The DebitMyData node, the Base RPC or the x402 facilitator does not answer or is on the wrong chain. Payments with that option are not confirmed until it is fixed. To stop new quotes for it, set its kill switch (e.g. `DMD_RAIL_X402_USDC_BASE_KILL=true`) and restart the API. |
+| USDC/DMD payments cannot be verified | critical | The DebitMyData node, the Base RPC or the x402 facilitator does not answer or is on the wrong chain. Payments with that option are not confirmed until it is fixed. To stop new quotes for it, set its kill switch (e.g. `DMD_RAIL_X402_USDC_BASE_KILL=true`) and restart the API. When the Base RPC or the facilitator only refuses because of its rate limit (HTTP 429), which usually passes by itself, the alert comes only after 3 checks in a row (about 6 minutes); if it lasts, the provider's plan or key may need raising. |
 | The DMD price is not being updated | warning | DMD quotes are refused until it is. Check the worker and the DebitMyData node or explorer. |
 | The DMD price parameters are due for their quarterly review | warning | Review the electricity price and machine efficiency in `config/payment_routes.yaml`. |
 | The gateway's DebitMyData node is N blocks behind / ahead of the explorer | warning | The node is syncing, stuck, or on another chain than the public explorer. |
@@ -121,6 +121,14 @@ Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
   the BottyBotty tiers, apart from donations), payments settled per payment option with the
   amounts received, payments that failed or need a refund.
 - **Since the start**: DIDs issued and amounts received per payment option.
+- The company's own test DIDs are left out of these figures, with their quotes, products and
+  payments, when they are listed in `DMD_GW_REPORT_EXCLUDED_DIDS` (comma-separated); the report
+  says how many. Their payments are still checked in the reconciliation below:
+
+  ```bash
+  DMD_GW_REPORT_EXCLUDED_DIDS=did:web:api.debitmydata.io:agents:01M6SPFAGGXGDNX77MDY25MXV4
+  ```
+
 - **Receiving destinations in use**: the USDC addresses, and the DMD wallet shown by its key
   origin and a short fingerprint (never its public key, which would reveal all its addresses).
   Anyone receiving the report can see at once if one of them changed.

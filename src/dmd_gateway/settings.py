@@ -21,6 +21,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_DATABASE_URL = "postgresql+psycopg://gateway:gateway-dev-only@localhost:5432/agent_gateway"
 ENV_FILE = ".env"
+_LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+HOST_NAME = re.compile(rf"{_LABEL}(\.{_LABEL})*(:\d{{1,5}})?")
 EMAIL = re.compile(r"^[^@\s,<>]+@[^@\s,<>]+\.[A-Za-z]{2,}$")
 
 
@@ -48,6 +50,13 @@ class Settings(BaseSettings):
     # commas): only DIDs they control may have a name like DebitMyData, DMD, BottyBotty or
     # AgenticSpaces (identity/names.py).
     brand_name_controllers: str = ""
+    # The installable "Get a DID" app (api/get_did_page.py): the host name that serves the
+    # page at its root, as an app people add to their home screen, e.g. id.debitmydata.io.
+    # Empty: no app; the page is at /get-did as before. DIDs keep public_base_url's host.
+    app_host: str = ""
+    # DIDs left out of the daily report's figures (comma-separated), such as the company's
+    # own test DIDs. Their payments are still checked like every other.
+    report_excluded_dids: str = ""
 
     route_registry_path: Path = Path("config/payment_routes.yaml")
 
@@ -136,6 +145,22 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("app_host")
+    @classmethod
+    def _host_name(cls, value: str) -> str:
+        host = value.strip().lower()
+        if host and not HOST_NAME.fullmatch(host):
+            raise ValueError("app_host must be a host name only, e.g. id.debitmydata.io")
+        return host
+
+    @field_validator("report_excluded_dids")
+    @classmethod
+    def _did_list(cls, value: str) -> str:
+        for did in did_list(value):
+            if not re.fullmatch(r"did:[a-z0-9]+:\S+", did):
+                raise ValueError(f"report_excluded_dids: {did!r} is not a DID")
+        return value
+
     @field_validator("dmd_explorer_url")
     @classmethod
     def _https_explorer(cls, value: str) -> str:
@@ -187,6 +212,10 @@ class Settings(BaseSettings):
 
 
 def email_list(value: str) -> list[str]:
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def did_list(value: str) -> list[str]:
     return [part.strip() for part in value.split(",") if part.strip()]
 
 

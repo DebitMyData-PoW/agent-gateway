@@ -52,12 +52,14 @@ def _certificate(directory: Path) -> tuple[Path, Path]:
 
 
 @pytest.mark.skipif(NGINX is None, reason="nginx is not installed")
-def test_nginx_accepts_the_staging_site(tmp_path: Path) -> None:
+@pytest.mark.parametrize("app_host", ["", " id.staging.test"], ids=["api", "api-and-app"])
+def test_nginx_accepts_the_staging_site(tmp_path: Path, app_host: str) -> None:
     cert, key = _certificate(tmp_path)
     (tmp_path / "logs").mkdir()
     shutil.copy(FILES / "nginx-proxy.conf", tmp_path / "dmd-gateway-proxy.conf")
     site = (
         SITE.replace("@HOSTNAME@", "staging.test")
+        .replace("@APP_HOSTNAME@", app_host)
         .replace("/etc/ssl/cloudflare/origin.pem", str(cert))
         .replace("/etc/ssl/cloudflare/origin.key", str(key))
         .replace("/etc/nginx/snippets/", f"{tmp_path}/")
@@ -128,3 +130,46 @@ def test_a_new_setting_never_lands_on_the_end_of_the_last_line(
         )
         expected = (before.rstrip("\n") + "\n" if before else "") + added
         assert settings.read_text(encoding="utf-8") == expected
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+@pytest.mark.parametrize("script", SETUP_SCRIPTS, ids=["staging", "production"])
+def test_nginx_also_answers_for_the_app_host_when_one_is_set(script: Path, tmp_path: Path) -> None:
+    """The Get a DID app's host (DMD_GW_APP_HOST) joins the API's in nginx's server_name."""
+    lines = script.read_text(encoding="utf-8").splitlines()
+    start = next(n for n, line in enumerate(lines) if line.startswith('APP_HOST="$(env_value'))
+    end = next(n for n in range(start, len(lines)) if "sites-available/dmd-gateway" in lines[n])
+    render = "\n".join(lines[start : end + 1]).replace(
+        "/etc/nginx/sites-available/dmd-gateway", '"$OUT"'
+    )
+    env_value = next(line for line in lines if line.startswith("env_value()"))
+    files = script.parent / "files"
+    settings, out = tmp_path / "gateway.env", tmp_path / "site.conf"
+    program = "\n".join(
+        (
+            'ENV_FILE="$1"; OUT="$2"; FILES="$3"; HOSTNAME_PUBLIC=api.test',
+            'fail() { echo "$*" >&2; exit 1; }',
+            env_value,
+            render,
+        )
+    )
+    for setting, server_name in (
+        ("", "server_name api.test;"),
+        ("DMD_GW_APP_HOST=\n", "server_name api.test;"),
+        ("DMD_GW_APP_HOST='ID.Example.test'\n", "server_name api.test id.example.test;"),
+    ):
+        settings.write_text("DMD_GW_ENVIRONMENT=staging\n" + setting, encoding="utf-8")
+        assert BASH is not None
+        subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+            [BASH, "-c", program, "_", str(settings), str(out), str(files)], check=True
+        )
+        site = out.read_text(encoding="utf-8")
+        assert server_name in site and "@APP_HOSTNAME@" not in site
+    settings.write_text("DMD_GW_APP_HOST=https://id.example.test/\n", encoding="utf-8")
+    refused = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        [BASH, "-c", program, "_", str(settings), str(out), str(files)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert refused.returncode == 1 and "must be a host name only" in refused.stderr

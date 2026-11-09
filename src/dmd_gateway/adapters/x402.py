@@ -39,6 +39,7 @@ from dmd_gateway.adapters.cdp_auth import CdpApiKeyAuth
 from dmd_gateway.adapters.evm_rpc import (
     EvmRpcClient,
     EvmRpcError,
+    EvmRpcRateLimited,
     EvmRpcUnavailable,
     quantity,
 )
@@ -123,7 +124,9 @@ class X402PaymentAdapter(PaymentAdapter):
         try:
             return read(self.rpc())
         except (EvmRpcUnavailable, EvmRpcError) as exc:
-            raise AdapterUnavailable(str(exc)) from exc
+            raise AdapterUnavailable(
+                str(exc), rate_limited=isinstance(exc, EvmRpcRateLimited)
+            ) from exc
 
     @property
     def pay_to(self) -> str:
@@ -144,7 +147,7 @@ class X402PaymentAdapter(PaymentAdapter):
         try:
             supported = self.facilitator().supports("exact", self.rail.network)
         except FacilitatorUnavailable as exc:
-            raise AdapterUnavailable(str(exc)) from exc
+            raise AdapterUnavailable(str(exc), rate_limited=exc.rate_limited) from exc
         if not supported:
             raise AdapterUnavailable(
                 f"the x402 facilitator does not support 'exact' payments on {self.rail.network}"

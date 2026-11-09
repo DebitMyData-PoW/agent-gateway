@@ -5,7 +5,9 @@ Each check looks at one thing and returns what is wrong, as findings (``alerts.F
   api        the API answers its readiness check
   worker     the payment worker is alive (it records a heartbeat on every pass)
   rails      every enabled payment option can still verify payments (node, chain RPC,
-             facilitator), with the same checks the gateway runs at start
+             facilitator), with the same checks the gateway runs at start; a provider that
+             only refuses because of its rate limit (HTTP 429) usually recovers by itself, so
+             that alerts only after RATE_LIMIT_ALERT_AFTER checks in a row
   price      the DMD price is fresh, and its parameters are not past their review
   dmd_chain  the gateway's DebitMyData mainnet node agrees with the public explorer on the height
   audit      alerts recorded by the worker (a payment reorganized out of the chain after its
@@ -35,12 +37,19 @@ from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.base import AdapterUnavailable
 from dmd_gateway.adapters.dmd_rpc import DmdRpcClient
-from dmd_gateway.db.models import AgentIdentity, AuditEvent, PaymentIntent, X402Authorization
+from dmd_gateway.db.models import (
+    AgentIdentity,
+    AlertState,
+    AuditEvent,
+    PaymentIntent,
+    X402Authorization,
+)
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
 from dmd_gateway.monitoring.alerts import Finding, Severity, redact
 from dmd_gateway.monitoring.state import (
     AUDIT_CURSOR,
+    RATE_LIMITED,
     RECEIVING,
     WORKER_HEARTBEAT,
     get_state,
@@ -57,6 +66,7 @@ DEFAULT_PRICE_AGE = timedelta(seconds=900)
 X402_UNKNOWN_AFTER = timedelta(minutes=30)
 CONFIRMING_TOO_LONG = timedelta(hours=2)
 HEIGHT_TOLERANCE = 3  # blocks between the node and the explorer
+RATE_LIMIT_ALERT_AFTER = 3  # checks in a row (every 2 minutes) refused by a rate limit
 AUDIT_BATCH = 200
 SHOWN_IDS = 5
 CONFIRMING = (PaymentStatus.DETECTED, PaymentStatus.CONFIRMING, PaymentStatus.VERIFIED)
@@ -150,22 +160,44 @@ def check_worker(ctx: MonitorContext, session: Session, now: datetime) -> list[F
 
 def check_rails(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
     findings = []
+    stored = get_state(session, RATE_LIMITED)
+    refused_before = stored[0] if stored else {}
+    refused: dict[str, int] = {}
     for rail_id, adapter in ctx.runtime.adapters.items():
         rail = ctx.runtime.registry.rails[rail_id]
+        key = f"rails.{rail_id}"
         try:
             adapter.check_ready()
         except AdapterUnavailable as exc:
+            detail = str(exc)
+            if exc.rate_limited:
+                refused[rail_id] = int(refused_before.get(rail_id, 0)) + 1
+                # A short burst of refusals passes by itself: no alert unless it lasts (or
+                # an alert for this option is already open).
+                if refused[rail_id] < RATE_LIMIT_ALERT_AFTER and not _open(session, key):
+                    continue
+                detail += (
+                    f" ({refused[rail_id]} checks in a row; if it lasts, the provider's "
+                    "plan or key may need raising)"
+                )
             findings.append(
                 Finding(
-                    f"rails.{rail_id}",
+                    key,
                     C,
                     f"{rail.asset.symbol} payments ({rail_id}) cannot be verified",
-                    f"{exc}\nPayments with this option are not confirmed until this is fixed. "
-                    f"To stop new quotes for it, set its kill switch ({rail.kill_env}=true) "
-                    "and restart the gateway.",
+                    f"{detail}\nPayments with this option are not confirmed until this is "
+                    f"fixed. To stop new quotes for it, set its kill switch "
+                    f"({rail.kill_env}=true) and restart the gateway.",
                 )
             )
+    if refused or refused_before:
+        put_state(session, RATE_LIMITED, refused, now)
     return findings
+
+
+def _open(session: Session, key: str) -> bool:
+    row = session.get(AlertState, key)
+    return row is not None and row.resolved_at is None
 
 
 def check_price(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:

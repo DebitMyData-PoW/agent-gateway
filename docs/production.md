@@ -332,7 +332,45 @@ paid for a DID that is suspended before it is completed waits until the DID is r
 if the DID is revoked, the purchase stays paid without a receipt and is refunded by hand as
 the refund policy says.
 
-## 12. Go-live checklist
+## 12. The Get a DID app (id.debitmydata.io)
+
+The "Get a DID" page is also an app people add to their phone's home screen and open full
+screen: on its own address, `https://id.debitmydata.io`, the same gateway serves the page at
+the root, with the app's name, icons and a small service worker that keeps the page for opening
+without a network (it never touches the API calls). DIDs keep `api.debitmydata.io` in their
+name, and `/get-did` stays as it is. People install it:
+
+- **iPhone (Safari):** Share, then **Add to Home Screen**;
+- **Android (Chrome):** the **Install app** prompt, or the menu, then **Install app**.
+
+The app's identity is its address: once people have installed it, the host must not change.
+
+1. **Cloudflare, DNS:** add a record `id`, the same type and target as `api` (the server's
+   address), **Proxied** (orange cloud).
+2. **Certificate:** the server's Cloudflare origin certificate must cover the name. A
+   certificate made for `*.debitmydata.io` already does; check on the server:
+
+   ```bash
+   sudo openssl x509 -in /etc/ssl/cloudflare/origin.pem -noout -ext subjectAltName
+   ```
+
+   If neither `id.debitmydata.io` nor `*.debitmydata.io` is listed, create a new origin
+   certificate in Cloudflare (SSL/TLS, Origin Server) for `api.debitmydata.io` and
+   `id.debitmydata.io` and replace both files, as at installation.
+3. **Setting:** add the host name to `/etc/dmd-gateway/gateway.env`, then run the update
+   (step 8), which adds the name to nginx and checks that the app answers:
+
+   ```bash
+   echo "DMD_GW_APP_HOST=id.debitmydata.io" | sudo tee -a /etc/dmd-gateway/gateway.env
+   ```
+
+4. **Check** from your computer: `https://id.debitmydata.io` shows the page, and
+   `https://id.debitmydata.io/manifest.webmanifest` the app's name and icons.
+
+To try it on staging first, do the same there with another name, for example
+`id-staging.debitmydata.io`.
+
+## 13. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set
@@ -342,4 +380,5 @@ the refund policy says.
 - [ ] USDC payments on (step 7) once the Coinbase key is set; Bazaar validation passes
 - [ ] The temporary `/policies` redirect to staging is removed in Cloudflare
 - [ ] The Agentic Spaces site points agents to `https://api.debitmydata.io`
+- [ ] The Get a DID app answers at `https://id.debitmydata.io` (step 12)
 - [ ] Preska is told it is live

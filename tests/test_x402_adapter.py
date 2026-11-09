@@ -20,6 +20,7 @@ from dmd_gateway.adapters.base import (
 )
 from dmd_gateway.adapters.evm_rpc import (
     EvmRpcClient,
+    EvmRpcRateLimited,
     EvmRpcUnavailable,
     MethodNotAllowed,
     require_https_or_loopback,
@@ -344,6 +345,33 @@ def test_rpc_client_only_calls_read_methods() -> None:
     ):
         with pytest.raises(MethodNotAllowed):
             client.call(method, [])
+
+
+def test_a_rate_limit_is_told_apart_from_other_failures() -> None:
+    # The monitor alerts on a rate limit (HTTP 429) only when it lasts: it usually passes.
+    def busy(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="slow down")
+
+    rpc = EvmRpcClient("https://rpc.test", transport=httpx.MockTransport(busy))
+    with pytest.raises(EvmRpcRateLimited):
+        rpc.block_number()
+    with pytest.raises(AdapterUnavailable) as error:
+        adapter(rpc=rpc).check_ready()
+    assert error.value.rate_limited
+    facilitator = FacilitatorClient("https://facilitator.test", transport=httpx.MockTransport(busy))
+    with pytest.raises(FacilitatorUnavailable) as refused:
+        facilitator.supported()
+    assert refused.value.rate_limited
+    with pytest.raises(AdapterUnavailable) as error:
+        adapter(facilitator=facilitator).check_ready()
+    assert error.value.rate_limited
+    CHAIN.chain_id = 1  # any other failure is not
+    try:
+        with pytest.raises(AdapterUnavailable) as error:
+            adapter().check_ready()
+        assert not error.value.rate_limited
+    finally:
+        CHAIN.chain_id = 8453
 
 
 def test_rpc_errors_do_not_reveal_the_url() -> None:
