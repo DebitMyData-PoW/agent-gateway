@@ -11,7 +11,7 @@ src:url(/fonts/mada-latin-800-normal.woff2) format("woff2")}
 --warn:#b35900;--code:#f6f6f6;--sans:Mada,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 --page:880px;color-scheme:light;
 /* The colours the light and dark themes change (the dark ones are at the end of this file) */
---red-text:#c80815;--green-text:#098551;--code-text:#640000;--page-bg:#f6f6f8;--paper:#fff;--card:#fff;--card-2:#fbfbfc;--topbar:#fff;
+--red-text:#c80815;--green-text:#098551;--code-text:#640000;--page-bg:#fff;--paper:#fff;--card:#fff;--card-2:#fbfbfc;--topbar:#fff;
 --line-2:#ececf0;--body:#55606e;--text-2:#3d3b3b;--input-line:#cfcfcf;--disabled:#5b5959;--pick:#fffafa;
 --note-bg:#fff7e0;--note-line:#f6c000;--ok-bg:#eaf6ef;--ok-line:#bfe3cd;--pink-line:#f5c9cc;--lift-line:#f7d4d7;
 --step-grey:#e6e6e6;--get-grey:#4b4f58;--waiting-text:#4b4f58;--round-muted:#7d5a5a;--flash:#fff3c4;
