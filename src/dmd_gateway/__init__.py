@@ -1,3 +1,3 @@
 """DebitMyData Agent Gateway."""
 
-__version__ = "0.29.7"
+__version__ = "0.30.0"

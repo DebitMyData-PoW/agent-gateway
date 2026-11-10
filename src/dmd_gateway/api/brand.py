@@ -9,13 +9,44 @@ phone the top bar's links fold into a menu button; it needs no script (a checkbo
 label), so it works under every page's Content-Security-Policy. The "back to top" button is
 a plain link too: it fades in as the page scrolls down (CSS scroll-driven animation), and
 browsers without that show it all the time.
+
+Every page has a light and a dark theme (light unless the visitor picks dark with the moon /
+sun button in the top bar). ``THEME_SCRIPT`` goes in each page's <head>: it applies the
+visitor's choice before the page is drawn and makes the button work. Its hash is in every
+page's Content-Security-Policy (``THEME_SCRIPT_SOURCE``). The choice is kept in this site's own
+"dmd-theme-id" cookie; DebitMyData's other sites keep their own.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 from importlib.resources import files
 
 CSS = (files("dmd_gateway") / "static" / "brand.css").read_text(encoding="utf-8")
+_THEME_JS = (files("dmd_gateway") / "static" / "theme.js").read_text(encoding="utf-8")
+# The light / dark theme: <script data-theme-switch> (the pages' own script stays the plain
+# <script> after it), and its CSP source, for each page's script-src.
+THEME_SCRIPT = f"<script data-theme-switch>{_THEME_JS}</script>"
+THEME_SCRIPT_SOURCE = (
+    "'sha256-" + base64.b64encode(hashlib.sha256(_THEME_JS.encode("utf-8")).digest()).decode() + "'"
+)
+_MOON = (
+    '<svg class=moon viewBox="0 0 24 24" width=20 height=20 aria-hidden=true focusable=false>'
+    '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a6.8 6.8 0 0 0 10.7 10.7z" fill=none '
+    "stroke=currentColor stroke-width=2 stroke-linecap=round stroke-linejoin=round /></svg>"
+)
+_SUN = (
+    '<svg class=sun viewBox="0 0 24 24" width=20 height=20 aria-hidden=true focusable=false>'
+    "<g fill=none stroke=currentColor stroke-width=2 stroke-linecap=round>"
+    "<circle cx=12 cy=12 r=4.5 />"
+    '<path d="M12 2v2.2M12 19.8V22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M2 12h2.2M19.8 12H22'
+    'M4.9 19.1l1.6-1.6M17.5 6.5l1.6-1.6"/></g></svg>'
+)
+THEME_BUTTON = (
+    "<button type=button id=theme-toggle class=theme-toggle "
+    f'aria-label="Switch between the light and dark themes">{_MOON}{_SUN}</button>'
+)
 
 GET_DID_PATH = "/get-did"
 GUIDED_PATH = "/docs"  # staging
@@ -43,8 +74,12 @@ NO_TRANSFORM = "no-transform"
 HOME_PATH = "/"  # the site root: the Get a DID page (the guided test on staging)
 # DebitMyData's logo, the left side of debitmydata.com's (the coin, its band and the binary
 # lines, black on the website; the app's icons have them red, for dark home screens), 151 x 120
-# pixels: shown 40 pixels high, sharp on high-density screens. "?v=" changes with the file.
-LOGO = '<img src="/logo.png?v=2" alt="" width=50 height=40>'
+# pixels: shown 40 pixels high, sharp on high-density screens. "?v=" changes with the file. The
+# dark theme shows logo-dark.png instead: the same logo with the lines red, like the app's icons.
+LOGO = (
+    '<img class=logo-light src="/logo.png?v=2" alt="" width=50 height=40>'
+    '<img class=logo-dark src="/logo-dark.png?v=1" alt="" width=50 height=40>'
+)
 SOURCE_CODE = "https://github.com/DebitMyData-PoW/agent-gateway"
 CONTACT = "info@debitmydata.com"
 POLICY_LINKS = (
@@ -109,6 +144,7 @@ def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
         '<input type=checkbox id=menu-toggle class=menu-toggle aria-label="Menu" '
         "aria-controls=site-menu>"
         "<label for=menu-toggle class=menu-button aria-hidden=true><span></span></label>"
+        f"{THEME_BUTTON}"
         f'<nav id=site-menu class=modes aria-label="Gateway pages">{links}</nav>'
         "</div></header>"
     )

@@ -11,7 +11,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from dmd_gateway.api import try_page
+from dmd_gateway.api import brand, try_page
 
 from .test_staging_tools import staging_client  # noqa: F401
 
@@ -63,7 +63,8 @@ def test_only_the_page_own_script_and_style_may_run(staging_client: TestClient) 
     csp = response.headers["content-security-policy"]
     script = re.search(r"<script>(.*)</script>", response.text, re.S).group(1)
     style = re.search(r"<style>(.*)</style>", response.text, re.S).group(1)
-    assert f"script-src 'sha256-{_sha256(script)}'" in csp
+    assert f"script-src 'sha256-{_sha256(script)}' {brand.THEME_SCRIPT_SOURCE};" in csp
+    assert brand.THEME_SCRIPT in response.text
     assert f"style-src 'sha256-{_sha256(style)}'" in csp
     assert "default-src 'none'" in csp and "connect-src 'self'" in csp
     assert "frame-ancestors 'none'" in csp

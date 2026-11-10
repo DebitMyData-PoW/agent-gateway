@@ -9,26 +9,44 @@ src:url(/fonts/mada-latin-800-normal.woff2) format("woff2")}
 :root{--red:#c80815;--red-hover:#e12330;--red-deep:#640000;--red-brand:#bf030c;--pink:#fff0f1;
 --grey:#f5f5f5;--line:#e6e6e6;--text:#211f1f;--muted:#7d8797;--green:#098551;--green-hover:#0ead6a;
 --warn:#b35900;--code:#f6f6f6;--sans:Mada,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
---page:880px;color-scheme:light}
+--page:880px;color-scheme:light;
+/* The colours the light and dark themes change (the dark ones are at the end of this file) */
+--red-text:#c80815;--green-text:#098551;--code-text:#640000;--page-bg:#f6f6f8;--paper:#fff;--card:#fff;--card-2:#fbfbfc;--topbar:#fff;
+--line-2:#ececf0;--body:#55606e;--text-2:#3d3b3b;--input-line:#cfcfcf;--disabled:#5b5959;--pick:#fffafa;
+--note-bg:#fff7e0;--note-line:#f6c000;--ok-bg:#eaf6ef;--ok-line:#bfe3cd;--pink-line:#f5c9cc;--lift-line:#f7d4d7;
+--step-grey:#e6e6e6;--get-grey:#4b4f58;--waiting-text:#4b4f58;--round-muted:#7d5a5a;--flash:#fff3c4;
+--notice-text:#5c3d00;--warn-bg:#fde8e8;--warn-text:#8a1c1c;--chip-done:#e8f5ee;--row-line:#f0f0f0;
+--get-line:#a9aeb7;--shadow:0 10px 30px rgba(17,17,26,.06);--bar-shadow:0 4px 18px rgba(17,17,26,.06)}
 .topbar,.site-footer{font:16px/1.5 var(--sans)}
 .topbar *,.site-footer *{box-sizing:border-box}
 html{scroll-padding-top:84px}
 /* A white top bar that stays at the top while the page scrolls, as on debitmydata.com. */
-.topbar{position:sticky;top:0;z-index:40;background:#fff;color:var(--text);border-bottom:1px solid #ececf0;
-box-shadow:0 4px 18px rgba(17,17,26,.06)}
+.topbar{position:sticky;top:0;z-index:40;background:var(--topbar);color:var(--text);border-bottom:1px solid var(--line-2);
+box-shadow:var(--bar-shadow)}
 .site-footer{background:var(--red-deep)}
 .topbar .in,.site-footer .in{max-width:var(--page);margin:0 auto;padding:12px 16px;display:flex;align-items:center;
 flex-wrap:wrap}
 .topbar .in{gap:12px}
 .brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:800;font-size:1.15rem}
 .brand img{width:auto;height:40px}
-.brand:hover{color:var(--red)}
+.brand .logo-dark,[data-theme=dark] .brand .logo-light{display:none}
+[data-theme=dark] .brand .logo-dark{display:block}
+.brand:hover{color:var(--red-text)}
 .modes{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;font-size:.95rem}
-.modes a{padding:6px 14px;border-radius:999px;color:var(--red);font-weight:600;text-decoration:none}
-.modes a:hover{background:var(--pink);color:var(--red)}
+.modes a{padding:6px 14px;border-radius:999px;color:var(--red-text);font-weight:600;text-decoration:none}
+.modes a:hover{background:var(--pink);color:var(--red-text)}
 .modes a.on,.modes a.on:hover{background:var(--red);color:#fff;font-weight:700;box-shadow:0 6px 14px rgba(200,8,21,.22)}
-.modes a.real{border:1px solid #f5c9cc}
+.modes a.real{border:1px solid var(--pink-line)}
 .menu-toggle{position:absolute;width:1px;height:1px;margin:0;opacity:0;pointer-events:none}
+/* The light / dark switch: a moon in the light theme, a sun in the dark one */
+.theme-toggle{order:2;display:inline-grid;place-items:center;flex:none;width:40px;height:40px;margin:0;padding:0;
+border-radius:999px;border:1px solid var(--line-2);background:var(--card);color:var(--text);cursor:pointer;
+box-shadow:none;transition:background-color .15s,color .15s,border-color .15s}
+.theme-toggle:hover{background:var(--pink);border-color:var(--pink-line);color:var(--red-text)}
+.theme-toggle:focus-visible{outline:3px solid var(--red-text);outline-offset:2px}
+.theme-toggle svg{width:20px;height:20px}
+.theme-toggle .sun,[data-theme=dark] .theme-toggle .moon{display:none}
+[data-theme=dark] .theme-toggle .sun{display:block}
 .menu-button{display:none}
 .site-footer{color:#f5ced0;font-size:.95rem}
 .site-footer .in{display:block;padding-top:34px;padding-bottom:20px}
@@ -42,10 +60,13 @@ border-radius:999px;background:#fff;color:var(--red-deep);font-weight:700}
 @media (display-mode:standalone){.site-footer .col a.get-app{display:none}}
 .site-footer .legal{margin:26px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.2);font-size:.85rem}
 .site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
-.topbar a:focus-visible,.menu-toggle:focus-visible+.menu-button{outline:3px solid var(--red);outline-offset:2px}
+.topbar a:focus-visible,.menu-toggle:focus-visible+.menu-button{outline:3px solid var(--red-text);outline-offset:2px}
 @media (max-width:760px){
-.menu-button{display:grid;place-items:center;margin-left:auto;width:44px;height:44px;border-radius:10px;cursor:pointer;
-border:1px solid #ececf0;box-shadow:0 4px 12px rgba(17,17,26,.06)}
+.theme-toggle{order:1;margin-left:auto}
+.menu-button{order:2}
+.modes{order:3}
+.menu-button{display:grid;place-items:center;width:44px;height:44px;border-radius:10px;cursor:pointer;
+border:1px solid var(--line-2);box-shadow:0 4px 12px rgba(17,17,26,.06)}
 .menu-button span,.menu-button span::before,.menu-button span::after{display:block;width:20px;height:2px;
 background:var(--text);border-radius:2px;transition:transform .2s,background .2s}
 .menu-button span{position:relative}
@@ -77,3 +98,15 @@ to{opacity:1;visibility:visible;transform:none}}
 @media print{.back-to-top{display:none}}
 /* Above the payment countdown when it shows at the bottom of the screen */
 @media (max-width:1240px){body:has(#countdown:not([hidden])) .back-to-top{bottom:96px}}
+/* Dark theme: the same design on a #18181d page with slightly lighter cards and light text. The
+   red stays DebitMyData's red; where red is text it is a lighter red, so it stays readable. */
+[data-theme=dark]{color-scheme:dark;
+--red-brand:#ff5a64;--pink:#33161b;--grey:#2a2a33;--line:#33333c;--text:#ececf1;--muted:#9a9ba6;--code:#26262e;
+--warn:#f0a050;--green-text:#3ccf87;
+--red-text:#ff5a64;--code-text:#ffb3b8;--page-bg:#18181d;--paper:#18181d;--card:#202027;--card-2:#24242b;
+--topbar:#1d1d23;--line-2:#303039;--body:#b9bac4;--text-2:#cfd0d8;--input-line:#3a3a44;--disabled:#8e8f9b;
+--pick:#2a1a1e;--note-bg:#33290f;--note-line:#c99a2e;--ok-bg:#12301f;--ok-line:#1f5a3a;--pink-line:#5c1f27;
+--lift-line:#5c1f27;--step-grey:#33333d;--waiting-text:#9a9ba6;--round-muted:#b08a8a;--flash:#3a3010;
+--notice-text:#f5d27a;--warn-bg:#3a1518;--warn-text:#ff9da3;--chip-done:#12301f;--row-line:#2a2a32;
+--get-line:#4a4a55;--shadow:0 10px 30px rgba(0,0,0,.35);--bar-shadow:0 4px 18px rgba(0,0,0,.4)}
+[data-theme=dark] .menu-button{box-shadow:none}

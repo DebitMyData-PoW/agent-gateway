@@ -38,7 +38,7 @@ def _sha256(text: str) -> str:
 
 
 CSP = (
-    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}'; "
+    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
     f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; connect-src 'self'; img-src 'self'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
@@ -101,7 +101,7 @@ def page_html() -> str:
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Try a DID registration · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
-        f"<style>{_STYLE}</style></head><body>{_COUNTDOWN}{_body()}"
+        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_COUNTDOWN}{_body()}"
         f"<script>{_SCRIPT}</script></body></html>"
     )
 

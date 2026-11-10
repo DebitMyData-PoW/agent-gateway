@@ -14,6 +14,7 @@ import yaml
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
+from dmd_gateway.api import brand
 from dmd_gateway.domain.routes import RegistryError, load_registry
 from dmd_gateway.main import create_app
 from dmd_gateway.services import policy_pages
@@ -162,9 +163,10 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
     assert page.status_code == 200
     assert page.headers["content-type"].startswith("text/html")
     assert "<h1>Refund policy</h1>" in page.text
-    assert "<script" not in page.text
+    # The only script is the light / dark theme every page has, allowed by its hash.
+    assert page.text.count("<script") == 1 and brand.THEME_SCRIPT in page.text
     csp = page.headers["content-security-policy"]
-    assert "default-src 'none'" in csp and "script-src" not in csp
+    assert "default-src 'none'" in csp and f"script-src {brand.THEME_SCRIPT_SOURCE};" in csp
     assert page.headers["x-content-type-options"] == "nosniff"
     # no-transform: Cloudflare must not swap email addresses for a script these pages
     # cannot run (it would show "[email protected]" instead).

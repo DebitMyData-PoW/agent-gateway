@@ -10,7 +10,7 @@ import re
 
 from fastapi.testclient import TestClient
 
-from dmd_gateway.api import docs_pages
+from dmd_gateway.api import brand, docs_pages
 from dmd_gateway.main import HOW_TO_STEPS, STAGING_GUIDED_PAGE
 
 from .test_staging_tools import staging_client  # noqa: F401
@@ -38,7 +38,11 @@ def test_only_swagger_ui_and_the_page_own_code_may_run(client: TestClient) -> No
     response = client.get("/docs/advanced")
     csp = response.headers["content-security-policy"]
     script, style = _inline(response.text, "script"), _inline(response.text, "style")
-    assert f"script-src {docs_pages.SWAGGER_UI_JS[0]} 'sha256-{_sha256(script)}';" in csp
+    assert (
+        f"script-src {docs_pages.SWAGGER_UI_JS[0]} 'sha256-{_sha256(script)}' "
+        f"{brand.THEME_SCRIPT_SOURCE};"
+    ) in csp
+    assert brand.THEME_SCRIPT in response.text
     assert f"style-src {docs_pages.SWAGGER_UI_CSS[0]} 'sha256-{_sha256(style)}';" in csp
     for rule in ("default-src 'none'", "connect-src 'self'", "frame-ancestors 'none'"):
         assert rule in csp

@@ -14,7 +14,8 @@ button: the payment link ``debitmydata:ADDRESS?amount=AMOUNT``, the link DMD wal
 It is at /get-did on every server, the address to link from DebitMyData's sites; on
 production the docs address (/docs) and the site root lead there too, and the Swagger UI page
 is the advanced option (/docs/advanced). On staging it adds a "Pay with test coins" button.
-Only its own script and style run (hashes in the Content-Security-Policy), its font is served
+Only its own script and style run (hashes in the Content-Security-Policy; the small light / dark
+theme script, ``brand.THEME_SCRIPT``, is allowed the same way), its font is served
 here (Mada, SIL Open Font License; the look is shared with the other pages, ``brand``), and
 it may only call this server.
 
@@ -77,6 +78,7 @@ WORKER_FILES = (
     *(f"/fonts/{name}" for name in FONTS),
     "/favicon.png",
     "/logo.png",
+    "/logo-dark.png",
     "/app/icon-192.png",
     "/app/icon-512.png",
 )
@@ -103,7 +105,7 @@ def _sha256(text: str) -> str:
 
 
 CSP = (
-    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}'; "
+    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
     f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
     "form-action 'none'; frame-ancestors 'none'"
@@ -460,7 +462,7 @@ def page_html(staging: bool, app: bool = False) -> str:
         f'<meta name=description content="{DESCRIPTION}">'
         '<link rel=icon href="/favicon.png">'
         f"{installable}"
-        f"<style>{_STYLE}</style></head><body>{_body(staging, app)}"
+        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_body(staging, app)}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )

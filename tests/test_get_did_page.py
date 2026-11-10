@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine
 
-from dmd_gateway.api import get_did_page
+from dmd_gateway.api import brand, get_did_page
 from dmd_gateway.main import create_app
 from dmd_gateway.settings import Settings
 
@@ -60,7 +60,8 @@ def test_only_the_page_own_script_style_and_font_may_run(client: TestClient) -> 
     csp = response.headers["content-security-policy"]
     script = re.search(r"<script>(.*)</script>", response.text, re.S).group(1)
     style = re.search(r"<style>(.*)</style>", response.text, re.S).group(1)
-    assert f"script-src 'sha256-{_sha256(script)}';" in csp
+    assert f"script-src 'sha256-{_sha256(script)}' {brand.THEME_SCRIPT_SOURCE};" in csp
+    assert brand.THEME_SCRIPT in response.text  # the light / dark theme, in the <head>
     assert f"style-src 'sha256-{_sha256(style)}';" in csp
     for rule in (
         "default-src 'none'",

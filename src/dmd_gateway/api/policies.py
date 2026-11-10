@@ -28,14 +28,17 @@ from dmd_gateway.services.policy_pages import PolicyPage
 router = APIRouter()
 
 # no-transform: proxies must serve the pages as they are. It also keeps Cloudflare from
-# hiding email addresses behind a script, which these pages (no scripts allowed) cannot run.
+# hiding email addresses behind a script, which these pages (only their own script allowed)
+# cannot run.
 CACHE = "public, max-age=300, no-transform"
 
 _STYLE = brand.CSS + (files("dmd_gateway") / "static" / "policies.css").read_text(encoding="utf-8")
 _STYLE_HASH = base64.b64encode(hashlib.sha256(_STYLE.encode()).digest()).decode()
-# Nothing but the page's own style, the gateway's icon and font may load; no scripts at all.
+# Nothing but the page's own style, the gateway's icon and font may load, and no script but the
+# small light / dark theme one every page has (brand.THEME_SCRIPT).
 CSP = (
-    f"default-src 'none'; style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; font-src 'self'; "
+    f"default-src 'none'; script-src {brand.THEME_SCRIPT_SOURCE}; "
+    f"style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; font-src 'self'; "
     "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 )
 HTML_HEADERS = {
@@ -77,7 +80,7 @@ def _document(request: Request, title: str, current: str | None, body: str) -> s
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{escape(title)} · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
-        f"<style>{_STYLE}</style></head><body>"
+        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
         f"{brand.header('policies', staging)}"
         f'<main><nav class=policies aria-label="Policies">{links}</nav>'
         f"<article>{body}</article></main>{brand.footer(staging)}"

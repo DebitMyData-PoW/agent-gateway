@@ -48,6 +48,7 @@ _ICONS = {
     "favicon.ico": "image/x-icon",
     "favicon.png": "image/png",
     "logo.png": "image/png",
+    "logo-dark.png": "image/png",
 }
 FAVICON_URL = "/favicon.png"
 
@@ -97,7 +98,7 @@ _COMMON_CSP = (
     "form-action 'none'; frame-ancestors 'none'"
 )
 SWAGGER_CSP = (
-    f"script-src {SWAGGER_UI_JS[0]} 'sha256-{_sha256(_HELPER_JS)}'; "
+    f"script-src {SWAGGER_UI_JS[0]} 'sha256-{_sha256(_HELPER_JS)}' {brand.THEME_SCRIPT_SOURCE}; "
     f"style-src {SWAGGER_UI_CSS[0]} 'sha256-{_sha256(_HELPER_CSS)}'; font-src 'self'; "
     f"{_COMMON_CSP}"
 )
@@ -196,7 +197,8 @@ def swagger_html(
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title>"
         f'<link rel="icon" href="{FAVICON_URL}">'
-        f"{_external('link', *SWAGGER_UI_CSS)}<style>{_HELPER_CSS}</style></head>"
+        f"{brand.THEME_SCRIPT}{_external('link', *SWAGGER_UI_CSS)}"
+        f"<style>{_HELPER_CSS}</style></head>"
         f"<body>{brand.header('advanced', staging)}{_intro(staging, version)}"
         '<div id="swagger-ui"></div>'
         f"{brand.footer(staging, to_top=False)}"
@@ -254,3 +256,9 @@ def favicon_png() -> Response:
 @router.get("/logo.png")
 def logo_png() -> Response:
     return _icon("logo.png")
+
+
+# The same logo for the dark theme: its binary lines red instead of black, as on the app's icons.
+@router.get("/logo-dark.png")
+def logo_dark_png() -> Response:
+    return _icon("logo-dark.png")

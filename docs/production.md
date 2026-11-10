@@ -360,6 +360,14 @@ Every page's footer has a **Get the app** button, on any device (hidden inside t
 leads to the app's page and opens the window there, even after a **Not now**, which it forgets.
 When the browser says the app is installed, the window says so instead.
 
+Every page (Get a DID, the guided test, the API docs and the policies) has a light and a dark
+theme: light unless the visitor picks dark with the moon / sun button in the top bar. The choice
+is kept for a year in the `dmd-theme-id` cookie, for this site only (the explorer, the mining
+pool and debitmydata.io each remember their own choice), and the privacy policy says so. The
+small script that applies it before the page is drawn is `static/theme.js`, allowed by its hash
+in every page's Content-Security-Policy (`brand.THEME_SCRIPT_SOURCE`). The dark theme's colours
+are at the end of `static/brand.css`; the API docs page adds its own for Swagger UI.
+
 The app's service worker keeps the page, the font and the icons for opening without a network.
 Its cache is named after those files' content and it fetches them past the browser's own cache,
 so a new icon or logo reaches people who already opened the page, with nothing to raise by hand.

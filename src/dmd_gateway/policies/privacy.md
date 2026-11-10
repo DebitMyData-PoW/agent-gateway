@@ -1,6 +1,6 @@
 ---
 title: Privacy policy
-version: 2026-10-25
+version: 2026-11-10
 status: approved
 summary: What the DebitMyData Agent Gateway collects, what it publishes, who it shares data with, and how long it keeps it.
 ---
@@ -85,7 +85,10 @@ We do not sell personal data, and we do not use it for advertising.
 
 ## Cookies
 
-The gateway itself sets no cookies. Cloudflare may set cookies that are strictly needed to
+The gateway sets one cookie, `dmd-theme-id`, and only when you pick the light or dark theme
+with the button in the top bar: it holds that choice ("light" or "dark") for a year so the
+pages open in it next time, and nothing else. It is not used to identify or follow you, and
+it is not shared with other sites. Cloudflare may set cookies that are strictly needed to
 protect the service. The interactive API docs page loads its viewer from a public content
 network (jsDelivr), which sees your IP address when you open it.
 

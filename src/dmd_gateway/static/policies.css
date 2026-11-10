@@ -1,16 +1,16 @@
 *{box-sizing:border-box}
-body{margin:0;background:#fff;color:var(--text);font:17px/1.6 var(--sans)}
+body{margin:0;background:var(--paper);color:var(--text);font:17px/1.6 var(--sans)}
 main{max-width:var(--page);margin:0 auto;padding:0 16px 48px}
 nav.policies{display:flex;flex-wrap:wrap;gap:6px;padding:16px 0 12px;border-bottom:1px solid var(--line)}
 nav.policies a{color:var(--text);text-decoration:none;padding:4px 14px;border-radius:999px;font-size:.95rem;
 border:1px solid var(--line)}
-nav.policies a:hover{background:var(--pink);border-color:var(--pink);color:var(--red)}
+nav.policies a:hover{background:var(--pink);border-color:var(--pink);color:var(--red-text)}
 nav.policies a[aria-current]{background:var(--red);border-color:var(--red);color:#fff;font-weight:700}
 article{max-width:46rem}
-a{color:var(--red)}
+a{color:var(--red-text)}
 a:hover{color:var(--red-hover)}
-a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
-.note{margin:20px 0 0;padding:10px 14px;background:#fff7e0;border-left:4px solid #f6c000;border-radius:8px}
+a:focus-visible{outline:3px solid var(--red-text);outline-offset:2px}
+.note{margin:20px 0 0;padding:10px 14px;background:var(--note-bg);border-left:4px solid var(--note-line);border-radius:8px}
 .meta{color:var(--muted);font-size:.92rem;margin:0}
 h1{font-size:2.1rem;line-height:1.15;margin:28px 0 6px}
 h2{font-size:1.35rem;margin:34px 0 8px}
