@@ -302,6 +302,9 @@
     keyBox.hidden = kind !== "key";
   }
 
+  // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
+  const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
+
   async function loadOptions() {
     const result = await call("GET", "/v1/payment-options?service=did_registration").catch(() => null);
     const options = (result && result.data && result.data.supported_payment_options) || [];
@@ -312,16 +315,21 @@
     // USDC first, then the DebitMyData coin (DMD), then the others, as DebitMyData lists them.
     const rank = (option) => (option.asset === "USDC" ? 0 : option.asset === "DMD" ? 1 : 2);
     const open = options.filter((option) => option.status === "enabled").sort((a, b) => rank(a) - rank(b));
+    // USDC not switched on yet (production): shown greyed, first, so that people know it is
+    // coming. Only on this page: the API lists what can be paid with now, for agents to use.
+    if (!open.some((option) => option.asset === "USDC")) open.unshift(USDC_SOON);
     for (const option of open) {
       // USDC is paid by an x402 client when registering: not on this page yet.
-      const onPage = option.payment_protocol !== "x402";
+      const onPage = option !== USDC_SOON && option.payment_protocol !== "x402";
       const radio = element("input", { type: "radio", name: "option", value: option.id, disabled: !onPage, checked: onPage && first });
       if (onPage) first = false;
       const help = onPage
         ? option.asset === "DMD"
           ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
           : `Pay in ${option.asset}.`
-        : "Coming to this page soon. Agents can already pay with it through the API.";
+        : option === USDC_SOON
+          ? "The US-dollar stablecoin. Coming to this page soon: for now, pay with DMD."
+          : "Coming to this page soon. Agents can already pay with it through the API.";
       optionsBox.append(
         element(
           "label",

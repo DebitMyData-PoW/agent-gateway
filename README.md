@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.29.5`). The whole registration flow (quote,
+This is an early development release (`0.29.6`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -72,7 +72,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
 | Products bought for a DID: BottyBotty in three tiers (Entry 49, Standard 99, Premium 199 USD), each paid once and owned for good, a higher tier for the difference (`/v1/products`), paid in DMD, then a receipt signed by DebitMyData and the tier's entitlement on the DID; REST and MCP (`dmd_purchase`, `dmd_complete_purchase`) | done (on staging; off in production until BottyBotty's side is connected) |
 | "Get a DID": the DMD payment as a QR code and an "Open in my DMD wallet" link (`debitmydata:` payment link) | done |
-| "Get a DID" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](docs/production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first; a short guide to what DMD is and how to get it | done (needs the DNS record) |
+| "Get a DID" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](docs/production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first (greyed, "coming soon", while it is off); a short guide to what DMD is and how to get it | done (needs the DNS record) |
 | The pages' top bar is white and stays at the top while scrolling, folds into a menu button on phones (no script needed), the DebitMyData name leads to the site's home, and the footer is in columns like the Agentic Spaces site; a "back to top" button appears as the page scrolls | done |
 | DebitMyData's own logo (the coin side of debitmydata.com's logo, redrawn sharp) in the pages' top bar and as the favicon, with black binary lines; the app's icons show it with red lines (for dark home screens) in a white circle with a gold ring | done |
 | The app offers itself on phones and tablets in a window centred on the screen, with its icon: never inside the app nor when the browser says it is installed (`getInstalledRelatedApps`, asked at every visit, so the offer comes back once the app is removed); only "Not now" is remembered in the browser, for 30 days (the cross or a tap outside just close it); a "Get the app" button in every page's footer opens it again, or says the app is already installed | done |

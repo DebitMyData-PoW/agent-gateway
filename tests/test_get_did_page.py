@@ -396,6 +396,14 @@ def test_staging_root_is_still_the_guided_test(staging_client: TestClient) -> No
 def test_usdc_comes_first_and_dmd_is_explained() -> None:
     script = get_did_page._SCRIPT
     assert 'option.asset === "USDC" ? 0 : option.asset === "DMD" ? 1 : 2' in script
+    # While the gateway doesn't offer USDC (production, until it is switched on), the page
+    # shows it first anyway, greyed and not selectable, as coming soon.
+    options = script.split("async function loadOptions()")[1].split("\n  }\n")[0]
+    unless_offered = 'if (!open.some((option) => option.asset === "USDC")) open.unshift(USDC_SOON);'
+    assert unless_offered in options
+    assert "const onPage = option !== USDC_SOON &&" in options
+    assert "disabled: !onPage" in options
+    assert "Coming to this page soon: for now, pay with DMD." in options
     assert "What is DMD, and how do I get it?" in script and 'aria-controls": "get-dmd"' in script
     html = get_did_page.page_html(staging=False)
     guide = re.search(r"<div id=get-dmd class=explain hidden>(.*?)</div>", html, re.S).group(1)

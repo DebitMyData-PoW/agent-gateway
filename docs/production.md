@@ -197,7 +197,9 @@ watched until it settles), one message signed with their wallet (a **Sign with m
 button for browser wallets, or a signature pasted from another wallet or the agent's tools),
 and the DID. It never asks for a private key or a recovery phrase and never sends money; it
 keeps the registration's IDs in the browser so that a reload continues where it stopped. USDC
-is not on the page yet (agents pay it through the API). Its font, Mada, is served by the
+is not on the page yet (agents pay it through the API): until step 7 switches it on, the page
+lists it first, greyed, as coming soon, and DMD is the one chosen; the API lists only what can
+be paid with now. Its font, Mada, is served by the
 gateway (SIL Open Font License, `src/dmd_gateway/static/fonts/OFL-Mada.txt`).
 
 **The same look on every page for people.** The "Get a DID" page, the advanced API docs, the
