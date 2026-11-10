@@ -9,6 +9,9 @@
   const POLL_MS = 10000;
   const WARN_SECONDS = 60;
   const STORE = "dmd-get-did";
+  // "Not now" to the app: when, kept in this browser; the offer comes back after DECLINE_DAYS.
+  const DECLINED = "dmd-get-did-app-not-now";
+  const DECLINE_DAYS = 30;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const WALLET_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
   const PUBLIC_KEY = /^ed25519:z[1-9A-HJ-NP-Za-km-z]{40,60}$/;
@@ -795,35 +798,55 @@
   if (config.app && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   offerTheApp();
 
-  // "Install the app" bar, on phones and tablets, decided again at every visit (nothing is
-  // remembered): the browser's own install prompt can stay away for months, after a "No thanks"
-  // or after the app was removed. Never shown inside the app, nor when the browser says the app
-  // is installed (Chrome on Android does; Safari on an iPhone can't tell, so there the bar says
-  // how to add it, and the cross closes it for this visit).
+  // "Get the app" window, on phones and tablets, centred on the screen. Whether the app is
+  // installed is checked again at every visit: the browser's own install prompt can stay away for
+  // months (after a "No thanks", or after the app was removed). Never shown inside the app, nor
+  // when the browser says the app is installed (Chrome on Android does; Safari on an iPhone can't
+  // tell). "Not now" is remembered in this browser (not a cookie: nothing is sent to us) for
+  // DECLINE_DAYS; after that the window may come back.
   function offerTheApp() {
-    const bar = $("#install");
+    const box = $("#install");
     const inApp = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-    if (!bar || inApp || !window.matchMedia("(pointer: coarse)").matches) return;
+    if (!box || inApp || !window.matchMedia("(pointer: coarse)").matches || declinedLately()) return;
     const how = $("#install-how");
     const go = $("#install-go");
     const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    const byHand = iphone
-      ? "Tap Share, then Add to Home Screen."
-      : "Open the browser's menu (⋮), then Install app or Add to Home screen.";
-    let prompt = null;
-    let installed = false;
-    let closed = false;
-    const show = (text, button) => {
-      if (installed || closed) return;
-      how.textContent = text;
-      go.hidden = !button;
-      bar.hidden = false;
+    let prompt = null; // the browser's own install dialog, when it offers one
+    let ready = false; // the page has been open a moment, and the app is not installed
+    let done = false; // installed, or "Not now"
+    const render = () => {
+      if (!ready || done) return;
+      // A registration in progress comes first.
+      if (!$("#countdown").hidden || !$("#resume").hidden) return;
+      how.textContent = prompt
+        ? "Install it on your home screen: it opens full screen, like any app. Free, no app store."
+        : "Add it to your home screen in two taps:";
+      go.hidden = !prompt;
+      $("#install-iphone").hidden = Boolean(prompt) || !iphone;
+      $("#install-android").hidden = Boolean(prompt) || iphone;
+      if (box.open) return;
+      if (typeof box.showModal === "function") box.showModal();
+      else box.setAttribute("open", "");
     };
-    // The browser can install it: one tap on our button opens its install dialog.
+    const close = () => {
+      if (!box.open) return;
+      if (typeof box.close === "function") box.close();
+      else box.removeAttribute("open");
+    };
+    const decline = () => {
+      done = true;
+      try {
+        localStorage.setItem(DECLINED, String(Date.now()));
+      } catch {
+        // storage refused (private browsing): the window simply comes back next visit
+      }
+      close();
+    };
+    // The browser can install it: our button opens its install dialog.
     window.addEventListener("beforeinstallprompt", (event) => {
       event.preventDefault();
       prompt = event;
-      show("Add it to your home screen: free, no app store.", true);
+      render();
     });
     go.addEventListener("click", async () => {
       if (!prompt) return;
@@ -831,31 +854,49 @@
       prompt = null;
       asked.prompt();
       const choice = await asked.userChoice;
-      if (choice.outcome === "accepted") bar.hidden = true;
-      else show(byHand, false);
+      if (choice.outcome === "accepted") {
+        done = true;
+        close();
+      } else {
+        decline(); // "Cancel" in the browser's dialog
+      }
     });
     window.addEventListener("appinstalled", () => {
-      installed = true;
-      bar.hidden = true;
+      done = true;
+      close();
     });
-    $("#install-close").addEventListener("click", () => {
-      closed = true;
-      bar.hidden = true;
+    $("#install-close").addEventListener("click", decline);
+    $("#install-later").addEventListener("click", decline);
+    box.addEventListener("cancel", (event) => {
+      event.preventDefault(); // Escape, or the phone's Back
+      decline();
+    });
+    box.addEventListener("click", (event) => {
+      if (event.target === box) decline(); // a tap outside the window
     });
     const check =
       "getInstalledRelatedApps" in navigator
         ? navigator.getInstalledRelatedApps().then((apps) => apps.some((app) => app.platform === "webapp"), () => false)
         : Promise.resolve(false);
-    check.then((yes) => {
-      if (yes) {
-        installed = true;
-        bar.hidden = true;
+    check.then((installed) => {
+      if (installed) {
+        done = true;
         return;
       }
-      // No install prompt from the browser after a moment: say how to do it by hand.
+      // A moment after the page opens, not while it is still appearing.
       setTimeout(() => {
-        if (!prompt) show(byHand, false);
+        ready = true;
+        render();
       }, 2500);
     });
+  }
+
+  function declinedLately() {
+    try {
+      const at = Number(localStorage.getItem(DECLINED));
+      return at > 0 && Date.now() - at < DECLINE_DAYS * 24 * 60 * 60 * 1000;
+    } catch {
+      return false;
+    }
   }
 })();

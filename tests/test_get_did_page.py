@@ -309,21 +309,24 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
 
 def test_the_app_offers_itself_until_it_is_installed(app_client: TestClient) -> None:
     page = app_client.get("/").text
-    # A bar to install it, hidden until the page's script decides, at every visit.
-    assert "<div id=install class=install hidden" in page
-    assert '<img src="/app/icon-192.png?v=3"' in page
+    # A window to install it, closed until the page's script decides to open it.
+    assert get_did_page.INSTALL_DIALOG in page and "<dialog id=install class=install" in page
+    assert '<img src="/app/icon-512.png?v=3"' in page  # the app's own icon
     script = get_did_page._SCRIPT
     for needed in (
         'matchMedia("(display-mode: standalone)")',  # never inside the app
         "navigator.getInstalledRelatedApps()",  # nor when the browser says it is installed
         '"beforeinstallprompt"',  # the browser's install dialog, from our button
         '"appinstalled"',
-        "Add to Home Screen",  # iPhone: by hand
+        "showModal()",  # centred, over the page
     ):
         assert needed in script, needed
-    # Nothing is remembered between visits.
+    assert "Add to Home Screen" in page  # iPhone: the steps by hand
+    # Only "Not now" is remembered, in this browser (no cookie: nothing goes to the server),
+    # for 30 days; whether the app is installed is asked again at every visit.
+    assert "const DECLINE_DAYS = 30;" in script
     offer = script.split("function offerTheApp()")[1]
-    assert "localStorage" not in offer and "sessionStorage" not in offer and "cookie" not in offer
+    assert "localStorage.setItem(DECLINED" in offer and "document.cookie" not in script
 
 
 def test_the_service_worker_never_touches_the_api(app_client: TestClient) -> None:
@@ -338,6 +341,14 @@ def test_the_service_worker_never_touches_the_api(app_client: TestClient) -> Non
     assert "fetch(request)" in worker and "You're offline" in worker
     for name in get_did_page.FONTS:
         assert f"/fonts/{name}" in worker
+    # The files it keeps, fetched past the browser's own cache, in a cache named after their
+    # content: a new icon reaches people who already opened the page.
+    assert "@CACHE@" not in worker and "@FILES@" not in worker
+    assert re.search(r'const CACHE = "dmd-did-app-[0-9a-f]{12}";', worker)
+    assert 'cache: "reload"' in worker
+    for path in get_did_page.WORKER_FILES:
+        assert f'"{path}"' in worker
+        assert app_client.get(path).status_code == 200, path
     # The page registers it only in the app.
     assert 'config.app && "serviceWorker" in navigator' in get_did_page._SCRIPT
     assert 'register("/sw.js")' in get_did_page._SCRIPT

@@ -50,7 +50,6 @@ _STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
 _SCRIPT = "\n".join(
     (_STATIC / name).read_text(encoding="utf-8") for name in ("qr.js", "get-did.js")
 )
-_WORKER = (_STATIC / "get-did-sw.js").read_text(encoding="utf-8")
 FONTS = (
     "mada-latin-400-normal.woff2",
     "mada-latin-600-normal.woff2",
@@ -73,6 +72,30 @@ DESCRIPTION = (
     "Get your DebitMyData DID: a verifiable identity for an AI agent, a bot, a person or an "
     "organization, with a credential signed by DebitMyData."
 )
+# What the app's service worker keeps, to open without a network.
+WORKER_FILES = (
+    *(f"/fonts/{name}" for name in FONTS),
+    "/favicon.png",
+    "/logo.png",
+    "/app/icon-192.png",
+    "/app/icon-512.png",
+)
+
+
+def _worker() -> str:
+    """The service worker, with its file list and a cache named after their content: any
+    change to one of them (a new icon, say) makes a new worker, and installed apps drop the
+    old copies. It fetches them past the browser's own cache, which may hold older ones."""
+    template = (_STATIC / "get-did-sw.js").read_text(encoding="utf-8")
+    digest = hashlib.sha256(template.encode("utf-8"))
+    for path in WORKER_FILES:
+        digest.update((_STATIC / path.lstrip("/")).read_bytes())
+    return template.replace("@CACHE@", f"dmd-did-app-{digest.hexdigest()[:12]}").replace(
+        '["@FILES@"]', json.dumps(list(WORKER_FILES))
+    )
+
+
+_WORKER = _worker()
 
 
 def _sha256(text: str) -> str:
@@ -269,6 +292,44 @@ stands behind it, so that others can trust it.</p>
 </section>"""
 
 
+_SHARE_ICON = (
+    '<svg viewBox="0 0 24 24" width=22 height=22 aria-hidden=true focusable=false>'
+    '<path d="M12 3v12M8 7l4-4 4 4M7 10H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7'
+    'a2 2 0 0 0-2-2h-1" fill=none stroke=currentColor stroke-width=2 stroke-linecap=round '
+    "stroke-linejoin=round /></svg>"
+)
+_ADD_ICON = (
+    '<svg viewBox="0 0 24 24" width=22 height=22 aria-hidden=true focusable=false>'
+    "<rect x=4 y=4 width=16 height=16 rx=4 fill=none stroke=currentColor stroke-width=2 />"
+    '<path d="M12 8v8M8 12h8" fill=none stroke=currentColor stroke-width=2 '
+    "stroke-linecap=round /></svg>"
+)
+# Offers the app on phones and tablets, centred on the screen. The script picks what it shows:
+# the Install button (when the browser can install it), or the steps by hand (iPhone, or
+# Android's menu).
+INSTALL_DIALOG = (
+    "<dialog id=install class=install aria-labelledby=install-title>"
+    "<div class=in>"
+    '<button type=button id=install-close class=install-close aria-label="Not now">&times;'
+    "</button>"
+    f'<img src="/app/icon-512.png?v={ICON_VERSION}" alt="" width=112 height=112>'
+    # The title takes the focus when it opens (screen readers start there; no button is
+    # pre-selected).
+    f"<h2 id=install-title tabindex=-1 autofocus>Get the {APP_NAME} app</h2>"
+    "<p id=install-how></p>"
+    "<ol id=install-iphone class=steps hidden>"
+    f"<li><span>Tap <b>Share</b></span>{_SHARE_ICON}</li>"
+    f"<li><span>Choose <b>Add to Home Screen</b></span>{_ADD_ICON}</li></ol>"
+    "<ol id=install-android class=steps hidden>"
+    "<li><span>Open the browser's menu <b>&#8942;</b></span></li>"
+    "<li><span>Tap <b>Install app</b> or <b>Add to Home screen</b></span></li></ol>"
+    "<div class=install-actions>"
+    "<button type=button id=install-go class=install-go hidden>Install the app</button>"
+    "<button type=button id=install-later class=install-later>Not now</button>"
+    "</div></div></dialog>"
+)
+
+
 def _body(staging: bool, app: bool = False) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
@@ -280,17 +341,8 @@ def _body(staging: bool, app: bool = False) -> str:
         if staging
         else ""
     )
-    # The app only: a bar that offers to install it (get-did.js decides, at every visit).
-    install = (
-        '<div id=install class=install hidden role=region aria-label="Install the app">'
-        f'<img src="/app/icon-192.png?v={ICON_VERSION}" alt="" width=44 height=44>'
-        f"<p><strong>{APP_NAME} app</strong><span id=install-how></span></p>"
-        "<button type=button id=install-go class=install-go hidden>Install</button>"
-        '<button type=button id=install-close class=install-close aria-label="Not now">'
-        "&times;</button></div>"
-        if app
-        else ""
-    )
+    # The app only: a window that offers to install it (get-did.js decides when).
+    install = INSTALL_DIALOG if app else ""
     return f"""
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
 {install}

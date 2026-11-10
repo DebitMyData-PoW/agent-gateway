@@ -3,17 +3,11 @@
 // and its icons, so that the app still opens without a network (and says it is offline). The
 // page itself always comes from the network first, so a new version shows at once. It never
 // touches anything else: the API calls (/v1/...) go straight to the gateway, never cached.
-const CACHE = "dmd-did-app-5"; // a new name drops the old copies (new icons)
+// The gateway fills in CACHE and FILES (get_did_page.WORKER_FILES). The cache is named after
+// the files' content, so a new icon makes a new cache, and the old copies are dropped.
+const CACHE = "@CACHE@";
 const PAGE = "/";
-const FILES = [
-  "/fonts/mada-latin-400-normal.woff2",
-  "/fonts/mada-latin-600-normal.woff2",
-  "/fonts/mada-latin-700-normal.woff2",
-  "/fonts/mada-latin-800-normal.woff2",
-  "/favicon.png",
-  "/logo.png",
-  "/app/icon-192.png",
-];
+const FILES = ["@FILES@"];
 
 const OFFLINE = `<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>Offline · DebitMyData</title></head>
@@ -25,7 +19,8 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      .then((cache) => cache.addAll([PAGE, ...FILES]))
+      // Past the browser's own cache (it may still hold an older icon for days).
+      .then((cache) => cache.addAll([PAGE, ...FILES].map((path) => new Request(path, { cache: "reload" }))))
       .then(() => self.skipWaiting())
   );
 });
@@ -68,7 +63,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (FILES.includes(url.pathname)) {
-    // "?v=..." only tells browsers a file changed; a new CACHE name drops the old copies.
+    // "?v=..." only tells browsers a file changed; the cache's name changes with the files.
     event.respondWith(caches.match(request, { ignoreSearch: true }).then((cached) => cached || fetch(request)));
   }
 });

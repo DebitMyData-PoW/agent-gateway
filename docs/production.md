@@ -343,13 +343,19 @@ name, and `/get-did` stays as it is. People install it:
 - **iPhone (Safari):** Share, then **Add to Home Screen**;
 - **Android (Chrome):** the **Install app** prompt, or the menu, then **Install app**.
 
-On phones and tablets the page itself offers the app, at the bottom of the screen, and decides
-again at every visit, without remembering anything: the browser's own prompt can stay away for
-months after a "No thanks" or after the app was removed. Where the browser can install it
-(Chrome on Android), the bar has an **Install** button; elsewhere it says how to add it by hand.
-It never shows inside the app, nor when the browser says the app is installed: Chrome on
-Android tells the page (the manifest lists the app under `related_applications`). Safari on an
-iPhone can't tell, so there the bar shows until it is closed with its cross, for that visit.
+On phones and tablets the page itself offers the app, in a window centred on the screen: the
+browser's own prompt can stay away for months after a "No thanks" or after the app was removed.
+Where the browser can install it (Chrome on Android), the window has an **Install the app**
+button; elsewhere it shows the two steps by hand. It never shows inside the app, nor when the
+browser says the app is installed, which the page asks at every visit: Chrome on Android tells
+it (the manifest lists the app under `related_applications`), so the offer comes back as soon
+as the app is removed. Safari on an iPhone can't tell. **Not now** (or the cross, or a tap
+outside the window) is remembered in the browser's own storage, not in a cookie, for 30 days
+(`DECLINE_DAYS` in `get-did.js`); then the offer may come back.
+
+The app's service worker keeps the page, the font and the icons for opening without a network.
+Its cache is named after those files' content and it fetches them past the browser's own cache,
+so a new icon or logo reaches people who already opened the page, with nothing to raise by hand.
 
 The app's identity is its address: once people have installed it, the host must not change.
 
