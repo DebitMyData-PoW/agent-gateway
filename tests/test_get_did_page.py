@@ -170,8 +170,9 @@ def test_every_page_for_people_has_the_same_top_bar_and_footer(
                 expected = {
                     "/get-did": "https://id.debitmydata.io/",
                     "/docs": "https://id.debitmydata.io/",
-                    "/policies/terms": "https://api.debitmydata.io/policies",
-                }.get(path, real)
+                    "/docs/advanced": "https://id.debitmydata.io/docs/advanced",
+                    "/policies/terms": "https://id.debitmydata.io/policies",
+                }[path]
                 assert real == expected, path
             assert page.count("aria-current=page") >= 1, path
         # The DebitMyData logo in the top bar, wider than high (151 x 120).

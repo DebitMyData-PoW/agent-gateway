@@ -76,13 +76,13 @@ def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, s
     return pages
 
 
-# On staging, the same page on the real (production) site; the guided test has none, so it
-# leads to the Get a DID app too.
+# On staging, the same page on the real site for people, id.debitmydata.io (the same gateway
+# serves every page there too); the guided test has none, so it leads to the Get a DID app.
 _PRODUCTION_PAGE = {
     "get-did": PRODUCTION_APP,
     "guided": PRODUCTION_APP,
-    "advanced": PRODUCTION_SITE + ADVANCED_PATH,
-    "policies": PRODUCTION_SITE + POLICIES_PATH,
+    "advanced": PRODUCTION_APP + ADVANCED_PATH.lstrip("/"),
+    "policies": PRODUCTION_APP + POLICIES_PATH.lstrip("/"),
 }
 
 
