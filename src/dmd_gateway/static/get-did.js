@@ -798,55 +798,88 @@
   if (config.app && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   offerTheApp();
 
-  // "Get the app" window, on phones and tablets, centred on the screen. Whether the app is
-  // installed is checked again at every visit: the browser's own install prompt can stay away for
-  // months (after a "No thanks", or after the app was removed). Never shown inside the app, nor
-  // when the browser says the app is installed (Chrome on Android does; Safari on an iPhone can't
-  // tell). "Not now" is remembered in this browser (not a cookie: nothing is sent to us) for
-  // DECLINE_DAYS; after that the window may come back.
+  // "Get the app" window, centred on the screen. It offers itself on phones and tablets a moment
+  // after the page opens, and on any device when asked (the footer's "Get the app" button, or a
+  // link ending in #get-the-app). Whether the app is installed is checked again at every visit:
+  // the browser's own install prompt can stay away for months. Never offered by itself inside
+  // the app, nor when the browser says the app is installed (Chrome on Android does; Safari on
+  // an iPhone can't tell). Only "Not now" is remembered, in this browser (not a cookie: nothing
+  // is sent to us), for DECLINE_DAYS; the cross, a tap outside or Back only close it until the
+  // page is opened again. Asking for it from the footer forgets an earlier "Not now".
   function offerTheApp() {
     const box = $("#install");
+    if (!box) return;
     const inApp = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-    if (!box || inApp || !window.matchMedia("(pointer: coarse)").matches || declinedLately()) return;
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const device = iphone ? "iphone" : touch ? "android" : "computer";
+    const canTell = "getInstalledRelatedApps" in navigator;
+    const title = $("#install-title");
+    const offerTitle = title.textContent;
+    const appName = ($('meta[name="apple-mobile-web-app-title"]') || {}).content || "the app";
     const how = $("#install-how");
     const go = $("#install-go");
-    const iphone = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const later = $("#install-later");
     let prompt = null; // the browser's own install dialog, when it offers one
-    let ready = false; // the page has been open a moment, and the app is not installed
-    let done = false; // installed, or "Not now"
-    const render = () => {
-      if (!ready || done) return;
-      // A registration in progress comes first.
-      if (!$("#countdown").hidden || !$("#resume").hidden) return;
-      how.textContent = prompt
-        ? "Install it on your home screen: it opens full screen, like any app. Free, no app store."
-        : "Add it to your home screen in two taps:";
-      go.hidden = !prompt;
-      $("#install-iphone").hidden = Boolean(prompt) || !iphone;
-      $("#install-android").hidden = Boolean(prompt) || iphone;
+    let installed = false;
+    let ready = false; // the page has been open a moment
+    let closed = false; // closed (or "Not now") on this page: not offered again by itself
+
+    const isInstalled = () => installed || inApp;
+    const fill = () => {
+      const done = isInstalled();
+      title.textContent = done ? (inApp ? "You're using the app" : "The app is already installed") : offerTitle;
+      if (inApp) how.textContent = `This is the ${appName} app.`;
+      else if (done) how.textContent = `Open ${appName} from your ${device === "computer" ? "computer's apps" : "home screen"}.`;
+      else if (prompt) how.textContent = "Install it: it opens full screen, like any app. Free, no app store.";
+      else if (device === "computer")
+        how.textContent = "In Chrome or Edge, click the install icon at the right of the address bar. In Safari on a Mac, choose File, then Add to Dock.";
+      else how.textContent = "Add it to your home screen in two taps:";
+      const byHand = !done && !prompt;
+      $("#install-iphone").hidden = !(byHand && device === "iphone");
+      $("#install-android").hidden = !(byHand && device === "android");
+      $("#install-note").hidden = done || canTell;
+      go.hidden = done || !prompt;
+      later.textContent = done ? "OK" : "Not now";
+    };
+    const open = () => {
+      fill();
       if (box.open) return;
       if (typeof box.showModal === "function") box.showModal();
       else box.setAttribute("open", "");
     };
     const close = () => {
+      closed = true;
       if (!box.open) return;
       if (typeof box.close === "function") box.close();
       else box.removeAttribute("open");
     };
-    const decline = () => {
-      done = true;
-      try {
-        localStorage.setItem(DECLINED, String(Date.now()));
-      } catch {
-        // storage refused (private browsing): the window simply comes back next visit
-      }
-      close();
+    // By itself: phones and tablets, a moment after the page opens.
+    const offer = () => {
+      if (!ready || closed || !touch || isInstalled() || declinedLately()) return;
+      // A registration in progress comes first.
+      if (!$("#countdown").hidden || !$("#resume").hidden) return;
+      open();
     };
-    // The browser can install it: our button opens its install dialog.
+    const check = (canTell ? navigator.getInstalledRelatedApps().then((apps) => apps.some((app) => app.platform === "webapp"), () => false) : Promise.resolve(false)).then((yes) => {
+      installed = yes;
+    });
+    // Asked for: always opens, and forgets an earlier "Not now".
+    const ask = () => {
+      closed = false;
+      try {
+        localStorage.removeItem(DECLINED);
+      } catch {
+        // storage refused: nothing was remembered either
+      }
+      check.then(open);
+    };
+
     window.addEventListener("beforeinstallprompt", (event) => {
       event.preventDefault();
       prompt = event;
-      render();
+      if (box.open) fill();
+      else offer();
     });
     go.addEventListener("click", async () => {
       if (!prompt) return;
@@ -854,39 +887,48 @@
       prompt = null;
       asked.prompt();
       const choice = await asked.userChoice;
-      if (choice.outcome === "accepted") {
-        done = true;
-        close();
-      } else {
-        decline(); // "Cancel" in the browser's dialog
-      }
+      if (choice.outcome === "accepted") installed = true;
+      close(); // "Cancel" in the browser's dialog only closes ours
     });
     window.addEventListener("appinstalled", () => {
-      done = true;
+      installed = true;
       close();
     });
-    $("#install-close").addEventListener("click", decline);
-    $("#install-later").addEventListener("click", decline);
+    // "Not now": the only answer remembered.
+    later.addEventListener("click", () => {
+      if (!isInstalled()) {
+        try {
+          localStorage.setItem(DECLINED, String(Date.now()));
+        } catch {
+          // storage refused (private browsing): offered again next visit
+        }
+      }
+      close();
+    });
+    $("#install-close").addEventListener("click", close);
     box.addEventListener("cancel", (event) => {
       event.preventDefault(); // Escape, or the phone's Back
-      decline();
+      close();
     });
     box.addEventListener("click", (event) => {
-      if (event.target === box) decline(); // a tap outside the window
+      if (event.target === box) close(); // a tap outside the window
     });
-    const check =
-      "getInstalledRelatedApps" in navigator
-        ? navigator.getInstalledRelatedApps().then((apps) => apps.some((app) => app.platform === "webapp"), () => false)
-        : Promise.resolve(false);
-    check.then((installed) => {
-      if (installed) {
-        done = true;
-        return;
-      }
+    // The footer's "Get the app" button (and any link to #get-the-app) opens it here.
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest && event.target.closest('a[href$="#get-the-app"]');
+      if (!link) return;
+      event.preventDefault();
+      ask();
+    });
+    if (location.hash === "#get-the-app") {
+      history.replaceState(null, "", location.pathname + location.search);
+      ask();
+    }
+    check.then(() => {
       // A moment after the page opens, not while it is still appearing.
       setTimeout(() => {
         ready = true;
-        render();
+        offer();
       }, 2500);
     });
   }

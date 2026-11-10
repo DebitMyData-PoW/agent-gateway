@@ -39,7 +39,7 @@ Settlement & finality ──► DID + receipt + credential + entitlements ──
 
 ## Status
 
-This is an early development release (`0.29.4`). The whole registration flow (quote,
+This is an early development release (`0.29.5`). The whole registration flow (quote,
 payment, controller proof, DID and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -75,7 +75,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | "Get a DID" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](docs/production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first; a short guide to what DMD is and how to get it | done (needs the DNS record) |
 | The pages' top bar is white and stays at the top while scrolling, folds into a menu button on phones (no script needed), the DebitMyData name leads to the site's home, and the footer is in columns like the Agentic Spaces site; a "back to top" button appears as the page scrolls | done |
 | DebitMyData's own logo (the coin side of debitmydata.com's logo, redrawn sharp) in the pages' top bar and as the favicon, with black binary lines; the app's icons show it with red lines (for dark home screens) in a white circle with a gold ring | done |
-| The app offers itself on phones and tablets in a window centred on the screen, with its icon: never inside the app nor when the browser says it is installed (`getInstalledRelatedApps`, asked at every visit, so the offer comes back once the app is removed); "Not now" is remembered in the browser for 30 days | done |
+| The app offers itself on phones and tablets in a window centred on the screen, with its icon: never inside the app nor when the browser says it is installed (`getInstalledRelatedApps`, asked at every visit, so the offer comes back once the app is removed); only "Not now" is remembered in the browser, for 30 days (the cross or a tap outside just close it); a "Get the app" button in every page's footer opens it again, or says the app is already installed | done |
 | "Get a DID" explains DIDs before the steps, in the Agentic Spaces style: the numbers, what a DID is, why AI agents need one, how it works, with cards that rise into view and lift under the mouse or a tap; the app is named "DID DebitMyData" on the home screen | done |
 | The company's test DIDs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |

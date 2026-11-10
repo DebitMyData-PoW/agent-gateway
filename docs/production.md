@@ -349,9 +349,14 @@ Where the browser can install it (Chrome on Android), the window has an **Instal
 button; elsewhere it shows the two steps by hand. It never shows inside the app, nor when the
 browser says the app is installed, which the page asks at every visit: Chrome on Android tells
 it (the manifest lists the app under `related_applications`), so the offer comes back as soon
-as the app is removed. Safari on an iPhone can't tell. **Not now** (or the cross, or a tap
-outside the window) is remembered in the browser's own storage, not in a cookie, for 30 days
-(`DECLINE_DAYS` in `get-did.js`); then the offer may come back.
+as the app is removed. Safari on an iPhone can't tell, so there the window adds "Already added it? Open it from your
+home screen". Only **Not now** is remembered, in the browser's own storage (not in a cookie),
+for 30 days (`DECLINE_DAYS` in `get-did.js`); the cross, a tap outside the window or Back only
+close it until the page is opened again.
+
+Every page's footer has a **Get the app** button, on any device (hidden inside the app): it
+leads to the app's page and opens the window there, even after a **Not now**, which it forgets.
+When the browser says the app is installed, the window says so instead.
 
 The app's service worker keeps the page, the font and the icons for opening without a network.
 Its cache is named after those files' content and it fetches them past the browser's own cache,

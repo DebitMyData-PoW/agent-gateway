@@ -22,6 +22,17 @@ GUIDED_PATH = "/docs"  # staging
 STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
 PRODUCTION_SITE = "https://api.debitmydata.io"
 PRODUCTION_APP = "https://id.debitmydata.io/"  # the Get a DID app (production)
+# The footer's "Get the app" button: the app's page, asked to open its install window. On the
+# app's own page, its script opens the window in place instead.
+GET_THE_APP = PRODUCTION_APP + "#get-the-app"
+_PHONE_ICON = (
+    '<svg viewBox="0 0 24 24" width=18 height=18 aria-hidden=true focusable=false>'
+    "<rect x=6 y=2 width=12 height=20 rx=3 fill=none stroke=currentColor stroke-width=2 />"
+    '<path d="M11 18h2" stroke=currentColor stroke-width=2 stroke-linecap=round /></svg>'
+)
+GET_THE_APP_BUTTON = (
+    f'<a class=get-app href="{GET_THE_APP}" target=_blank rel=noopener>{_PHONE_ICON}Get the app</a>'
+)
 ADVANCED_PATH = "/docs/advanced"
 POLICIES_PATH = "/policies"
 # For every HTML page: Cloudflare must not change it on the way. Its email protection rewrites
@@ -103,7 +114,7 @@ def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
     )
 
 
-def _column(title: str, links: list[tuple[str, str]]) -> str:
+def _column(title: str, links: list[tuple[str, str]], extra: str = "") -> str:
     # Footer links open in a new tab, so the page in hand (a DID being registered) stays.
     items = "".join(
         f'<a href="{path}">{label}</a>'
@@ -111,20 +122,21 @@ def _column(title: str, links: list[tuple[str, str]]) -> str:
         else f'<a href="{path}" target=_blank rel=noopener>{label}</a>'
         for path, label in links
     )
-    return f"<div class=col><p class=head>{title}</p>{items}</div>"
+    return f"<div class=col><p class=head>{title}</p>{items}{extra}</div>"
 
 
 def footer(staging: bool = False, get_did: str = GET_DID_PATH, to_top: bool = True) -> str:
-    """The footer, in columns like the Agentic Spaces site: the gateway's pages, the
-    developers' links, the policies, DebitMyData's other sites and the contact address.
-    ``to_top`` adds the "back to top" button (the API docs page has its own)."""
+    """The footer, in columns like the Agentic Spaces site: the gateway's pages and the
+    "Get the app" button, the developers' links, the policies, DebitMyData's other sites and
+    the contact address. ``to_top`` adds the "back to top" button (the API docs page has its
+    own)."""
     pages = [(get_did, "Get a DID")]
     if staging:
         pages.append((GUIDED_PATH, "Guided test"))
     pages.append((POLICIES_PATH, "All policies"))
     developers = [(ADVANCED_PATH, "API docs"), (SOURCE_CODE, "Source code")]
     columns = (
-        _column("Get a DID", pages)
+        _column("Get a DID", pages, GET_THE_APP_BUTTON)
         + _column("Developers", developers)
         + _column("Policies", list(POLICY_LINKS))
         + _column("DebitMyData", list(SITE_LINKS))

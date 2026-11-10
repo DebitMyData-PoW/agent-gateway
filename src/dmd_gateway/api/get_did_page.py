@@ -304,13 +304,14 @@ _ADD_ICON = (
     '<path d="M12 8v8M8 12h8" fill=none stroke=currentColor stroke-width=2 '
     "stroke-linecap=round /></svg>"
 )
-# Offers the app on phones and tablets, centred on the screen. The script picks what it shows:
-# the Install button (when the browser can install it), or the steps by hand (iPhone, or
-# Android's menu).
+# Offers the app, centred on the screen: by itself on phones and tablets, and on any device
+# from the footer's "Get the app" button. The script picks what it shows: the Install button
+# (when the browser can install it), the steps by hand (iPhone, Android's menu, a computer's
+# browser), or that the app is already installed.
 INSTALL_DIALOG = (
     "<dialog id=install class=install aria-labelledby=install-title>"
     "<div class=in>"
-    '<button type=button id=install-close class=install-close aria-label="Not now">&times;'
+    '<button type=button id=install-close class=install-close aria-label="Close">&times;'
     "</button>"
     f'<img src="/app/icon-512.png?v={ICON_VERSION}" alt="" width=112 height=112>'
     # The title takes the focus when it opens (screen readers start there; no button is
@@ -323,6 +324,8 @@ INSTALL_DIALOG = (
     "<ol id=install-android class=steps hidden>"
     "<li><span>Open the browser's menu <b>&#8942;</b></span></li>"
     "<li><span>Tap <b>Install app</b> or <b>Add to Home screen</b></span></li></ol>"
+    # Where the browser can't tell whether the app is installed (iPhone, Firefox...).
+    "<p id=install-note class=note hidden>Already added it? Open it from your home screen.</p>"
     "<div class=install-actions>"
     "<button type=button id=install-go class=install-go hidden>Install the app</button>"
     "<button type=button id=install-later class=install-later>Not now</button>"

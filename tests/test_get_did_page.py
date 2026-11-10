@@ -308,6 +308,8 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
 
 
 def test_the_app_offers_itself_until_it_is_installed(app_client: TestClient) -> None:
+    from dmd_gateway.api import brand
+
     page = app_client.get("/").text
     # A window to install it, closed until the page's script decides to open it.
     assert get_did_page.INSTALL_DIALOG in page and "<dialog id=install class=install" in page
@@ -323,10 +325,19 @@ def test_the_app_offers_itself_until_it_is_installed(app_client: TestClient) -> 
         assert needed in script, needed
     assert "Add to Home Screen" in page  # iPhone: the steps by hand
     # Only "Not now" is remembered, in this browser (no cookie: nothing goes to the server),
-    # for 30 days; whether the app is installed is asked again at every visit.
+    # for 30 days; whether the app is installed is asked again at every visit. The cross, a
+    # tap outside and Back only close it.
     assert "const DECLINE_DAYS = 30;" in script
     offer = script.split("function offerTheApp()")[1]
-    assert "localStorage.setItem(DECLINED" in offer and "document.cookie" not in script
+    assert offer.count("localStorage.setItem(DECLINED") == 1 and "document.cookie" not in script
+    remembered = offer.split('later.addEventListener("click"')[1].split("});")[0]
+    assert "localStorage.setItem(DECLINED" in remembered
+    assert '$("#install-close").addEventListener("click", close);' in offer
+    # The footer's "Get the app" button opens it again, forgetting an earlier "Not now", and
+    # says so when the app is already installed.
+    assert brand.GET_THE_APP_BUTTON in page
+    assert "#get-the-app" in offer and "localStorage.removeItem(DECLINED)" in offer
+    assert "The app is already installed" in offer
 
 
 def test_the_service_worker_never_touches_the_api(app_client: TestClient) -> None:
@@ -434,6 +445,11 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
             assert page.count("<a class=back-to-top ") == (0 if path == "/docs/advanced" else 1)
             # Footer links open in a new tab; the email address is a plain mailto: link.
             footer = page.split('<footer class="site-footer">')[1]
+            # "Get the app": the app's page, which opens its install window.
+            assert (
+                '<a class=get-app href="https://id.debitmydata.io/#get-the-app" target=_blank'
+                in footer
+            ), path
             assert '<a href="/policies/terms" target=_blank rel=noopener>Terms</a>' in footer
             assert '<a href="mailto:info@debitmydata.com">info@debitmydata.com</a>' in footer
             # Cloudflare must not rewrite the page (its email protection would hide the

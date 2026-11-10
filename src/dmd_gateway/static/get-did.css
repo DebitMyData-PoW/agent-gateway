@@ -224,6 +224,8 @@ background:var(--grey);font-size:1rem}
 border-radius:50%;background:var(--red);color:#fff;font-weight:700;font-size:.9rem}
 .install .steps svg{flex:none;margin-left:auto;color:var(--red)}
 .install .steps[hidden]{display:none}
+.install p.note{margin:-6px 0 18px;font-size:.95rem}
+.install p.note[hidden]{display:none}
 .install-actions{display:grid;gap:10px}
 .install button.install-go{width:100%;padding:15px 20px;border-radius:999px;font-size:1.05rem}
 .install button.install-go[hidden]{display:none}

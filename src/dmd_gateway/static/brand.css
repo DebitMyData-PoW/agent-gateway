@@ -36,6 +36,10 @@ flex-wrap:wrap}
 .site-footer .head{margin:0 0 10px;color:#fff;font-weight:700;font-size:1.2rem;line-height:1.3}
 .site-footer .col a{display:block;margin:0 0 7px;color:#fff;text-decoration:none;font-weight:600}
 .site-footer .col a:hover{color:#f5ced0;text-decoration:underline}
+.site-footer .col a.get-app{display:inline-flex;align-items:center;gap:8px;margin:8px 0 0;padding:8px 16px;
+border-radius:999px;background:#fff;color:var(--red-deep);font-weight:700}
+.site-footer .col a.get-app:hover{background:#f5ced0;color:var(--red-deep);text-decoration:none}
+@media (display-mode:standalone){.site-footer .col a.get-app{display:none}}
 .site-footer .legal{margin:26px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.2);font-size:.85rem}
 .site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .topbar a:focus-visible,.menu-toggle:focus-visible+.menu-button{outline:3px solid var(--red);outline-offset:2px}
