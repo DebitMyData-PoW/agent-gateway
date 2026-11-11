@@ -114,10 +114,11 @@ Any future expiry date, any 3-digit CVC, any name and postal code.
 To test a refund: in the dashboard (test mode), **Payments** → the payment → **Refund** → full
 amount. Within 15 minutes, `GET /v1/payments/{payment_intent_id}` shows `refunded`.
 
-## 2. Production (later)
+## 2. Production
 
-Live card payments stay off until the staging test is done and DebitMyData approves them in
-writing. Then:
+The staging test passed and DebitMyData approved live card payments on 2026-11-11: since
+0.32.2, `card_stripe` is approved in `config/payment_routes.yaml`. It stays off on a server
+until that server has the live key and `DMD_RAIL_CARD_STRIPE_ENABLED=true`. Steps:
 
 1. **Stripe account**: activate live payments (business details and the bank account for
    payouts), in the dashboard's live mode.
@@ -125,8 +126,7 @@ writing. Then:
    (for example `DEBITMYDATA`), and the support email. Clear statements prevent disputes.
 3. **Settings** → **Customer emails**: send receipts for successful payments and refunds.
 4. **Settings** → **Branding**: DebitMyData's logo and colours for the payment page.
-5. A gateway update sets `approved: true` on `card_stripe` in `config/payment_routes.yaml`
-   (until then the gateway refuses to switch it on in production).
+5. Gateway 0.32.2 or later on the production server (`card_stripe` approved).
 6. A restricted **live** key (`rk_live_...`), with the same three permissions, named
    `DebitMyData Agent Gateway (production)`, into the production settings file, with
    `DMD_RAIL_CARD_STRIPE_ENABLED=true`; restart the API and the worker.

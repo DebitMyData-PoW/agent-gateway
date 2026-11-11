@@ -74,10 +74,10 @@ def test_regtest_registry_differs_only_in_the_test_network_rails() -> None:
     card, main_card = regtest["rails"]["card_stripe"], main["rails"]["card_stripe"]
     assert card["network"] == "stripe:test"
     assert main_card["network"] == "stripe:live"
-    # Live card payments wait for the staging test and DebitMyData's approval.
+    # Tested on staging and approved by DebitMyData: approved in both, still off by default.
     assert card["approved"] is True
-    assert main_card["approved"] is False
-    differs = {"network", "approved", "checkout"}
+    assert main_card["approved"] is True
+    differs = {"network", "checkout"}
     assert {k: v for k, v in card.items() if k not in differs} == {
         k: v for k, v in main_card.items() if k not in differs
     }
@@ -100,10 +100,20 @@ def test_card_test_mode_is_refused_in_production() -> None:
         build_runtime(_settings(REGTEST_PATH, "production"), ENABLE_CARD)
 
 
-def test_live_card_rail_waits_for_approval() -> None:
+def test_live_card_rail_can_be_enabled_in_production_with_a_live_key() -> None:
     environ = {**ENABLE_CARD, "DMD_STRIPE_SECRET_KEY": "rk_live_" + "x" * 24}
-    with pytest.raises(RegistryError, match="not approved"):
-        build_runtime(_settings(REGISTRY_PATH, "production"), environ)
+    runtime = build_runtime(_settings(REGISTRY_PATH, "production"), environ)
+    assert list(runtime.adapters) == ["card_stripe"]
+
+
+def test_live_card_rail_refuses_a_test_key_in_production() -> None:
+    with pytest.raises(RegistryError, match="restricted live-mode key"):
+        build_runtime(_settings(REGISTRY_PATH, "production"), ENABLE_CARD)
+
+
+def test_live_card_rail_is_off_unless_switched_on() -> None:
+    runtime = build_runtime(_settings(REGISTRY_PATH, "production"), {})
+    assert "card_stripe" not in runtime.adapters
 
 
 def test_base_sepolia_rail_can_be_enabled_outside_production() -> None:

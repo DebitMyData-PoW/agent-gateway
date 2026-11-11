@@ -232,10 +232,11 @@ def _card_environ(key: str = TEST_KEY) -> dict[str, str]:
     return {"DMD_RAIL_CARD_STRIPE_ENABLED": "true", "DMD_STRIPE_SECRET_KEY": key}
 
 
-def test_shipped_card_rail_is_off_and_unapproved_in_production() -> None:
+def test_shipped_card_rail_is_approved_but_off_in_production() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=CARD_ADAPTERS)
     card = registry.rails["card_stripe"]
-    assert card.approved is False
+    assert card.approved is True
+    assert registry.rail_state("card_stripe") is RailState.DISABLED
     assert card.network == "stripe:live"
     assert card.protocol == "stripe_checkout"
     assert (card.asset.symbol, card.asset.decimals, card.asset.asset_type) == ("USD", 2, "fiat")

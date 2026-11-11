@@ -282,7 +282,9 @@ rails:
   card_stripe:
     name: Debit or credit card
     stage: initial
-    approved: false                  # true after the staging test, with DebitMyData's approval
+    approved: true                   # tested on staging (Stripe test mode); approved by
+                                     # DebitMyData on 2026-11-11. Still off until a server
+                                     # sets DMD_RAIL_CARD_STRIPE_ENABLED and its live key.
     asset:
       symbol: USD
       decimals: 2                    # amounts in cents
