@@ -397,3 +397,37 @@ async def test_an_add_on_is_bought_through_mcp_only(
     assert done["covers_until"] is None  # owned for good
     assert verify_proof(done["receipt"], issuer.public_key_multibase)
     assert again["receipt"] == done["receipt"]
+
+
+@needs_db
+async def test_a_did_llm_is_listed_in_the_directory_through_mcp(
+    ready_registry: Path,  # noqa: F811
+    engine: Engine,
+) -> None:
+    SCRIPTED.reset()
+    issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did(BASE))
+    app = _app_client(ready_registry, engine, issuer_key=issuer).app
+    async with mcp_client(app) as mcp:
+        did = await _issued_through_mcp(mcp, app, "McpListed-01", "5e" * 32)
+        profile = {
+            "entity_type": "sentient",
+            "specialty": "Reasoning engine",
+            "description": "Answers hard questions step by step, and says when it is unsure.",
+        }
+        step = await call(mcp, "dmd_list_in_directory", did=did, profile=profile)
+        assert step["step"] == "sign_listing" and step["controller"] == AGENT_CONTROLLER
+        assert "Type: Sentient" in step["message"]
+        listed = await call(
+            mcp,
+            "dmd_list_in_directory",
+            did=did,
+            challenge_id=step["challenge_id"],
+            signature=sign_challenge(step["message"]),
+        )
+        assert (listed["listed"], listed["shown"]) == (True, True)
+        found = await call(mcp, "dmd_search_directory", q="unsure", entity_type="sentient")
+        assert [entry["name"] for entry in found["entries"]] == ["McpListed-01"]
+        refused = await call_error(
+            mcp, "dmd_list_in_directory", did=did, profile={**profile, "description": "x"}
+        )
+        assert refused["error"]["code"] == "invalid_profile"

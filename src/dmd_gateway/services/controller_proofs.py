@@ -256,58 +256,21 @@ def submit_proof(
 
     current = declared_controllers(registration).get(challenge.controller_type)
     still_controller = current == challenge.controller_value
-    message = challenge.message
-    if challenge.controller_type == EIP155:
-        try:
-            signature_bytes = decode_wallet_signature(signature)
-        except WalletError as exc:
-            raise ApiError(422, "invalid_signature_encoding", str(exc)) from exc
-        method: str | None = None
-        if still_controller:
-            if wallets is None:
-                raise ApiError(
-                    503, "wallet_check_unavailable", "Wallet proofs are not available here."
-                )
-            try:
-                method = wallets.verify(
-                    wallet_from_account_id(challenge.controller_value), message, signature_bytes
-                )
-            except WalletCheckUnavailable as exc:
-                raise ApiError(
-                    503,
-                    "wallet_check_unavailable",
-                    f"The wallet's network could not be asked ({exc}); the challenge is still "
-                    "open, try again shortly.",
-                    headers={"Retry-After": "30"},
-                ) from exc
-            except SmartWalletUnsupported as exc:
-                raise ApiError(
-                    422,
-                    "smart_wallet_not_supported",
-                    f"This is not an ordinary wallet's signature for this address, and {exc}. "
-                    "The challenge is still open: sign it with the wallet's own key, or "
-                    "request a new quote with a wallet on another network.",
-                ) from exc
-        verified = method is not None
-        proof_method = method or WALLET_REJECTED_METHOD
-        stored_signature = "0x" + signature_bytes.hex()
-        what = "the controller wallet"
-    else:
-        try:
-            signature_bytes = decode_signature(signature)
-        except EncodingError as exc:
-            raise ApiError(422, "invalid_signature_encoding", str(exc)) from exc
-        key = parse_controller_key(challenge.controller_value)
-        verified = still_controller and key.verify(signature_bytes, message.encode("utf-8"))
-        proof_method = PROOF_METHOD
-        stored_signature = encode_signature(signature_bytes)
-        what = "the controller public key"
+    check = check_signature(
+        challenge.controller_type,
+        challenge.controller_value,
+        challenge.message,
+        signature,
+        still_controller=still_controller,
+        wallets=wallets,
+    )
+    verified, proof_method, stored_signature = check.verified, check.method, check.signature
 
     reason = None
     if not still_controller:
         reason = "the registration's controller changed after this challenge was issued"
     elif not verified:
-        reason = f"the signature does not match {what}"
+        reason = f"the signature does not match {check.what}"
 
     challenge.used_at = now
     proof = ControllerProof(
@@ -336,6 +299,79 @@ def submit_proof(
         },
     )
     return ProofOutcome(proof=proof, verified=verified)
+
+
+@dataclass(frozen=True)
+class SignatureCheck:
+    verified: bool
+    method: str  # how it was checked (stored with the proof)
+    signature: str  # the signature as stored with the proof
+    what: str  # the controller, in words
+
+
+def check_signature(
+    controller_type: str,
+    controller_value: str,
+    message: str,
+    signature: str,
+    *,
+    still_controller: bool,
+    wallets: WalletVerifier | None,
+) -> SignatureCheck:
+    """Check a controller's signature of a challenge message.
+
+    A malformed signature, or a smart-wallet check the wallet's network cannot answer, raises
+    an ApiError: neither is a wrong answer, so the challenge stays open. When the signer is no
+    longer the controller (``still_controller`` false), the signature is not checked at all.
+    """
+    if controller_type == EIP155:
+        try:
+            signature_bytes = decode_wallet_signature(signature)
+        except WalletError as exc:
+            raise ApiError(422, "invalid_signature_encoding", str(exc)) from exc
+        method: str | None = None
+        if still_controller:
+            if wallets is None:
+                raise ApiError(
+                    503, "wallet_check_unavailable", "Wallet proofs are not available here."
+                )
+            try:
+                method = wallets.verify(
+                    wallet_from_account_id(controller_value), message, signature_bytes
+                )
+            except WalletCheckUnavailable as exc:
+                raise ApiError(
+                    503,
+                    "wallet_check_unavailable",
+                    f"The wallet's network could not be asked ({exc}); the challenge is still "
+                    "open, try again shortly.",
+                    headers={"Retry-After": "30"},
+                ) from exc
+            except SmartWalletUnsupported as exc:
+                raise ApiError(
+                    422,
+                    "smart_wallet_not_supported",
+                    f"This is not an ordinary wallet's signature for this address, and {exc}. "
+                    "The challenge is still open: sign it with the wallet's own key, or "
+                    "request a new quote with a wallet on another network.",
+                ) from exc
+        return SignatureCheck(
+            verified=method is not None,
+            method=method or WALLET_REJECTED_METHOD,
+            signature="0x" + signature_bytes.hex(),
+            what="the controller wallet",
+        )
+    try:
+        signature_bytes = decode_signature(signature)
+    except EncodingError as exc:
+        raise ApiError(422, "invalid_signature_encoding", str(exc)) from exc
+    key = parse_controller_key(controller_value)
+    return SignatureCheck(
+        verified=still_controller and key.verify(signature_bytes, message.encode("utf-8")),
+        method=PROOF_METHOD,
+        signature=encode_signature(signature_bytes),
+        what="the controller public key",
+    )
 
 
 def verified_proofs(

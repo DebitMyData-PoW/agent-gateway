@@ -13,13 +13,15 @@ Conventions:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -68,7 +70,10 @@ PURCHASE_STATUSES = (
 )
 IDENTITY_STATUSES = ("active", "suspended", "revoked")
 PROOF_STATUSES = ("verified", "rejected")
-CHALLENGE_PURPOSES = ("registration", "rotation", "recovery")
+# directory_listing: an owner's signed change to the DID-LLM's directory listing.
+CHALLENGE_PURPOSES = ("registration", "rotation", "recovery", "directory_listing")
+# A directory listing's type, as on the Agentic Hub.
+DIRECTORY_ENTITY_TYPES = ("avatar", "robot", "sentient")
 # hosted_payment_page: a card payment page made for one intent (Stripe Checkout).
 RECIPIENT_KINDS = ("per_intent_address", "shared_with_reference", "hosted_payment_page")
 ACTOR_TYPES = ("system", "worker", "agent", "operator")
@@ -404,6 +409,14 @@ class ControllerChallenge(Base):
             "(registration_intent_id IS NOT NULL) <> (identity_id IS NOT NULL)",
             name="exactly_one_subject",
         ),
+        # A directory listing change is about an issued DID-LLM, and carries the change.
+        CheckConstraint(
+            "(purpose = 'directory_listing') = (proposal IS NOT NULL)", name="proposal_present"
+        ),
+        CheckConstraint(
+            "purpose <> 'directory_listing' OR identity_id IS NOT NULL",
+            name="listing_names_identity",
+        ),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -416,6 +429,8 @@ class ControllerChallenge(Base):
     controller_value: Mapped[str] = mapped_column(Text, nullable=False)
     nonce: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    # directory_listing only: the change the message describes, applied once it is signed.
+    proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
@@ -441,6 +456,58 @@ class ControllerProof(Base):
     verified_at: Mapped[datetime | None] = mapped_column(Timestamp)
     failure_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
+
+
+class DirectoryListing(Base):
+    """A DID-LLM's public profile in the directory, chosen and signed by its owner.
+
+    One row per DID-LLM that was ever listed. ``listed`` is the owner's choice (a signed
+    change); ``hidden_at`` is an operator's, for a listing that breaks the rules. The listing
+    is shown only while it is listed, not hidden, and its DID-LLM is active. Removing it clears
+    the profile; the signed messages stay in ``controller_challenges`` as the record.
+    """
+
+    __tablename__ = "directory_listings"
+    __table_args__ = (
+        CheckConstraint(
+            f"entity_type IS NULL OR {one_of('entity_type', DIRECTORY_ENTITY_TYPES)}",
+            name="entity_type",
+        ),
+        CheckConstraint(
+            "NOT listed OR (entity_type IS NOT NULL AND specialty IS NOT NULL "
+            "AND description IS NOT NULL AND listed_at IS NOT NULL)",
+            name="listed_has_profile",
+        ),
+        CheckConstraint(
+            "(hidden_at IS NULL) = (hidden_reason IS NULL) AND "
+            "(hidden_at IS NULL) = (hidden_by IS NULL)",
+            name="hidden_all_or_nothing",
+        ),
+        Index("ix_directory_listings_shown", "listed_at", "identity_id"),
+    )
+
+    identity_id: Mapped[str] = mapped_column(ForeignKey("identities.id"), primary_key=True)
+    listed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    entity_type: Mapped[str | None] = mapped_column(Text)
+    specialty: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    owner_name: Mapped[str | None] = mapped_column(Text)
+    region: Mapped[str | None] = mapped_column(Text)
+    country: Mapped[str | None] = mapped_column(Text)
+    created_on: Mapped[date | None] = mapped_column(Date)
+    # The terms version the owner accepted with the last signed change.
+    terms_version: Mapped[str] = mapped_column(Text, nullable=False)
+    # The signed change now in force.
+    challenge_id: Mapped[str] = mapped_column(
+        ForeignKey("controller_challenges.id"), nullable=False
+    )
+    proof_id: Mapped[str] = mapped_column(ForeignKey("controller_proofs.id"), nullable=False)
+    listed_at: Mapped[datetime | None] = mapped_column(Timestamp)  # since when, this time
+    hidden_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    hidden_reason: Mapped[str | None] = mapped_column(Text)
+    hidden_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+    updated_at: Mapped[datetime] = updated_at()
 
 
 class Credential(Base):

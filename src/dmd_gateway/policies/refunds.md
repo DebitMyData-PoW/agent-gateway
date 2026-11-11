@@ -1,6 +1,6 @@
 ---
 title: Refund policy
-version: 2026-11-11
+version: 2026-11-12
 status: approved
 summary: The DID-LLM registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---

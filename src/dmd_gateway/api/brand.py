@@ -49,6 +49,7 @@ THEME_BUTTON = (
 )
 
 GET_DID_PATH = "/get-did"
+DIRECTORY_PATH = "/directory"  # the DID-LLM directory (api/directory_page.py)
 GUIDED_PATH = "/docs"  # staging
 STAGING_GUIDED_PAGE = "https://staging-api.debitmydata.io/docs"
 PRODUCTION_SITE = "https://api.debitmydata.io"
@@ -105,7 +106,7 @@ SITE_LINKS = (
 
 
 def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, str]]:
-    pages = [("get-did", get_did, "Get a DID-LLM")]
+    pages = [("get-did", get_did, "Get a DID-LLM"), ("directory", DIRECTORY_PATH, "Directory")]
     if staging:
         pages.append(("guided", GUIDED_PATH, "Guided test"))
     pages += [
@@ -119,6 +120,7 @@ def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, s
 # serves every page there too); the guided test has none, so it leads to the Get a DID app.
 _PRODUCTION_PAGE = {
     "get-did": PRODUCTION_APP,
+    "directory": PRODUCTION_APP + DIRECTORY_PATH.lstrip("/"),
     "guided": PRODUCTION_APP,
     "advanced": PRODUCTION_APP + ADVANCED_PATH.lstrip("/"),
     "policies": PRODUCTION_APP + POLICIES_PATH.lstrip("/"),
@@ -127,9 +129,9 @@ _PRODUCTION_PAGE = {
 
 def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
     """The top bar: the DebitMyData name (to this site's home) and the gateway's pages, with
-    ``current`` (get-did, guided, advanced or policies) marked; on staging, a link to the
-    same page on the real API. ``get_did`` is where "Get a DID-LLM" is (the installable app
-    serves it at its root). On a phone the pages fold into the menu button."""
+    ``current`` (get-did, directory, guided, advanced or policies) marked; on staging, a link
+    to the same page on the real API. ``get_did`` is where "Get a DID-LLM" is (the installable
+    app serves it at its root). On a phone the pages fold into the menu button."""
     links = "".join(
         f'<a class=on aria-current=page href="{path}">{label}</a>'
         if key == current
@@ -170,7 +172,7 @@ def footer(staging: bool = False, get_did: str = GET_DID_PATH, to_top: bool = Tr
     "Get the app" button, the developers' links, the policies, DebitMyData's other sites and
     the contact address. ``to_top`` adds the "back to top" button (the API docs page has its
     own)."""
-    pages = [(get_did, "Get a DID-LLM")]
+    pages = [(get_did, "Get a DID-LLM"), (DIRECTORY_PATH, "DID-LLM directory")]
     if staging:
         pages.append((GUIDED_PATH, "Guided test"))
     pages.append((POLICIES_PATH, "All policies"))

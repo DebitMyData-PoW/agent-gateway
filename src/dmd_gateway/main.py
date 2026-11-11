@@ -22,6 +22,8 @@ from dmd_gateway import __version__
 from dmd_gateway.adapters import PaymentAdapter
 from dmd_gateway.api import (
     brand,
+    directory,
+    directory_page,
     discovery,
     docs_pages,
     donations,
@@ -157,6 +159,8 @@ def create_app(
     app.include_router(donations.router)
     app.include_router(products.router)
     app.include_router(identities.router)
+    app.include_router(directory.router)  # /v1/directory
+    app.include_router(directory_page.router)  # /directory pages
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
     app.include_router(get_did_page.router)  # /get-did on every server

@@ -1,6 +1,6 @@
 ---
 title: Payment methods
-version: 2026-11-11
+version: 2026-11-12
 status: approved
 summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets, networks and cards are accepted.
 ---

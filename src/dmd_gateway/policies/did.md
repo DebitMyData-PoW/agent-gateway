@@ -1,6 +1,6 @@
 ---
 title: DID-LLM policy
-version: 2026-11-11
+version: 2026-11-12
 status: approved
 summary: What a DebitMyData DID-LLM is and is not, how control is proven, what is public, and how a DID-LLM can be suspended or revoked.
 ---
@@ -60,6 +60,15 @@ These are published so that anyone can resolve and check a DID-LLM:
 Do not put personal information in a display name unless you want it to be public. The
 metadata you may send with a quote is not published. See the
 [privacy policy]({{ base_url }}/policies/privacy).
+
+## The DID-LLM directory
+
+The [directory]({{ base_url }}/directory) lists the DID-LLMs whose owners chose to be listed,
+with a short public profile. A DID-LLM is never listed unless its owner asks: the owner signs
+the listing, any change to it and its removal with the DID-LLM's controller key or wallet, as
+for the proof of control. A listing is shown while the DID-LLM is active; a suspended or revoked
+DID-LLM disappears from the directory. Listings follow the
+[terms]({{ base_url }}/policies/terms) (section 5).
 
 ## Status: active, suspended, revoked
 

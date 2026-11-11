@@ -303,9 +303,11 @@
   }
 
   // The Agentic Hub, offered once the DID-LLM is issued. Hidden for now: the hub's "Create
-  // Entity" does not save entries yet. Set to true once it does.
+  // Entity" does not save entries yet. Set to true once the hub shows this gateway's directory.
   const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";
   const SHOW_AGENTIC_HUB = false;
+  // The DID-LLM directory's listing page (on this server), offered once the DID-LLM is issued.
+  const DIRECTORY_LIST = "/directory/list";
   // The owner-key tool, for people who sign with their own key rather than a wallet.
   const OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md";
   // Card payments: the quote links to Stripe's payment page (Stripe Checkout), which sends the
@@ -817,7 +819,14 @@
           element("a", { href: issued.credential_url, target: "_blank", rel: "noopener" }, "View the signed credential"),
           element("a", { href: "/docs/advanced" }, "API docs")
         ),
-        // What to do with it next: the Agentic Hub, where DID-LLM holders join DebitMyData's directory.
+        // What to do with it next: the DID-LLM directory (optional: the owner signs the listing).
+        element(
+          "div",
+          { class: "next" },
+          element("p", {}, "Next, if you like: list it in the DID-LLM directory, so that people and agents can find it. It is optional and public, and you can remove it at any time."),
+          element("a", { class: "button go", href: `${DIRECTORY_LIST}?did=${encodeURIComponent(issued.did)}` }, "List it in the directory")
+        ),
+        // The Agentic Hub, once it shows the directory.
         SHOW_AGENTIC_HUB
           ? element(
               "div",

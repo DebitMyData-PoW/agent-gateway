@@ -631,6 +631,38 @@ def test_audit_check_reports_did_status_changes(db: Session) -> None:
     assert "Reason: Under review" in finding.detail
 
 
+@needs_db
+def test_audit_check_reports_directory_listings(db: Session) -> None:
+    ctx = context()
+    assert mc.check_audit(ctx, db, NOW) == []  # the first run starts from now
+    did = "did:web:api.debitmydata.io:agents:01M7697G2GYM4KQNEPFPTTWPHF"
+    for action, actor in (("directory.listed", None), ("directory.hidden", "Tyler")):
+        record_audit_event(
+            db,
+            action=action,
+            subject_type="identity",
+            subject_id="dmd_identity_unknown",
+            actor_type="operator" if actor else "agent",
+            actor_id=actor,
+            data={"did": did, "reason": "Spam"} if actor else {"did": did},
+        )
+    record_audit_event(  # not reported: nothing changed yet
+        db,
+        action="directory.challenge_created",
+        subject_type="identity",
+        subject_id="dmd_identity_unknown",
+        actor_type="agent",
+    )
+    db.flush()
+    listed, hidden = mc.check_audit(ctx, db, NOW)
+    assert (listed.severity, listed.kind) == (W, "event")
+    assert listed.title == "A DID-LLM was listed in the directory: dmd_identity_unknown"
+    assert "/directory/01M7697G2GYM4KQNEPFPTTWPHF" in listed.detail
+    assert f"dmd-gateway-admin directory hide {did}" in listed.detail
+    assert hidden.title == "A DID-LLM was hidden from the directory: dmd_identity_unknown"
+    assert "by Tyler (dmd-gateway-admin)" in hidden.detail and "Reason: Spam" in hidden.detail
+
+
 def _intent(db: Session, intent_id: str, *, status: str, **changes: Any) -> PaymentIntent:
     values: dict[str, Any] = {
         "id": intent_id,

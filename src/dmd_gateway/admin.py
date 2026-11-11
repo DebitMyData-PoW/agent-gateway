@@ -5,6 +5,9 @@
     dmd-gateway-admin did reactivate ID --reason "..." --by NAME
     dmd-gateway-admin did revoke ID --reason "..." --by NAME     permanent: asks to confirm
     dmd-gateway-admin names check     the issued DIDs whose name the quote check would refuse
+    dmd-gateway-admin directory show ID            a DID-LLM's directory listing
+    dmd-gateway-admin directory hide ID --reason "..." --by NAME     a listing breaks the rules
+    dmd-gateway-admin directory unhide ID --reason "..." --by NAME   show it again
 
 ID is the DID, its did.json address, the identity ID (dmd_identity_...) or the registration ID
 (dmd_did_intent_...). On the servers, run it as root (``sudo dmd-gateway-admin ...``): a small
@@ -23,9 +26,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from dmd_gateway.db.models import AgentIdentity, Credential, Entitlement
+from dmd_gateway.db.models import AgentIdentity, Credential, DirectoryListing, Entitlement
 from dmd_gateway.db.session import build_engine, session_factory, transaction
 from dmd_gateway.identity.names import NameRefused, brand_owners, check_display_name, is_brand_owner
+from dmd_gateway.services import directory
 from dmd_gateway.services.identity_status import (
     STATUS_CHANGED,
     StatusChangeError,
@@ -73,6 +77,25 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--by", required=True, help="your name, kept in the audit trail")
         if name == "revoke":
             command.add_argument("--yes", action="store_true", help="do not ask to confirm")
+    listing = groups.add_parser(
+        "directory", help="show a DID-LLM's directory listing, hide it or show it again"
+    )
+    listing_commands = listing.add_subparsers(dest="command", required=True)
+    listing_commands.add_parser("show", help="the listing, as its owner signed it").add_argument(
+        "id", help="the DID-LLM, its did.json address, identity ID or registration ID"
+    )
+    for name, text in (
+        ("hide", "hide a listing that breaks the rules (its owner cannot show it again)"),
+        ("unhide", "show a hidden listing again"),
+    ):
+        command = listing_commands.add_parser(name, help=text)
+        command.add_argument(
+            "id", help="the DID-LLM, its did.json address, identity ID or registration ID"
+        )
+        command.add_argument(
+            "--reason", required=True, help="why (3 to 300 characters, no secrets)"
+        )
+        command.add_argument("--by", required=True, help="your name, kept in the audit trail")
     names = groups.add_parser("names", help="check the names of the DID-LLMs already issued")
     names.add_subparsers(dest="command", required=True).add_parser(
         "check", help="list the active and suspended DID-LLMs whose name a quote would refuse today"
@@ -104,6 +127,8 @@ def run(
     if args.group == "names":
         with transaction(factory) as session:
             return _check_names(session, brand, out)
+    if args.group == "directory":
+        return _directory(args, factory, out, now or datetime.now(UTC))
     try:
         if args.command == "show":
             with transaction(factory) as session:
@@ -215,6 +240,77 @@ def _check_names(session: Session, brand: frozenset[str], out: Callable[[str], N
         out(f"    {reason}")
     out('To suspend one: dmd-gateway-admin did suspend <identity> --reason "..." --by "<you>"')
     return 0
+
+
+def _directory(
+    args: argparse.Namespace,
+    factory: sessionmaker[Session],
+    out: Callable[[str], None],
+    now: datetime,
+) -> int:
+    try:
+        with transaction(factory) as session:
+            if args.command == "show":
+                identity = find_identity(session, args.id)
+                listing = session.get(DirectoryListing, identity.id)
+                _show_listing(identity, listing, out)
+                return 0
+            change = directory.set_hidden(
+                session,
+                args.id,
+                hide=args.command == "hide",
+                reason=args.reason,
+                operator=args.by,
+                now=now,
+            )
+            name, did = change.identity.display_name, change.identity.public_identifier
+            event = change.audit_event_id
+    except StatusChangeError as exc:
+        out(str(exc))
+        return 1
+    if args.command == "hide":
+        out(f"Hidden: {name!r} ({did})")
+        out("  The directory no longer shows it; its owner's changes are kept but stay hidden.")
+    else:
+        out(f"Shown again: {name!r} ({did})")
+        out("  The directory shows it again while it is listed and its DID-LLM is active.")
+    out(f"  Audit event {event}. The monitor sends an alert within 2 minutes.")
+    return 0
+
+
+def _show_listing(
+    identity: AgentIdentity, listing: DirectoryListing | None, out: Callable[[str], None]
+) -> None:
+    out(f"{'DID-LLM':<13} {identity.public_identifier}")
+    out(f"{'Name':<13} {identity.display_name} ({identity.status})")
+    if listing is None:
+        out(f"{'Directory':<13} never listed")
+        return
+    if listing.hidden_at is not None:
+        when = _when(listing.hidden_at)
+        state = f"hidden by {listing.hidden_by} on {when}: {listing.hidden_reason}"
+    elif not listing.listed:
+        state = "removed by its owner"
+    elif identity.status != "active":
+        state = f"listed, not shown while the DID-LLM is {identity.status}"
+    else:
+        state = "listed and shown"
+    rows = [
+        ("Directory", state),
+        ("Listed since", _when(listing.listed_at) if listing.listed_at else "-"),
+        ("Type", listing.entity_type or "-"),
+        ("Specialty", listing.specialty or "-"),
+        ("Description", listing.description or "-"),
+        ("Owner", listing.owner_name or "-"),
+        ("Region", listing.region or "-"),
+        ("Country", listing.country or "-"),
+        ("Created", listing.created_on.isoformat() if listing.created_on else "-"),
+        ("Signed change", f"{listing.challenge_id} (proof {listing.proof_id})"),
+        ("Terms", listing.terms_version),
+        ("Updated", _when(listing.updated_at)),
+    ]
+    for label, value in rows:
+        out(f"{label:<13} {value}")
 
 
 def _when(moment: datetime) -> str:

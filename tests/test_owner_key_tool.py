@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from dmd_gateway.identity.crypto import decode_signature, parse_controller_key
+from dmd_gateway.services import directory
 from dmd_gateway.services.controller_proofs import challenge_message
 
 from .conftest import REPO_ROOT
@@ -138,3 +139,109 @@ def test_the_gateway_address_must_be_https(api: str) -> None:
     tool.API = api
     with pytest.raises(SystemExit, match="must be an https:// address"):
         tool.call("GET", "/v1/discovery")
+
+
+# --------------------------------------------------------------------------- directory listings
+
+LISTING_CHALLENGE = "dmd_challenge_01M76A2B3C4D5E6F7G8H9JKMNP"
+DID = "did:web:api.debitmydata.io:agents:01M7697G2GYM4KQNEPFPTTWPHF"
+
+
+def _directory_gateway(
+    tool: ModuleType,
+    controller: str,
+    *,
+    audience: str | None = None,
+    status: str = "open",
+    did: str = DID,
+) -> list[tuple]:
+    """Stands in for the gateway: gives the listing message, then accepts the signature."""
+    now = datetime.now(UTC)
+    message = directory.listing_message(
+        audience=audience or tool.API,
+        did=did,
+        controller=controller,
+        name="ResearchClaw-01",
+        profile=directory.Profile("robot", "Research assistant", "Finds papers. " * 3),
+        terms_version="2026-11-12",
+        nonce="n0nce",
+        issued_at=now,
+        expires_at=now + timedelta(minutes=15),
+    )
+    calls: list[tuple] = [("message", message, None)]
+
+    def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict[str, Any]]:
+        calls.append((method, path, body))
+        if method == "GET":
+            return 200, {
+                "challenge_id": LISTING_CHALLENGE,
+                "did": DID,
+                "status": status,
+                "controller": controller,
+                "message": message,
+            }
+        return 201, {"status": "verified", "listed": True, "shown": True}
+
+    tool.call = call
+    return calls
+
+
+def test_directory_shows_signs_and_sends_the_listing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    path, controller = _new_key(tool, tmp_path, capsys)
+    calls = _directory_gateway(tool, controller)
+    tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    message = calls[0][1]
+    assert calls[1][:2] == ("GET", f"/v1/directory/challenges/{LISTING_CHALLENGE}")
+    method, proof_path, proof = calls[2]
+    assert (method, proof_path) == ("POST", f"/v1/directory/{DID}/proofs")
+    assert proof["challenge_id"] == LISTING_CHALLENGE
+    key = parse_controller_key(controller)
+    assert key.verify(decode_signature(proof["signature"]), message.encode("utf-8"))
+    out = capsys.readouterr().out
+    assert "Specialty: Research assistant" in out  # the owner sees what is signed
+    assert "Nonce:" not in out
+    assert "the DID-LLM is in the directory" in out
+
+
+def test_directory_signs_nothing_unless_confirmed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    path, controller = _new_key(tool, tmp_path, capsys)
+    calls = _directory_gateway(tool, controller)
+    with pytest.raises(SystemExit, match="Not signed"):
+        tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "")
+    assert not any(c[0] == "POST" for c in calls)
+
+
+@pytest.mark.parametrize(
+    "gateway",
+    [
+        {"audience": "https://evil.example"},
+        {"did": "did:web:api.debitmydata.io:agents:01M7697G2GYM4KQNEPFPTTWPHG"},
+        {"status": "expired"},
+    ],
+)
+def test_directory_never_signs_another_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], gateway: dict[str, str]
+) -> None:
+    tool = _tool()
+    path, controller = _new_key(tool, tmp_path, capsys)
+    calls = _directory_gateway(tool, controller, **gateway)
+    with pytest.raises(SystemExit):
+        tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    assert not any(c[0] == "POST" for c in calls)
+
+
+def test_directory_never_signs_for_another_owner(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    path, _ = _new_key(tool, tmp_path, capsys)
+    calls = _directory_gateway(tool, "ed25519:z6MkpCvDgxrfSmniB8DQeSdnzVAHAfrS1DQXHngrEzggvob8")
+    with pytest.raises(SystemExit, match="not by this key"):
+        tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    assert not any(c[0] == "POST" for c in calls)

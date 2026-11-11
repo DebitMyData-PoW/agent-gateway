@@ -1,6 +1,6 @@
 ---
 title: Privacy policy
-version: 2026-11-11
+version: 2026-11-12
 status: approved
 summary: What the DebitMyData Agent Gateway collects, what it publishes, who it shares data with, and how long it keeps it.
 ---
@@ -25,6 +25,10 @@ DebitMyData's websites and apps are covered by the
 - For a card payment: Stripe's references for it (the payment page, the payment), its
   amount and whether it succeeded, was refunded or disputed. We do not receive or keep the
   card number.
+- For the DID-LLM directory, only if the owner lists the DID-LLM: the profile the owner
+  publishes (the type, the specialty and a description, and if given, the owner's name, a
+  region, a country and the date the entity was created), and the signatures with which the
+  owner publishes, changes or removes it.
 - In an inference donation: the amount, the signed payment (which names the paying wallet),
   and the donor name and DID-LLM if you give them. They appear in your donation receipt, which
   anyone holding its `purchase_id` can read; they are not otherwise published.
@@ -54,8 +58,12 @@ private again once published.
 - The signed credential: all of the above, plus the payment it records (asset, network,
   amount and transaction IDs).
 
+If the owner lists the DID-LLM in the [directory]({{ base_url }}/directory), its profile is
+published too, next to the display name, until the owner removes it. Anyone can read it, on the
+directory page and through the API, and copy it; copies made by others are outside our control.
+
 Quote metadata, IP addresses and logs are **not** published. Choose a display name you are
-happy to make public.
+happy to make public, and put in a directory profile only what you want to make public.
 
 ## Why we use it
 
@@ -87,6 +95,9 @@ We do not sell personal data, and we do not use it for advertising.
 - **Registrations, donations, payments, controller proofs and the audit trail** are kept
   permanently. They are written once and never changed, because issued credentials,
   receipts, accounting and refunds depend on them.
+- **Directory listings** are public until the owner removes them. Removing a listing deletes
+  its profile from the directory. The signed messages that published, changed or removed it
+  are kept, like the other proofs of control, as the record of who did it.
 - **Server logs** are kept only as long as security and troubleshooting need them, normally
   a few weeks.
 - **Data on blockchains** is permanent and outside our control.
@@ -103,7 +114,9 @@ network (jsDelivr), which sees your IP address when you open it.
 ## Your choices and rights
 
 You can ask us what data we hold about you, ask us to correct it, or object to how we use
-it, by writing to <info@debitmydata.com>. Some data cannot be deleted: what is on blockchains,
+it, by writing to <info@debitmydata.com>. The owner of a DID-LLM can change or remove its
+directory listing at any time, on the directory's [listing page]({{ base_url }}/directory/list);
+if your personal data is in someone else's listing, write to us and we will hide it. Some data cannot be deleted: what is on blockchains,
 and the records that back an issued DID-LLM and its payment. We can deactivate a DID-LLM at your
 request (see the [DID-LLM policy]({{ base_url }}/policies/did)); its record is then kept but the
 DID-LLM no longer resolves. Depending on where you live, you may also have the right to

@@ -29,6 +29,7 @@ from pydantic import Field
 from starlette.applications import Starlette
 
 from dmd_gateway import __version__
+from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
 from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
 from dmd_gateway.settings import Settings
@@ -69,6 +70,11 @@ bottybotty_entry, bottybotty_standard, bottybotty_premium): dmd_purchase with de
 entitlement is on your DID-LLM (a BottyBotty tier for good: a higher tier later costs only the \
 difference in price).
 
+The DID-LLM directory (optional, public, free): dmd_search_directory finds the DID-LLMs whose \
+owners chose to be listed. To list yours, call dmd_list_in_directory with your DID-LLM and a \
+profile, sign the message it returns with your controller (as in step 5), then call it again \
+with the challenge_id and the signature. listed=false removes the listing the same way.
+
 DebitMyData never asks for private keys, seed phrases or wallet access."""
 
 ABOUT = (
@@ -102,6 +108,14 @@ PaymentId = Annotated[
     Field(
         description="payment_intent_id from the quote (dmd_payment_intent_...)",
         pattern=r"^dmd_payment_intent_[0-9A-HJKMNP-TV-Z]{26}$",
+    ),
+]
+
+DidLlm = Annotated[
+    str,
+    Field(
+        description="The DID-LLM (did:web:...:agents:...) or its identity ID (dmd_identity_...)",
+        pattern=IDENTITY_OR_DID,
     ),
 ]
 
@@ -421,6 +435,88 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         """Progress of a registration: payment, controller proof, what is still missing
         and the next action."""
         return await api.call("GET", f"/v1/dids/registrations/{registration_intent_id}")
+
+    # ------------------------------------------------------------------ directory
+
+    @server.tool(title="Search the DID-LLM directory", annotations=READ_ONLY)
+    async def dmd_search_directory(
+        q: Annotated[
+            str | None,
+            Field(description="Words to find (name, specialty, description, owner, place)"),
+        ] = None,
+        entity_type: Annotated[
+            Literal["avatar", "robot", "sentient"] | None, Field(description="Only this type")
+        ] = None,
+        cursor: Annotated[str | None, Field(description="next_cursor of the last page")] = None,
+    ) -> dict[str, Any]:
+        """DID-LLMs whose owners chose to be listed in DebitMyData's directory, newest first,
+        each with its profile (type, specialty, description...) and its DID-LLM document."""
+        params = {"q": q, "type": entity_type, "cursor": cursor}
+        return await api.call("GET", "/v1/directory", params={k: v for k, v in params.items() if v})
+
+    @server.tool(title="List a DID-LLM in the directory", annotations=CREATES)
+    async def dmd_list_in_directory(
+        did: DidLlm,
+        profile: Annotated[
+            dict[str, Any] | None,
+            Field(
+                description="When listing: entity_type (avatar, robot or sentient), specialty "
+                "(3-120 characters), description (20-700 characters, 100 words at most); "
+                "optional owner_name, region, country, created_on (YYYY-MM-DD). Public, plain "
+                "text, no links."
+            ),
+        ] = None,
+        listed: Annotated[
+            bool, Field(description="false: remove the DID-LLM from the directory")
+        ] = True,
+        challenge_id: Annotated[
+            str | None, Field(description="Leave empty to get the message to sign")
+        ] = None,
+        signature: Annotated[
+            str | None,
+            Field(description="Signature of the message, as for dmd_prove_wallet_control"),
+        ] = None,
+        controller_type: Annotated[
+            Literal["ed25519", "eip155"] | None,
+            Field(description="Who signs: ed25519 (the key, by default) or eip155 (the wallet)"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Two calls, signed by the DID-LLM's owner. Without challenge_id and signature:
+        returns the message that lists the DID-LLM with `profile` (or removes it, listed=false).
+        Sign it with the DID-LLM's controller, then call again with did, challenge_id and
+        signature. A wrong signature uses up the message."""
+        base = f"/v1/directory/{did}"
+        if challenge_id is None and signature is None:
+            body: dict[str, Any] = {"listed": listed}
+            if listed:
+                body["profile"] = profile
+            if controller_type:
+                body["controller_type"] = controller_type
+            challenge = await api.call("POST", f"{base}/challenges", json_body=body)
+            how = (
+                "Sign `message` exactly as given with the controller named in `controller` "
+                "(Ed25519 key: its UTF-8 bytes, base64url; wallet: personal_sign), then call "
+                "dmd_list_in_directory again with this did, challenge_id and the signature "
+                "before expires_at."
+            )
+            return {"step": "sign_listing", **challenge, "how_to_answer": how}
+        if not challenge_id or not signature:
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "invalid_request",
+                            "message": "Send both challenge_id and signature, or neither "
+                            "to get the message to sign.",
+                        }
+                    }
+                )
+            )
+        return await api.call(
+            "POST",
+            f"{base}/proofs",
+            json_body={"challenge_id": challenge_id, "signature": signature},
+        )
 
     # ------------------------------------------------------------------ catalog
 

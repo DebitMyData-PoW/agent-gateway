@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.33.0`). The whole registration flow (quote,
+This is an early development release (`0.34.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -93,6 +93,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |
 | Credential signer (ID-15): in production the issuer key is held only by `dmd-gateway-signer` (own user, no network), which checks the database before signing; the API checks every signature | done |
+| DID-LLM directory: owners list their DID-LLM with a public profile (the Agentic Hub's fields, no pictures: type avatar/robot/sentient, specialty, description, optional owner's name, region, country, creation date), signed with the DID-LLM's own key or wallet like the proof of control, and change or remove it the same way; plain text only (no links, e-mail addresses or hidden characters); shown while the DID-LLM is active; open API with CORS (`GET /v1/directory`, search, type, pages), pages `/directory`, `/directory/{id}` and `/directory/list`, MCP (`dmd_search_directory`, `dmd_list_in_directory`), `did-owner-key.py directory`; operators hide a listing (`dmd-gateway-admin directory hide`), and the monitor reports every new or changed listing; "Get a DID-LLM" offers it after issuance ([docs/directory.md](docs/directory.md)) | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -180,12 +181,14 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` (the identity ID or the DID-LLM itself) |
 | Resolve the DID-LLM and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
 | Read the terms, privacy, payment, refund, DID-LLM and security policies | `/policies`, `GET /v1/policies` |
+| Optional: list the DID-LLM in the directory (signed by its owner), or read the directory | `POST /v1/directory/{did}/challenges`, `POST /v1/directory/{did}/proofs`, `GET /v1/directory` |
 
 The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_discover`,
 `dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,
 `dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
-`dmd_get_purchase_quote`, `dmd_purchase` and `dmd_marketplace_provider_requirements`. Each
+`dmd_get_purchase_quote`, `dmd_purchase`, `dmd_marketplace_provider_requirements`,
+`dmd_search_directory` and `dmd_list_in_directory`. Each
 tool calls the REST API above in-process, so both give the same results and error codes.
 
 **Inference donations (agents).** `POST /v1/donations/inference` with

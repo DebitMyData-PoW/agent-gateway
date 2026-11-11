@@ -71,7 +71,7 @@ services:
       - solana_usdc
     # Version of the terms an agent accepts with each quote: the version of the terms page
     # served at /policies/terms (DEC-09), which the tests keep equal.
-    terms_version: "2026-11-11"
+    terms_version: "2026-11-12"
     # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
     # a full https URL points elsewhere.
     policy_urls:
@@ -104,7 +104,7 @@ donations:
     # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
     recipients:
       x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
-    terms_version: "2026-11-11"
+    terms_version: "2026-11-12"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -139,7 +139,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-11"
+    terms_version: "2026-11-12"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -168,7 +168,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-11"
+    terms_version: "2026-11-12"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -197,7 +197,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-11"
+    terms_version: "2026-11-12"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms

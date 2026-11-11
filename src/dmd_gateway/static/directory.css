@@ -1,0 +1,41 @@
+/* The DID-LLM directory and its "list my DID-LLM" page, on top of get-did.css. */
+.search{display:grid;grid-template-columns:minmax(0,1fr) 180px auto;gap:10px;align-items:end;margin:0 0 10px}
+.search label{font-weight:600;margin:0}
+.search input,.search select{margin-top:4px}
+.search button{height:46px}
+.found{color:var(--muted);margin:6px 0 18px;font-size:.95rem}
+.entries{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:0;margin:0 0 18px}
+.entry{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line-2);border-radius:18px;
+box-shadow:var(--shadow);padding:18px 20px 16px;min-width:0}
+.entry .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 6px}
+.entry .kind{display:inline-block;background:var(--pink);color:var(--red-brand);border:1px solid var(--pink-line);
+border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;padding:2px 10px}
+.entry .verified{font-size:.8rem;color:var(--green-text);font-weight:700}
+.entry h2,.entry h3{font-size:1.25rem;line-height:1.25;margin:0 0 4px;overflow-wrap:anywhere}
+.entry h2 a,.entry h3 a{color:var(--text);text-decoration:none}
+.entry h2 a:hover,.entry h3 a:hover{color:var(--red-text)}
+.entry .specialty{font-weight:700;color:var(--text-2);margin:0 0 8px;overflow-wrap:anywhere}
+.entry .description{color:var(--body);margin:0 0 10px;overflow-wrap:anywhere}
+.entry dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 12px;margin:0 0 10px;font-size:.9rem}
+.entry dt{color:var(--muted)}
+.entry dd{margin:0;overflow-wrap:anywhere}
+.entry .did{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.78rem;color:var(--muted);
+overflow-wrap:anywhere;margin:auto 0 8px}
+.entry .links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem;margin:0}
+.entries.single{grid-template-columns:minmax(0,1fr);max-width:680px;margin:0 auto 18px}
+.more{text-align:center;margin:0 0 24px}
+.empty{text-align:center;color:var(--body);margin:20px 0 28px}
+.fine{font-size:.9rem;color:var(--muted);max-width:680px;margin:0 auto 10px;text-align:center}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
+textarea.prose{font-family:var(--sans);font-size:1rem}
+input[type=date]{display:block;width:100%;margin-top:6px;padding:9px 12px;font:inherit;font-weight:400;color:var(--text);
+background:var(--card);border:1px solid var(--input-line);border-radius:8px}
+.count{float:right;font-weight:400;color:var(--muted);font-size:.85rem}
+.count.over{color:var(--red-brand);font-weight:700}
+.found-did{background:var(--card-2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0 0}
+.found-did p{margin:0 0 4px}
+@media (max-width:760px){
+.entries{grid-template-columns:minmax(0,1fr)}
+.search{grid-template-columns:minmax(0,1fr)}
+.two{grid-template-columns:minmax(0,1fr)}
+}

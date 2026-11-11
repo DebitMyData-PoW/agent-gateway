@@ -9,6 +9,11 @@
         Once the registration is paid: asks the gateway for the message to sign, signs it with
         KEYFILE and sends the signature. Then reload the Get a DID-LLM page and click Continue.
 
+    python3 did-owner-key.py directory  KEYFILE  dmd_challenge_...
+        Signs a directory listing made on the directory's "List your DID-LLM" page (listing the
+        DID-LLM, changing its listing or removing it): shows what you are signing, asks you to
+        confirm, signs it with KEYFILE and sends the signature. Then click Continue on the page.
+
 The private key never leaves this machine: only the public key and signatures are sent.
 Keep KEYFILE (and a backup of it): it is the proof that the DID-LLM is yours.
 Set DMD_GATEWAY_API to use another gateway, e.g. https://staging-api.debitmydata.io
@@ -22,6 +27,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from cryptography.hazmat.primitives import serialization
@@ -30,6 +36,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 API = os.environ.get("DMD_GATEWAY_API", "https://api.debitmydata.io").rstrip("/")
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 REGISTRATION = re.compile(r"^dmd_did_intent_[0-9A-HJKMNP-TV-Z]{26}$")
+CHALLENGE = re.compile(r"^dmd_challenge_[0-9A-HJKMNP-TV-Z]{26}$")
+LISTING = "DebitMyData directory listing"
 # Only https (or a gateway running on this machine, for testing).
 GATEWAY = re.compile(r"^(https://[^/\s]+|http://(localhost|127\.0\.0\.1)(:\d+)?)$")
 
@@ -130,10 +138,57 @@ def prove(path: str, registration_id: str) -> None:
         print("Next on the page:", proof.get("next_action"), "(pay first, then reload the page).")
 
 
+def directory(path: str, challenge_id: str, confirm=input) -> None:
+    if not CHALLENGE.match(challenge_id):
+        sys.exit("The message's ID starts with dmd_challenge_ (step 3 of the listing page).")
+    key = load(path)
+    mine = public_key(key)
+    status, challenge = call("GET", f"/v1/directory/challenges/{challenge_id}")
+    if status != 200:
+        sys.exit(f"No such message (HTTP {status}): {problem(challenge)}")
+    if challenge.get("status") != "open":
+        sys.exit(f"This message is {challenge.get('status')}: get a new one on the page.")
+    if challenge.get("controller") != mine:
+        sys.exit(
+            f"This DID-LLM is owned by {challenge.get('controller')}, not by this key "
+            f"({mine}): nothing was signed."
+        )
+    message = challenge["message"]
+    lines = message.split("\n")
+    did = str(challenge.get("did") or "")
+    if (
+        lines[:3] != [LISTING, f"Audience: {API}", "Purpose: directory_listing"]
+        or f"DID-LLM: {did}" not in lines
+        or f"Controller: {mine}" not in lines
+    ):
+        sys.exit(f"This is not a directory listing for {API} and this key: nothing was signed.")
+    print("You are about to sign:")
+    print("  " + "\n  ".join(lines[3:-3]))
+    if confirm("Sign it? Type yes: ").strip().lower() not in ("y", "yes"):
+        sys.exit("Not signed.")
+    signature = base64.urlsafe_b64encode(key.sign(message.encode("utf-8"))).rstrip(b"=")
+    status, proof = call(
+        "POST",
+        f"/v1/directory/{urllib.parse.quote(did, safe=':')}/proofs",
+        {"challenge_id": challenge_id, "signature": signature.decode("ascii")},
+    )
+    if status not in (200, 201):
+        sys.exit(f"The signature was refused (HTTP {status}): {problem(proof)}")
+    if not proof.get("listed"):
+        print("Signed and accepted: the DID-LLM is no longer in the directory.")
+    elif proof.get("shown"):
+        print("Signed and accepted: the DID-LLM is in the directory.")
+    else:
+        print("Signed and accepted, but the directory does not show it (hidden by DebitMyData).")
+    print("Back on the page, click Continue.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "new":
         new(sys.argv[2])
     elif len(sys.argv) == 4 and sys.argv[1] == "prove":
         prove(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 4 and sys.argv[1] == "directory":
+        directory(sys.argv[2], sys.argv[3])
     else:
         sys.exit(__doc__)

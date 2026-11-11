@@ -41,6 +41,7 @@ from dmd_gateway.db.models import (
     AgentIdentity,
     AlertState,
     AuditEvent,
+    DirectoryListing,
     PaymentIntent,
     X402Authorization,
 )
@@ -57,6 +58,7 @@ from dmd_gateway.monitoring.state import (
 )
 from dmd_gateway.pricing.mining_cost import DmdExplorerFigures, latest_record
 from dmd_gateway.runtime import Runtime
+from dmd_gateway.services import directory
 from dmd_gateway.services.identity_status import STATUS_CHANGED
 from dmd_gateway.settings import Settings
 
@@ -274,7 +276,7 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
         .where(
             AuditEvent.id > after,
             AuditEvent.action.like("alert.%")
-            | AuditEvent.action.in_(("payment.refund_due", STATUS_CHANGED)),
+            | AuditEvent.action.in_(("payment.refund_due", STATUS_CHANGED, *directory.REPORTED)),
         )
         .order_by(AuditEvent.id)
         .limit(AUDIT_BATCH)
@@ -285,6 +287,8 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
             findings.append(_refund_finding(session, event))
         elif event.action == STATUS_CHANGED:
             findings.append(_status_finding(session, event))
+        elif event.action in directory.REPORTED:
+            findings.append(_directory_finding(ctx, session, event))
         else:
             data = json.dumps(event.data, sort_keys=True)
             when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
@@ -325,6 +329,43 @@ def _status_finding(session: Session, event: AuditEvent) -> Finding:
         "If nobody on the team made this change, someone else has access to the server.",
         kind="event",
     )
+
+
+DIRECTORY_WORDS = {
+    directory.LISTED: "listed in the directory",
+    directory.UPDATED: "changed its directory listing",
+    directory.HIDDEN: "hidden from the directory",
+    directory.SHOWN_AGAIN: "shown again in the directory",
+}
+
+
+def _directory_finding(ctx: MonitorContext, session: Session, event: AuditEvent) -> Finding:
+    """A new or changed listing (so that someone reads it), or an operator's change."""
+    identity = session.get(AgentIdentity, event.subject_id)
+    name = identity.display_name if identity else event.subject_id
+    did = str(event.data.get("did") or (identity.public_identifier if identity else ""))
+    when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
+    title = f"A DID-LLM was {DIRECTORY_WORDS[event.action]}: {name}"
+    if event.action in (directory.HIDDEN, directory.SHOWN_AGAIN):
+        detail = (
+            f"{did}, on {when} UTC, by {event.actor_id} (dmd-gateway-admin).\n"
+            f"Reason: {redact(str(event.data.get('reason')))}\n"
+            "If nobody on the team made this change, someone else has access to the server."
+        )
+    else:
+        listing = session.get(DirectoryListing, event.subject_id)
+        page = ctx.settings.public_base_url.rstrip("/") + "/directory/" + did.rsplit(":", 1)[-1]
+        profile = ""
+        if listing is not None and listing.listed:
+            profile = (
+                f"Specialty: {redact(listing.specialty or '')}\n"
+                f"Description: {redact(listing.description or '')}\n"
+            )
+        detail = (
+            f"{did}, on {when} UTC, signed by its owner.\n{profile}Check it: {page}\n"
+            f'To hide it: dmd-gateway-admin directory hide {did} --reason "..." --by "<you>"'
+        )
+    return Finding(f"audit.{event.id}", W, title, detail, kind="event")
 
 
 def _refund_finding(session: Session, event: AuditEvent) -> Finding:

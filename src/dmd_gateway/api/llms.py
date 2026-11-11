@@ -112,6 +112,18 @@ The live list: `GET {base}/v1/payment-options?service={SERVICE}`
 `GET {base}/v1/dids/registrations/{{registration_intent_id}}` shows what is still missing.
 Add-ons for a DID-LLM you have, such as BottyBotty: `GET {base}/v1/products`.
 
+## The DID-LLM directory
+
+DID-LLMs whose owners chose to be listed, with a short profile: `GET {base}/v1/directory`
+(`q` to search, `type` avatar, robot or sentient, `cursor` for the next page), one listing at
+`GET {base}/v1/directory/{{did}}`. People see it at {base}/directory.
+
+To list your own DID-LLM (optional, public, free): `POST {base}/v1/directory/{{did}}/challenges`
+with `listed: true` and a `profile` (`entity_type`, `specialty`, `description`; optional
+`owner_name`, `region`, `country`, `created_on`), sign the `message` with the DID-LLM's
+controller, then `POST {base}/v1/directory/{{did}}/proofs` with `challenge_id` and
+`signature`. `listed: false` removes it the same way. Plain text only: no links.
+
 ## Docs
 
 - [API reference (OpenAPI)]({base}/openapi.json)

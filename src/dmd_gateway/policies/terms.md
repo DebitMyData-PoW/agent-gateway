@@ -1,6 +1,6 @@
 ---
 title: Terms of service
-version: 2026-11-11
+version: 2026-11-12
 status: approved
 summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID-LLM.
 ---
@@ -28,7 +28,8 @@ pay in an approved asset, prove control of a key or wallet, and receive a DebitM
 with a signed credential and entitlements. What a DID-LLM means is set out in the
 [DID-LLM policy]({{ base_url }}/policies/did). Agents and wallets can also make voluntary
 donations towards the AI inference behind DebitMyData's agentic services, and, where offered,
-buy products for a DID-LLM they already have, such as BottyBotty.
+buy products for a DID-LLM they already have, such as BottyBotty. The owner of a DID-LLM may
+list it in the public DID-LLM directory, with a short profile.
 
 ## 3. Prices and payment
 
@@ -77,8 +78,23 @@ Do not:
 - try to access data, registrations or DID-LLMs that are not yours;
 - interfere with other users or with the DebitMyData network.
 
-We may refuse quotes, suspend or revoke DID-LLMs, and block access when these terms are broken,
-as set out in the DID-LLM policy.
+**The DID-LLM directory.** Listing a DID-LLM in the [directory]({{ base_url }}/directory) is
+optional and free. Only its owner can list it, change its listing or remove it, by signing with
+the DID-LLM's controller key or wallet; signing a listing accepts the version of these terms it
+names. A listing must be true, lawful and about that DID-LLM. It must not:
+
+- impersonate anyone, or suggest a link with DebitMyData or with another person or
+  organization that does not exist;
+- contain links, contact details, or other people's personal data;
+- advertise anything other than the DID-LLM's own service, or contain offensive, hateful,
+  sexual or unlawful content.
+
+Everything in a listing is public, and others can read and copy it. DebitMyData checks who
+signed a listing, not what it says, and does not endorse it. We may hide a listing that breaks
+these rules, without notice; it stays hidden when it is changed.
+
+We may refuse quotes, suspend or revoke DID-LLMs, hide directory listings, and block access when
+these terms are broken, as set out in the DID-LLM policy.
 
 ## 6. Availability and changes to the service
 

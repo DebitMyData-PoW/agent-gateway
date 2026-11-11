@@ -56,6 +56,19 @@ signature are sent to the gateway.
 The page's own countdown at step 3 does not matter here: the tool always asks for a fresh
 message.
 
+## List it in the directory (optional)
+
+Once the DID-LLM is issued, its owner can list it in the [DID-LLM directory](directory.md). On
+the directory's **List your DID-LLM** page, fill in the profile and click **Sign and publish**,
+then run the command the page shows:
+
+```bash
+python3 did-owner-key.py directory ~/did-keys/my-agent.key dmd_challenge_...
+```
+
+The tool shows what will be published and asks you to confirm before it signs. Then click
+**Continue** on the page. Changing or removing the listing works the same way.
+
 ## Good to know
 
 - **Staging:** `DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py prove ...`
