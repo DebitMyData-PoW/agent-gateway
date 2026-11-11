@@ -1,15 +1,15 @@
 ---
 title: Payment methods
-version: 2026-11-10
+version: 2026-11-11
 status: approved
-summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets and networks are accepted.
+summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets, networks and cards are accepted.
 ---
 
 # Payment methods
 
 A DebitMyData DID-LLM registration costs a fixed **25.00 USD**. You pay it in one of the
-approved assets below, from the wallet you already use. You never have to buy DMD to pay
-with another approved asset.
+approved assets below, from the wallet you already use, or by debit or credit card where
+that option is offered. You never have to buy DMD to pay with another approved method.
 
 ## Always get a quote first
 
@@ -18,10 +18,12 @@ Every payment starts with a quote (`POST /v1/dids/registration-quotes`). The quo
 - the fixed price, 25.00 USD;
 - the asset, the network and, for tokens, the token contract;
 - the **exact amount** to pay in that asset;
-- where to pay: a DMD address made for this quote only, or the x402 payment terms;
+- where to pay: a DMD address made for this quote only, the x402 payment terms, or a card
+  payment page made for this quote only (`payment_url`);
 - how many confirmations the payment needs;
 - for an asset that is not a US dollar stablecoin, the price used and when it was taken;
-- when the quote expires ({{ quote_minutes }} minutes after it was made);
+- when the quote expires ({{ quote_minutes }} minutes after it was made; 31 minutes for a
+  card payment, the time Stripe keeps its payment page open);
 - the terms version and the links to these policies.
 
 Pay **exactly the quoted amount, in the quoted asset, on the quoted network, before the
@@ -67,6 +69,22 @@ unrelated to other tokens that use the same ticker.
 - The x402 facilitator submits the transfer and pays the network fee. The gateway then
   checks the transfer on the chain itself.
 
+### Debit or credit card, through Stripe
+
+- The quote links to a payment page at Stripe (`checkout.stripe.com`), made for that quote
+  only. You enter your card there: **card details go to Stripe, never to DebitMyData**.
+  Visa, Mastercard and other major cards are accepted, and Apple Pay or Google Pay where
+  your browser offers them.
+- You pay exactly 25.00 USD. DebitMyData adds no card fee. If your card is not in US
+  dollars, your bank converts the amount and may charge its own fee.
+- The payment page closes when the quote expires, so a card is never charged for an expired
+  quote. After paying, you come back to the Get a DID-LLM page, which continues with the
+  next step.
+- The gateway checks the payment with Stripe itself. A card payment counts once Stripe
+  confirms it succeeded, normally within seconds.
+- An AI agent can request a card quote too: it gives the payment page's link to a person,
+  who pays there.
+
 ### Not yet available
 
 Wrapped DMD on Base and USDC on Solana are planned. They are not accepted until each one
@@ -93,8 +111,8 @@ the "Inference $" button; that stays as it is.
 
 ## When a payment counts
 
-A payment counts once it is **settled**: the gateway has seen it on the chain itself, it
-pays the quoted amount, and it has the required confirmations. You can follow it at
+A payment counts once it is **settled**: the gateway has seen it itself (on the chain, or
+with Stripe for a card), it pays the quoted amount, and it has the required confirmations. You can follow it at
 `GET /v1/payments/{payment_intent_id}`. A DID-LLM is only issued after the payment is settled
 and every controller named in the quote has proved control.
 
@@ -105,7 +123,8 @@ them.
 ## Test networks
 
 On the staging server, payments use test networks whose coins have no value: a private
-DebitMyData test chain and Base Sepolia. Test payments never count on the production service.
+DebitMyData test chain and Base Sepolia, and Stripe's test mode for cards (test card numbers
+only; no real card is charged). Test payments never count on the production service.
 
 ## Questions
 

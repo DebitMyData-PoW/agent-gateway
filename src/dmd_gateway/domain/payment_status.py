@@ -52,6 +52,11 @@ ALLOWED_TRANSITIONS: dict[PaymentStatus, frozenset[PaymentStatus]] = {
 }
 
 
+# Card payments: the payment intent's recipient is a payment page made for it alone, where a
+# person pays (``payment_url``); while it is unpaid, that is the next action.
+HOSTED_PAYMENT_PAGE = "hosted_payment_page"
+HOSTED_PAY_ACTION = "pay_at_payment_url"
+
 # What the paying agent should do next, by payment status (shown by the status endpoints).
 NEXT_ACTIONS: dict[PaymentStatus, str] = {
     S.CREATED: "send_payment",

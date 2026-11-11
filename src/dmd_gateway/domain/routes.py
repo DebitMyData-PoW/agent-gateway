@@ -15,7 +15,8 @@ environment once at startup. A rail is ENABLED only if all of the following hold
 If a rail is switched on but any of the last six conditions fail, startup fails with a
 ``RegistryError`` rather than silently running a half-configured payment rail. x402 rails
 must also name the token's EIP-712 domain and have their facilitator and chain RPC
-addresses configured (see ``x402_problems``).
+addresses configured (see ``x402_problems``); card rails need a restricted Stripe key of
+the right mode (see ``checkout_problems``).
 
 Kill switches fail safe: any value other than empty/0/false/no/off counts as "killed".
 """
@@ -41,8 +42,14 @@ _FALSE = {"", "0", "false", "no", "off"}
 
 # Networks whose coins have no value. A rail on one of them never runs in production.
 TEST_NETWORKS = frozenset(
-    {"dmd:regtest", "dmd:testnet", "dmd:testnet4", "dmd:signet", "eip155:84532"}
+    {"dmd:regtest", "dmd:testnet", "dmd:testnet4", "dmd:signet", "eip155:84532", "stripe:test"}
 )
+# Card payments through Stripe Checkout: live mode, or test mode (test cards, no real money).
+STRIPE_NETWORKS = frozenset({"stripe:live", "stripe:test"})
+STRIPE_CHECKOUT = "stripe_checkout"
+# Stripe keeps a Checkout page open for 30 minutes at least: a card quote lasts a minute more,
+# so that the page closes before the quote ends and no card is charged for an expired quote.
+CHECKOUT_MIN_QUOTE_SECONDS = 31 * 60
 EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _EVM_NETWORK = re.compile(r"^eip155:([1-9][0-9]{0,18})$")
 # Transfer methods of the x402 "exact" scheme that the gateway implements.
@@ -66,7 +73,8 @@ class _Strict(BaseModel):
 class AssetConfig(_Strict):
     symbol: str = Field(min_length=1, max_length=16)
     decimals: int = Field(ge=0, le=36)
-    asset_type: Literal["native", "token", "wrapped_token"] = "native"
+    # fiat: a currency paid by card (cents for USD), not a coin.
+    asset_type: Literal["native", "token", "wrapped_token", "fiat"] = "native"
     # Chain-qualified identity, e.g. "dmd:mainnet/native" or "eip155:8453/erc20:0x...".
     # Kept in this version-controlled file (not the environment) so that enabling a new
     # token contract always goes through change control. Never match by ticker alone.
@@ -79,7 +87,9 @@ class AssetConfig(_Strict):
 class RecipientConfig(_Strict):
     # per_intent_address: a fresh address is derived for every payment intent.
     # env: one merchant address read from the named environment variable.
-    source: Literal["per_intent_address", "env"]
+    # hosted_checkout: DebitMyData's payment provider account (Stripe): each quote gets its
+    #   own payment page there, where the payer enters a card.
+    source: Literal["per_intent_address", "env", "hosted_checkout"]
     env: str | None = Field(default=None, pattern=ENV_NAME)
 
     @model_validator(mode="after")
@@ -95,6 +105,10 @@ class ConfirmationPolicy(_Strict):
     # How long the worker keeps checking a settled payment for chain reorganizations.
     # Unset: the worker's default (24 hours). Longer on chains with little mining power.
     watch_after_settlement_hours: int | None = Field(default=None, ge=1, le=720)
+    # How often the worker checks a closed (settled, expired) payment again while it watches
+    # it. Unset: at every pass. Card rails: every few minutes, since each check is a request
+    # to the payment provider.
+    recheck_after_settlement_minutes: int | None = Field(default=None, ge=1, le=1440)
 
     @property
     def is_set(self) -> bool:
@@ -143,6 +157,20 @@ class X402Config(_Strict):
 CDP_FACILITATOR_HOST = "api.cdp.coinbase.com"
 
 
+class CheckoutConfig(_Strict):
+    """What a card rail needs beyond the common fields (Stripe Checkout).
+
+    The secret is a restricted Stripe API key (``rk_live_...`` or ``rk_test_...``), read from
+    the environment only. It may create and read Checkout Sessions and read PaymentIntents
+    and Charges, nothing else: it cannot refund, pay out or change the account.
+    """
+
+    provider: Literal["stripe"]
+    secret_key_env: str = Field(pattern=ENV_NAME)
+    # The name of the purchase on Stripe's payment page and on its receipt.
+    product_name: str = Field(min_length=1, max_length=120)
+
+
 def facilitator_credentials(x402: X402Config, environ: Mapping[str, str]) -> tuple[str, str] | None:
     """The facilitator API key (ID, secret) from the environment, or None if none is set."""
     key_id = (environ.get(x402.facilitator_key_id_env or "") or "").strip()
@@ -164,6 +192,10 @@ class RailConfig(_Strict):
     confirmation_policy: ConfirmationPolicy = ConfirmationPolicy()
     price_policy: PricePolicy = PricePolicy()
     x402: X402Config | None = None
+    checkout: CheckoutConfig | None = None
+    # How long a quote on this rail stays valid, when it differs from the gateway's default
+    # (DMD_GW_QUOTE_TTL_SECONDS): card quotes outlive Stripe's shortest payment page.
+    quote_ttl_seconds: int | None = Field(default=None, ge=60, le=86_400)
     wallet_compatibility: tuple[str, ...] = ()
     enable_env: str = Field(pattern=ENV_NAME)
     kill_env: str = Field(pattern=ENV_NAME)
@@ -418,6 +450,11 @@ class RegistryFile(_Strict):
                         f"product {product_id!r}: only quote-based rails can be used ({rail_id!r} "
                         "is x402)"
                     )
+                if rail.protocol == STRIPE_CHECKOUT:
+                    raise ValueError(
+                        f"product {product_id!r}: card payments are only built for DID-LLM "
+                        f"registrations so far ({rail_id!r} is a card rail)"
+                    )
         self._check_tiers()
         return self
 
@@ -485,7 +522,57 @@ def readiness_problems(
         problems.append(f"payment adapter {rail.adapter} is not implemented")
     if rail.protocol == "x402":
         problems.extend(x402_problems(rail, environ))
+    if rail.protocol == STRIPE_CHECKOUT:
+        problems.extend(checkout_problems(rail, environ))
     return problems
+
+
+def checkout_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]:
+    """Extra conditions for a card rail (Stripe Checkout). Messages never contain the key."""
+    problems: list[str] = []
+    if rail.network not in STRIPE_NETWORKS:
+        problems.append(f"network {rail.network!r} must be stripe:live or stripe:test")
+    if rail.recipient.source != "hosted_checkout":
+        problems.append("recipient.source must be hosted_checkout")
+    if rail.asset.asset_type != "fiat" or rail.asset.symbol != "USD" or rail.asset.decimals != 2:
+        problems.append("the asset must be USD in cents (asset_type fiat, decimals 2)")
+    if not rail.asset.usd_denominated:
+        problems.append("asset.usd_denominated must be true")
+    if rail.confirmation_policy.required_confirmations != 1:
+        problems.append("confirmation_policy.required_confirmations must be 1")
+    if (rail.quote_ttl_seconds or 0) < CHECKOUT_MIN_QUOTE_SECONDS:
+        problems.append(
+            f"quote_ttl_seconds must be at least {CHECKOUT_MIN_QUOTE_SECONDS} (Stripe keeps a "
+            "payment page open for 30 minutes at least)"
+        )
+    if rail.checkout is None:
+        problems.append("checkout settings (provider, secret key variable) are missing")
+        return problems
+    key = (environ.get(rail.checkout.secret_key_env) or "").strip()
+    mode = "test" if rail.network == "stripe:test" else "live"
+    if not key:
+        problems.append(f"{rail.checkout.secret_key_env} is empty")
+    elif not key.startswith(f"rk_{mode}_"):
+        problems.append(
+            f"{rail.checkout.secret_key_env} must be a restricted {mode}-mode key (rk_{mode}_...), "
+            f"not a {_key_kind(key)}"
+        )
+    return problems
+
+
+def _key_kind(key: str) -> str:
+    """What kind of Stripe key this is, from its start only (never the key itself)."""
+    for start, kind in (
+        ("sk_live_", "full secret live key"),
+        ("sk_test_", "full secret test key"),
+        ("rk_live_", "restricted live key"),
+        ("rk_test_", "restricted test key"),
+        ("pk_", "publishable key"),
+        ("whsec_", "webhook signing secret"),
+    ):
+        if key.startswith(start):
+            return kind
+    return "Stripe API key"
 
 
 def x402_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]:

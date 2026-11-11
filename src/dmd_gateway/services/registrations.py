@@ -39,7 +39,12 @@ from dmd_gateway.db.models import (
 from dmd_gateway.domain.ids import CREDENTIAL, IDENTITY, new_id
 from dmd_gateway.domain.issuance import ControllerProofStatus, IssuanceInputs, issuance_blockers
 from dmd_gateway.domain.money import format_base_units
-from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
+from dmd_gateway.domain.payment_status import (
+    HOSTED_PAY_ACTION,
+    HOSTED_PAYMENT_PAGE,
+    NEXT_ACTIONS,
+    PaymentStatus,
+)
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailState
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.credentials import (
@@ -180,6 +185,13 @@ def evaluate(
         ] + policy_failures
     x402 = payment is not None and is_x402_rail(ctx.registry, payment.rail_id)
     state.next_action = _next_action(state, policy_failures, x402=x402)
+    if (
+        payment is not None
+        and payment.recipient_kind == HOSTED_PAYMENT_PAGE
+        and state.next_action == NEXT_ACTIONS[PaymentStatus.AWAITING_PAYMENT]
+        and state.payment_status is PaymentStatus.AWAITING_PAYMENT
+    ):
+        state.next_action = HOSTED_PAY_ACTION  # a person pays on the card payment page
     return state
 
 

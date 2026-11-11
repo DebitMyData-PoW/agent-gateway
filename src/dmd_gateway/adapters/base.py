@@ -1,7 +1,8 @@
 """Common interface every payment adapter implements (DMD-01, X402-02, RAIL-02..04).
 
 Adapters translate one payment rail into facts the gateway understands. They:
-  * prepare a payment destination for an intent (unique address or reference);
+  * prepare a payment destination for an intent (unique address or reference, or a
+    payment page of the payment provider);
   * independently observe the chain or payment provider and report what they see as a
     ``PaymentObservation`` (outputs, confirmations, conflicts).
 
@@ -39,8 +40,26 @@ class PaymentDestination:
     recipient: str
     # per_intent_address: the address itself identifies the intent.
     # shared_with_reference: a shared address plus a unique payment reference.
+    # hosted_payment_page: the recipient is the address of a payment page made for this
+    #   intent alone (a card payment page); the reference is the provider's ID for that page.
     recipient_kind: str
     payment_reference: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class QuotedPayment:
+    """What a quote asks for, given to the adapter before the quote is returned.
+
+    Most rails only need the payment intent's ID; a card rail builds its payment page from
+    the amount, the quote's end and the page the payer comes back to.
+    """
+
+    payment_intent_id: str
+    registration_intent_id: str
+    amount_base_units: int
+    expires_at: datetime
+    product_description: str
+    return_url: str  # the Get a DID-LLM page; empty when the server has none
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +121,10 @@ class PaymentObservation:
     reorged_transactions: tuple[str, ...] = ()
     tip_height: int | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    # Card rails: the payment provider gave the whole payment back to the card (a refund), or
+    # the cardholder's bank opened a dispute (a chargeback). Chains never set these.
+    refunded: bool = False
+    disputed: bool = False
 
     @property
     def transaction_references(self) -> tuple[str, ...]:
@@ -140,6 +163,14 @@ class PaymentAdapter(ABC):
 
         Called inside the quote transaction, before the quote is returned (DMD-03).
         """
+
+    def prepare_quote(self, quote: QuotedPayment) -> PaymentDestination:
+        """Like ``prepare_destination``, with everything the quote asks for.
+
+        Rails whose destination only depends on the intent (addresses, references) keep the
+        default; a card rail creates its payment page here.
+        """
+        return self.prepare_destination(quote.payment_intent_id)
 
     @abstractmethod
     def observe(self, expected: ExpectedPayment) -> PaymentObservation:

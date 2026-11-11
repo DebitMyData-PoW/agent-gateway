@@ -77,6 +77,9 @@ AUDIT_TITLES = {
     "alert.completed_purchase_payment_reorged": (
         "A donation's or product's payment left the chain after its receipt was issued"
     ),
+    "alert.issued_identity_payment_taken_back": (
+        "A DID-LLM's card payment was refunded or disputed after the DID-LLM was issued"
+    ),
 }
 
 

@@ -118,6 +118,11 @@ DMD_X402_FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
 DMD_BASE_RPC_URL=https://mainnet.base.org
 DMD_X402_CDP_API_KEY_ID=
 DMD_X402_CDP_API_KEY_SECRET=
+
+# Card payments (Stripe Checkout): switched on after the staging test and DebitMyData's
+# approval (docs/card-payments.md). The key: a restricted live key (rk_live_...).
+DMD_RAIL_CARD_STRIPE_ENABLED=false
+DMD_STRIPE_SECRET_KEY=
 EOF
     umask 022
 fi

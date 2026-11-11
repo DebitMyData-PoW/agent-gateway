@@ -1,6 +1,6 @@
 ---
 title: Privacy policy
-version: 2026-11-10
+version: 2026-11-11
 status: approved
 summary: What the DebitMyData Agent Gateway collects, what it publishes, who it shares data with, and how long it keeps it.
 ---
@@ -22,6 +22,9 @@ DebitMyData's websites and apps are covered by the
 - During the registration: the signatures that prove control of your controller, the
   transaction references you report, and, for x402, the signed payment (which names the
   paying wallet).
+- For a card payment: Stripe's references for it (the payment page, the payment), its
+  amount and whether it succeeded, was refunded or disputed. We do not receive or keep the
+  card number.
 - In an inference donation: the amount, the signed payment (which names the paying wallet),
   and the donor name and DID-LLM if you give them. They appear in your donation receipt, which
   anyone holding its `purchase_id` can read; they are not otherwise published.
@@ -37,8 +40,8 @@ DebitMyData's websites and apps are covered by the
   of Cloudflare, which protects the gateway. Request limits are counted per IP address.
 - Request IDs that link log lines to a request, so problems can be traced.
 
-We do not ask for, and never want, private keys, seed phrases, passwords or payment card
-details.
+We do not ask for, and never want, private keys, seed phrases or passwords. Card details
+are entered on Stripe's payment page, never on ours, and we never see them.
 
 ## What we publish
 
@@ -69,6 +72,11 @@ happy to make public.
 - **Our hosting provider**, which runs the servers and stores the database.
 - **The x402 facilitator** (for USDC payments through x402), which receives your signed
   payment to submit it to the chain.
+- **Stripe** (for card payments), which runs the card payment page and processes the
+  payment. Stripe receives what you enter there (card details, name, email address, billing
+  country) and what it needs to prevent fraud, under the
+  [Stripe privacy policy](https://stripe.com/privacy). We tell Stripe the amount, the
+  registration ID and the DID-LLM's display name.
 - **Blockchain node providers**, which the gateway asks about payments and wallets.
 - **Authorities**, when the law requires it.
 

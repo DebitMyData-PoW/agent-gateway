@@ -39,6 +39,7 @@ from dmd_gateway.api import (
     try_page,
 )
 from dmd_gateway.api.form_bodies import FormBodyMiddleware, FormHints, add_form_bodies
+from dmd_gateway.api.get_did_page import page_url
 from dmd_gateway.db.session import build_engine, session_factory
 from dmd_gateway.domain.routes import RailState
 from dmd_gateway.errors import install_error_handlers
@@ -129,6 +130,7 @@ def create_app(
         quote_ttl=timedelta(seconds=settings.quote_ttl_seconds),
         max_open_quotes=settings.max_open_quotes_per_controller,
         public_base_url=settings.public_base_url,
+        checkout_return_url=page_url(settings),
         brand_owners=brand_owners(settings.brand_name_controllers),
     )
     app.state.policy_pages = load_policy_pages(
@@ -523,7 +525,8 @@ def panel_steps(app: FastAPI) -> dict[str, Any]:
     # The payment option for each choice of "How the agent pays": the first one open of each kind.
     options: dict[str, str] = {}
     for rail_id, rail in rails:
-        options.setdefault("x402" if rail.protocol == "x402" else "dmd", rail_id)
+        if rail.protocol in ("x402", "dmd_native"):
+            options.setdefault("x402" if rail.protocol == "x402" else "dmd", rail_id)
     return {
         "steps": steps,
         "x402_order": PANEL_X402_ORDER[page],

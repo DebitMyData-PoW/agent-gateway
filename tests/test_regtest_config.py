@@ -38,7 +38,7 @@ def _settings(path: Path, environment: str = "development") -> Settings:
     )
 
 
-TEST_RAILS = {"dmd_pow_native", "x402_usdc_base"}
+TEST_RAILS = {"dmd_pow_native", "x402_usdc_base", "card_stripe"}
 ENABLE_USDC = {
     "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
     "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "ab" * 20,
@@ -70,6 +70,40 @@ def test_regtest_registry_differs_only_in_the_test_network_rails() -> None:
     same = {"name", "protocol", "scheme", "transfer_method", "adapter", "recipient"}
     assert {key: usdc[key] for key in same} == {key: main_usdc[key] for key in same}
     assert usdc["enable_env"] == main_usdc["enable_env"]
+
+    card, main_card = regtest["rails"]["card_stripe"], main["rails"]["card_stripe"]
+    assert card["network"] == "stripe:test"
+    assert main_card["network"] == "stripe:live"
+    # Live card payments wait for the staging test and DebitMyData's approval.
+    assert card["approved"] is True
+    assert main_card["approved"] is False
+    differs = {"network", "approved", "checkout"}
+    assert {k: v for k, v in card.items() if k not in differs} == {
+        k: v for k, v in main_card.items() if k not in differs
+    }
+    assert card["checkout"]["secret_key_env"] == main_card["checkout"]["secret_key_env"]
+
+
+ENABLE_CARD = {
+    "DMD_RAIL_CARD_STRIPE_ENABLED": "true",
+    "DMD_STRIPE_SECRET_KEY": "rk_test_" + "x" * 24,
+}
+
+
+def test_card_test_mode_rail_can_be_enabled_on_staging() -> None:
+    runtime = build_runtime(_settings(REGTEST_PATH, "staging"), ENABLE_CARD)
+    assert list(runtime.adapters) == ["card_stripe"]
+
+
+def test_card_test_mode_is_refused_in_production() -> None:
+    with pytest.raises(RegistryError, match="test network stripe:test"):
+        build_runtime(_settings(REGTEST_PATH, "production"), ENABLE_CARD)
+
+
+def test_live_card_rail_waits_for_approval() -> None:
+    environ = {**ENABLE_CARD, "DMD_STRIPE_SECRET_KEY": "rk_live_" + "x" * 24}
+    with pytest.raises(RegistryError, match="not approved"):
+        build_runtime(_settings(REGISTRY_PATH, "production"), environ)
 
 
 def test_base_sepolia_rail_can_be_enabled_outside_production() -> None:

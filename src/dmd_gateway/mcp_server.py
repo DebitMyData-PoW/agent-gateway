@@ -52,6 +52,8 @@ expires. Optionally report the transaction with dmd_submit_payment_reference.
    x402 payment options (USDC on Base) work differently: skip 3 and 4, do step 5 first, \
 then call dmd_register_did; it answers with the x402 payment requirements, which you sign \
 and send back with dmd_register_did (x402_payment).
+   The card payment option (card_stripe) is paid by a person: instead of step 3, give the \
+quote's payment_url (a Stripe payment page) to your human, then do step 4.
 5. dmd_prove_wallet_control: call it once to get a challenge, sign the challenge message \
 with the controller it names (Ed25519 key: its exact UTF-8 bytes; wallet: personal_sign / \
 signMessage, smart wallets included), then call it again with the challenge_id and the \

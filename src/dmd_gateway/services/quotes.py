@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter
+from dmd_gateway.adapters.base import AdapterUnavailable, PaymentAdapter, QuotedPayment
 from dmd_gateway.audit import record_audit_event
 from dmd_gateway.db.models import (
     RECIPIENT_KINDS,
@@ -36,8 +36,8 @@ from dmd_gateway.db.models import (
 )
 from dmd_gateway.domain.ids import PAYMENT_INTENT, REGISTRATION_INTENT, new_id
 from dmd_gateway.domain.money import format_base_units, to_base_units, usd_to_base_units
-from dmd_gateway.domain.payment_status import PaymentStatus
-from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
+from dmd_gateway.domain.payment_status import HOSTED_PAY_ACTION, HOSTED_PAYMENT_PAGE, PaymentStatus
+from dmd_gateway.domain.routes import STRIPE_CHECKOUT, PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
 from dmd_gateway.identity.names import NameRefused, check_display_name, is_brand_owner
@@ -199,6 +199,9 @@ class SelectedPaymentOption(BaseModel):
     payment_reference: str | None
     required_confirmations: int | None
     finality: str | None
+    # Card payments: the payment page made for this quote, where a person enters a card.
+    # An agent hands this link to its human; DebitMyData never sees the card.
+    payment_url: str | None = None
 
 
 class PriceQuote(BaseModel):
@@ -232,6 +235,8 @@ class QuoteContext:
     quote_ttl: timedelta
     max_open_quotes: int = 5  # per controller key
     public_base_url: str = ""  # for the links to policy pages on this server
+    # The Get a DID-LLM page, where a card payer comes back from the payment page.
+    checkout_return_url: str = ""
     # The company's controllers (keys and wallets) that may use DebitMyData's own names.
     brand_owners: frozenset[str] = frozenset()
 
@@ -347,7 +352,16 @@ def _next_action(rail: RailConfig) -> str:
     # x402: prove control of the controller key first; the payment is then made in answer
     # to the HTTP 402 of POST /v1/dids/registrations, so it is taken only when the DID can
     # be issued.
-    return "prove_wallet_control" if rail.protocol == "x402" else "send_payment"
+    if rail.protocol == "x402":
+        return "prove_wallet_control"
+    return HOSTED_PAY_ACTION if rail.protocol == STRIPE_CHECKOUT else "send_payment"
+
+
+def quote_ttl(ctx: QuoteContext, rail: RailConfig) -> timedelta:
+    """How long a quote on this rail stays valid: the rail's own time, or the default."""
+    if rail.quote_ttl_seconds:
+        return timedelta(seconds=rail.quote_ttl_seconds)
+    return ctx.quote_ttl
 
 
 def create_registration_quote(
@@ -375,7 +389,7 @@ def create_registration_quote(
     if amount_units <= 0:
         raise ApiError(500, "quote_failed", "The quote could not be calculated.")
 
-    expires_at = now + ctx.quote_ttl
+    expires_at = now + quote_ttl(ctx, rail)
     registration_id = new_id(REGISTRATION_INTENT)
     payment_id = new_id(PAYMENT_INTENT)
 
@@ -400,7 +414,17 @@ def create_registration_quote(
 
     # The destination is fixed and stored before the quote is returned (DMD-03).
     try:
-        destination = ctx.adapters[rail_id].prepare_destination(payment_id)
+        destination = ctx.adapters[rail_id].prepare_quote(
+            QuotedPayment(
+                payment_intent_id=payment_id,
+                registration_intent_id=registration_id,
+                amount_base_units=amount_units,
+                expires_at=expires_at,
+                product_description=f"DID-LLM “{request.display_name}”, registration "
+                f"{registration_id}",
+                return_url=ctx.checkout_return_url,
+            )
+        )
     except AdapterUnavailable as exc:
         log.warning(
             "payment rail unavailable for quote",
@@ -496,6 +520,9 @@ def create_registration_quote(
             payment_reference=destination.payment_reference,
             required_confirmations=rail.confirmation_policy.required_confirmations,
             finality=rail.confirmation_policy.finality,
+            payment_url=(
+                destination.recipient if destination.recipient_kind == HOSTED_PAYMENT_PAGE else None
+            ),
         ),
         price_quote=(
             PriceQuote(

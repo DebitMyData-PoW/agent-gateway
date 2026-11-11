@@ -182,7 +182,7 @@ def test_pages_are_served_as_html_and_markdown(client: TestClient) -> None:
     assert markdown.text.startswith("# Refund policy\n")
 
     listing = client.get("/v1/policies").json()
-    assert listing["terms_version"] == "2026-11-10"
+    assert listing["terms_version"] == "2026-11-11"
     # Approved: no page says "Draft" any more.
     assert {policy["status"] for policy in listing["policies"]} == {"approved"}
     assert "Draft." not in page.text and "(draft)" not in index.text

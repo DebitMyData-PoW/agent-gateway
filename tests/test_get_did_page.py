@@ -243,7 +243,7 @@ def test_dmd_payments_get_a_qr_code_and_a_wallet_link() -> None:
     assert "?amount=${amount}`" in script
     assert "Open in my DMD wallet" in script and "check both" in script
     # Once a payment arrives (or the quote expires) they are removed, so nobody pays twice.
-    assert 'querySelector(".pay-qr")' in script
+    assert 'querySelectorAll(".pay-qr, .pay-card")' in script
 
 
 # --------------------------------------------------------------------------- the installable app
@@ -551,3 +551,61 @@ def test_an_issued_did_llm_leads_to_the_agentic_hub() -> None:
     issued = script.split("async function register()")[1].split("\n  }\n")[0]
     assert '{ class: "next" }' in issued and '"Join the Agentic Hub"' in issued
     assert 'href: AGENTIC_HUB, target: "_blank", rel: "noopener"' in issued
+
+
+def test_cards_are_paid_on_stripes_page_and_come_back_here() -> None:
+    script = get_did_page._SCRIPT
+    assert 'const CARD = "stripe_checkout";' in script
+    # Only Stripe's own payment page is ever opened: the quote's payment_url.
+    assert r"const STRIPE_PAGE = /^https:\/\/checkout\.stripe\.com\//;" in script
+    card = script.split("function startCardPayment(note, paid) {")[1].split("\n  }\n")[0]
+    assert "STRIPE_PAGE.test(state.paymentUrl" in card
+    assert "Your card details go to Stripe only" in card
+    assert "4242 4242 4242 4242" in card and "config.staging" in card
+    assert "test-payments" not in card  # no test coins for cards
+    # The card button goes as soon as a payment is seen, so nobody pays twice.
+    assert 'querySelectorAll(".pay-qr, .pay-card")' in script
+    # Back from Stripe: the address is tidied, and the registration saved in this browser
+    # continues by itself.
+    start = script.split("// Back from the card payment page")[1]
+    assert 'history.replaceState(null, "", location.pathname + location.hash)' in start
+    assert "previous.paymentId === backFor" in start and "resume(previous, back)" in start
+    assert "if (back) return carryOn();" in script
+    # Back after paying: no second button to pay, only the wait.
+    paid = card.split("if (paid) {")[1].split("\n    }\n")[0]
+    assert '"Pay $' not in paid and "return checkPayment(status);" in paid
+
+
+@pytest.mark.parametrize("card", [False, True])
+def test_the_page_says_how_people_pay(card: bool) -> None:
+    html = get_did_page.page_html(staging=True, card=card).split("<body>")[1].split("<script")[0]
+    assert ("you then pay\nby card, or in DMD with any DMD wallet." in html) is card
+    assert ("you then pay\nin DMD, with any DMD wallet." in html) is not card
+    assert ("pay in it or on Stripe's card payment page" in html) is card
+    assert ("4242 4242 4242 4242" in html) is card
+
+
+def test_the_page_offers_cards_once_the_card_option_is_on() -> None:
+    from .stripe_fakes import TEST_KEY, FakeStripeAdapter
+    from .test_card_payments import REGTEST_PATH
+
+    settings = Settings(
+        _env_file=None, database_url=UNREACHABLE_DB, route_registry_path=REGTEST_PATH
+    )
+    engine = create_engine(UNREACHABLE_DB, connect_args={"connect_timeout": 1})
+    app = create_app(
+        settings,
+        environ={"DMD_RAIL_CARD_STRIPE_ENABLED": "true", "DMD_STRIPE_SECRET_KEY": TEST_KEY},
+        engine=engine,
+        adapters={"StripeCheckoutAdapter": FakeStripeAdapter},
+    )
+    with TestClient(app) as client:
+        page = client.get("/get-did").text
+        assert "by card, or in DMD with any DMD wallet" in page
+        options = client.get("/v1/payment-options?service=did_registration").json()
+        (card,) = options["supported_payment_options"]
+        assert (card["id"], card["payment_protocol"], card["asset"]) == (
+            "card_stripe",
+            "stripe_checkout",
+            "USD",
+        )

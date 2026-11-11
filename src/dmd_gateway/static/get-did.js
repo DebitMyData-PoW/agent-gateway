@@ -304,6 +304,10 @@
 
   // The Agentic Hub, offered once the DID-LLM is issued.
   const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";
+  // Card payments: the quote links to Stripe's payment page (Stripe Checkout), which sends the
+  // payer back here with ?card=paid (or back) and the payment's ID.
+  const CARD = "stripe_checkout";
+  const STRIPE_PAGE = /^https:\/\/checkout\.stripe\.com\//;
 
   // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
   const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
@@ -337,7 +341,9 @@
       const help = onPage
         ? option.asset === "DMD"
           ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
-          : `Pay in ${option.asset}.`
+          : option.payment_protocol === CARD
+            ? "Visa, Mastercard and other cards, or Apple Pay and Google Pay, on Stripe's secure payment page. Your card details go to Stripe only."
+            : `Pay in ${option.asset}.`
         : option === USDC_SOON
           ? "The US-dollar stablecoin. Coming to this page soon: for now, pay with DMD."
           : LATER.includes(option)
@@ -433,6 +439,8 @@
         amount: option.amount,
         asset: option.asset,
         quoteExpiresAt: quote.expires_at,
+        card: option.payment_protocol === CARD,
+        paymentUrl: option.payment_url || null,
         controller: details.controller,
         walletName: wallet ? wallet.name : null,
       };
@@ -454,17 +462,19 @@
     form.hidden = true;
     const who = state.controller.kind === "wallet" ? `wallet ${short(state.controller.value)}` : `key ${short(state.controller.value)}`;
     body(1).replaceChildren(
-      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · paid in ${state.asset || "DMD"}`),
+      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · ${state.card ? "paid by card" : `paid in ${state.asset || "DMD"}`}`),
       element("p", { class: "small" }, "Your registration ID (support can find your registration with it): ", element("code", {}, state.registrationId), " ", copyButton(state.registrationId))
     );
   }
 
   // ------------------------------------------------------------------ step 2: pay
 
-  function startPayment() {
+  // note: a line about coming back from the card payment page; paid: Stripe said it is paid.
+  function startPayment(note, paid = false) {
     show(2);
     if (state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
     tick();
+    if (state.card) return startCardPayment(note, paid);
     const status = element("p", { class: "status busy" }, "Waiting for your payment…");
     const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
     check.addEventListener("click", () => checkPayment(status));
@@ -502,6 +512,44 @@
     checkPayment(status);
   }
 
+  // Card: one button to Stripe's payment page; the page comes back here once it is paid.
+  function startCardPayment(note, paid) {
+    const status = element("p", { class: "status busy" }, "Waiting for your card payment…");
+    const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
+    check.addEventListener("click", () => checkPayment(status));
+    const parts = [];
+    if (note) parts.push(element("p", { class: "small" }, note));
+    if (paid) {
+      // Back from Stripe's page after paying: no second button to pay, only the wait (seconds).
+      parts.push(element("div", { class: "actions" }, status, check));
+      if (STRIPE_PAGE.test(state.paymentUrl || ""))
+        parts.push(element("p", { class: "small pay-card" }, "Not paid after all? ", element("a", { href: state.paymentUrl }, "Open the payment page again"), "."));
+      body(2).replaceChildren(...parts);
+      return checkPayment(status);
+    }
+    if (STRIPE_PAGE.test(state.paymentUrl || "")) {
+      parts.push(
+        element("p", {}, "Pay ", element("strong", {}, `$${amountText(state.amount)} USD`), " by card on Stripe's secure payment page. You come back to this page once it is paid."),
+        element("div", { class: "actions pay-card" }, element("a", { class: "button", href: state.paymentUrl }, `Pay $${amountText(state.amount)} by card`))
+      );
+    } else {
+      parts.push(element("p", { class: "status bad" }, "The card payment page is missing from this quote. Start a new registration, or contact support with your registration ID."));
+    }
+    parts.push(
+      element(
+        "ul",
+        { class: "rules" },
+        element("li", {}, "Your card details go to Stripe only: DebitMyData never sees them."),
+        element("li", {}, "Visa, Mastercard and other cards, or Apple Pay and Google Pay where your browser offers them."),
+        element("li", {}, "Before the time runs out (see the countdown): the payment page then closes, and no card is charged.")
+      ),
+      element("div", { class: "actions" }, status, check)
+    );
+    if (config.staging) parts.push(element("p", { class: "small" }, "Staging: Stripe test mode. Pay with the test card 4242 4242 4242 4242, any future date and any CVC. No real card is charged."));
+    body(2).replaceChildren(...parts);
+    checkPayment(status);
+  }
+
   async function checkPayment(status) {
     clearTimeout(pollTimer);
     let result;
@@ -524,14 +572,14 @@
     const again = () => (pollTimer = setTimeout(() => checkPayment(status), POLL_MS));
     status.className = "status busy";
     if (payment.status !== "created" && payment.status !== "awaiting_payment") {
-      // Paid, or too late: the QR code and the wallet button go, so nobody pays twice.
-      const payLink = body(2).querySelector(".pay-qr");
-      if (payLink) payLink.remove();
+      // Paid, or too late: the QR code, the wallet button and the card button go, so nobody
+      // pays twice.
+      for (const payLink of body(2).querySelectorAll(".pay-qr, .pay-card")) payLink.remove();
     }
     switch (payment.status) {
       case "created":
       case "awaiting_payment":
-        status.textContent = "Waiting for your payment… (checked every 10 seconds)";
+        status.textContent = state.card ? "Waiting for your card payment… (checked every 10 seconds)" : "Waiting for your payment… (checked every 10 seconds)";
         return again();
       case "detected":
       case "confirming":
@@ -539,7 +587,7 @@
       case "reorged":
         delete deadlines.quote;
         tick();
-        status.textContent = `Payment received: ${seen} of ${needed || "the needed"} confirmations (about 2.5 minutes each)…`;
+        status.textContent = state.card ? "Card payment received: confirming it with Stripe…" : `Payment received: ${seen} of ${needed || "the needed"} confirmations (about 2.5 minutes each)…`;
         return again();
       case "overpaid":
         delete deadlines.quote;
@@ -563,7 +611,11 @@
         delete deadlines.quote;
         tick();
         status.className = "status bad";
-        const refund = payment.refund_due ? " A refund is due for a payment that arrived late: contact support with your registration ID." : " If you sent coins after the time ran out, contact support with your registration ID.";
+        const refund = state.card
+          ? " The payment page has closed: no card was charged."
+          : payment.refund_due
+            ? " A refund is due for a payment that arrived late: contact support with your registration ID."
+            : " If you sent coins after the time ran out, contact support with your registration ID.";
         status.textContent = `The quote expired before a payment arrived.${refund}`;
         return offerRestart(body(2));
       }
@@ -744,12 +796,13 @@
 
   // ------------------------------------------------------------------ continuing after a reload
 
-  async function resume(previous) {
+  // back: "paid" or "back" when the payer comes back from the card payment page.
+  async function resume(previous, back = null) {
     const result = await call("GET", `/v1/dids/registrations/${previous.registrationId}`).catch(() => null);
     if (!result || result.status !== 200) return; // unknown or unreachable: start fresh, keep it saved
     const registration = result.data;
     const payment = (registration.payment && registration.payment.status) || "";
-    const finished = ["expired", "failed", "refunded", "reversed"].includes(payment) || registration.next_action === "request_new_quote";
+    const finished = ["expired", "failed", "refunded", "reversed", "disputed"].includes(payment) || registration.next_action === "request_new_quote";
     if (finished && !registration.did) {
       state = null;
       save();
@@ -757,17 +810,24 @@
       resumeBox.replaceChildren(element("p", {}, `Your last quote (${short(previous.registrationId)}) ended: ${payment || registration.status}. If you sent coins for it, contact support with this ID: `, element("code", {}, previous.registrationId)));
       return;
     }
-    resumeBox.hidden = false;
-    const go = element("button", { type: "button" }, registration.did ? "Show my DID-LLM" : "Continue");
-    const fresh = element("button", { type: "button", class: "secondary" }, "Start a new one");
-    go.addEventListener("click", () => {
+    const carryOn = () => {
       resumeBox.hidden = true;
       state = previous;
       lockDetails();
       if (registration.did || registration.next_action === "register_did") return register();
-      if (payment === "settled") return startProof();
+      if (payment === "settled") {
+        body(2).replaceChildren(element("p", { class: "status ok" }, state.card ? "Paid by card ✓" : "Paid ✓"));
+        return startProof();
+      }
+      if (back === "paid") return startPayment("Thank you: your card payment is being confirmed with Stripe…", true);
+      if (back === "back") return startPayment("You came back without paying. Pay when you are ready, before the time runs out.");
       return startPayment();
-    });
+    };
+    if (back) return carryOn(); // back from the card payment page: no need to ask
+    resumeBox.hidden = false;
+    const go = element("button", { type: "button" }, registration.did ? "Show my DID-LLM" : "Continue");
+    const fresh = element("button", { type: "button", class: "secondary" }, "Start a new one");
+    go.addEventListener("click", carryOn);
     fresh.addEventListener("click", () => {
       state = null;
       save();
@@ -820,8 +880,22 @@
     });
   }
   loadOptions();
+  // Back from the card payment page (?card=paid or ?card=back, and the payment's ID): the
+  // address is tidied, then the registration saved in this browser continues by itself.
+  const query = new URLSearchParams(location.search);
+  const back = ["paid", "back"].includes(query.get("card")) ? query.get("card") : null;
+  const backFor = query.get("payment");
+  if (query.has("card")) history.replaceState(null, "", location.pathname + location.hash);
   const previous = saved();
-  if (previous) resume(previous);
+  if (previous && back && previous.paymentId === backFor) resume(previous, back);
+  else if (previous) resume(previous);
+  else if (back) {
+    // Paid from a link that an agent (or another device) gave: the registration goes on there.
+    resumeBox.hidden = false;
+    resumeBox.replaceChildren(
+      element("p", {}, back === "paid" ? "Thank you: your card payment is being confirmed. Go back to where you started (the app, the other browser, or the agent that gave you the payment link): the registration continues there." : "You left the card payment page without paying. To pay, go back to where you started, or open the payment link again.")
+    );
+  }
   // The installable app (on its own address): keeps the page for opening without a network.
   if (config.app && "serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   offerTheApp();

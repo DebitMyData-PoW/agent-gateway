@@ -13,7 +13,8 @@ from fastapi.responses import PlainTextResponse
 
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
-from dmd_gateway.api.get_did_page import PAGE_PATH, mcp_url
+from dmd_gateway.api.get_did_page import mcp_url, page_url
+from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
 
 router = APIRouter(include_in_schema=False)
@@ -30,10 +31,19 @@ def _options(request: Request) -> str:
     rails = registry.enabled_rails(SERVICE)
     if not rails:
         return "- None right now: check the live list below later."
-    return "\n".join(
+    return "\n".join(_option(rail_id, rail) for rail_id, rail in rails)
+
+
+def _option(rail_id: str, rail: RailConfig) -> str:
+    if rail.protocol == STRIPE_CHECKOUT:
+        return (
+            f"- {rail.name}: {rail.asset.symbol} by card (payment option `{rail_id}`): the quote's "
+            "`payment_url` is a payment page for a person. Give the link to your human; "
+            "DebitMyData never sees the card."
+        )
+    return (
         f"- {rail.name}: {rail.asset.symbol} on {rail.network} "
         f"(payment option `{rail_id}`, {rail.protocol})"
-        for rail_id, rail in rails
     )
 
 
@@ -48,7 +58,7 @@ def _price(request: Request) -> str:
 def llms_txt(request: Request) -> str:
     settings = request.app.state.settings
     base = settings.public_base_url.rstrip("/")
-    app = f"https://{settings.app_host}/" if settings.app_host else f"{base}{PAGE_PATH}"
+    app = page_url(settings)
     staging = (
         "\n**This is the staging server:** test networks and test DID-LLMs only. The real "
         f"service is {brand.PRODUCTION_SITE}.\n"

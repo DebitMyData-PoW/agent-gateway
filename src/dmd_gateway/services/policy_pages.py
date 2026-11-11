@@ -64,6 +64,8 @@ _NETWORKS = {
     "eip155:8453": "Base",
     "eip155:84532": "Base Sepolia (test network, no value)",
     "solana:mainnet": "Solana",
+    "stripe:live": "Card, through Stripe",
+    "stripe:test": "Card, Stripe test mode (no real money)",
 }
 
 
@@ -161,7 +163,10 @@ def payment_methods_table(registry: PaymentRouteRegistry) -> str:
         if not rail.approved:
             continue
         network = _NETWORKS.get(rail.network, rail.network)
-        contract = f"`{rail.token_contract}`" if rail.token_contract else "native coin"
+        if rail.token_contract:
+            contract = f"`{rail.token_contract}`"
+        else:
+            contract = "card payment" if rail.asset.asset_type == "fiat" else "native coin"
         required = rail.confirmation_policy.required_confirmations
         confirmations = str(required) if required is not None else "-"
         rows.append(

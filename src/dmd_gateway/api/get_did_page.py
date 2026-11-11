@@ -38,6 +38,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand, docs_pages
+from dmd_gateway.domain.routes import STRIPE_CHECKOUT
+from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.settings import Settings
 
 router = APIRouter(include_in_schema=False)  # every server
@@ -348,16 +350,29 @@ def _for_agents(mcp_url: str) -> str:
     )
 
 
-def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH) -> str:
+def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
     )
+    test_card = (
+        ", or by card with Stripe's test card <strong>4242 4242 4242 4242</strong> (any future "
+        "date, any CVC: no real card is charged)"
+        if card
+        else ""
+    )
     staging_note = (
         "<p class=staging><strong>Staging server.</strong> Test networks and test DID-LLMs: pay "
-        "with the <strong>Pay with test coins</strong> button, and sign with your own wallet "
-        "(signing sends nothing).</p>"
+        f"with the <strong>Pay with test coins</strong> button{test_card}, and sign with your "
+        "own wallet (signing sends nothing).</p>"
         if staging
         else ""
+    )
+    # How people pay at step 2: in DMD, and by card once the card option is on.
+    how_to_pay = "by card, or in DMD with any DMD wallet" if card else "in DMD, with any DMD wallet"
+    where_you_pay = (
+        "You sign in your own wallet, and pay in it or on Stripe's card payment page."
+        if card
+        else "You pay and sign in your own wallet."
     )
     # The app only: a window that offers to install it (get-did.js decides when).
     install = INSTALL_DIALOG if app else ""
@@ -385,7 +400,7 @@ needed</li></ul>
 <section class=start id=start aria-labelledby=start-title>
 <h2 class=section-title id=start-title>Get your <span class=accent>DID-LLM</span></h2>
 <p class=safe><strong>Safe by design:</strong> this page never asks for a private key or a
-recovery phrase, and never sends money. You pay and sign in your own wallet.</p>
+recovery phrase, and never sends money. {where_you_pay}</p>
 </section>
 
 <section class="card step current" id=s1>
@@ -405,7 +420,7 @@ by signing one message (free: signing sends nothing).</p>
 <small>Any Ethereum-style wallet, whose address starts with 0x: MetaMask, Coinbase Wallet,
 Rabby, Trust Wallet, a hardware wallet… It needs no balance (no USDC, no ETH): it only signs,
 nothing is paid with it. No browser extension needed: you can type the address and sign in
-your wallet app. You pay in DMD at step 2, with any DMD wallet.</small></label>
+your wallet app. You pay at step 2, {how_to_pay}.</small></label>
 <div id=wallet-box class=sub>
 <div class=wallets-holder></div>
 <label class=field for=wallet-address><span id=wallet-address-label>Or type the wallet's
@@ -442,8 +457,8 @@ DID-LLM registration is <a href="/policies/refunds" target=_blank>not refundable
 </section>
 <section class="card step waiting" id=s2>
 <div class=step-head><span class=num>2</span><h2>Pay</h2></div>
-<p class="small locked">Opens after <strong>Get my quote</strong> at step 1: you then pay in DMD,
-with any DMD wallet.</p><div class=body></div>
+<p class="small locked">Opens after <strong>Get my quote</strong> at step 1: you then pay
+{how_to_pay}.</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s3>
 <div class=step-head><span class=num>3</span><h2>Prove it's yours</h2></div>
@@ -459,7 +474,7 @@ with any DMD wallet.</p><div class=body></div>
 """.strip()
 
 
-def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH) -> str:
+def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
         f'<link rel=manifest href="{MANIFEST_PATH}">'
@@ -479,7 +494,8 @@ def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH) -> str:
         f'<meta name=description content="{DESCRIPTION}">'
         '<link rel=icon href="/favicon.png">'
         f"{installable}"
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_body(staging, app, mcp_url)}"
+        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head>"
+        f"<body>{_body(staging, app, mcp_url, card)}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -491,6 +507,13 @@ def is_app(request: Request) -> bool:
     return bool(host) and request.headers.get("host", "").strip().lower() == host
 
 
+def page_url(settings: Settings) -> str:
+    """The Get a DID-LLM page's public address: the app's root, or /get-did on the gateway."""
+    if settings.app_host:
+        return f"https://{settings.app_host}/"
+    return f"{settings.public_base_url.rstrip('/')}{PAGE_PATH}"
+
+
 def mcp_url(settings: Settings) -> str:
     """The MCP server's address, as agents reach it (the same as /v1/discovery's mcp_url)."""
     return settings.mcp_url or f"{settings.public_base_url.rstrip('/')}{MCP_PATH}"
@@ -499,7 +522,9 @@ def mcp_url(settings: Settings) -> str:
 def _render(request: Request, app: bool) -> HTMLResponse:
     settings = request.app.state.settings
     staging = bool(settings.staging_test_tools)
-    return HTMLResponse(page_html(staging, app, mcp_url(settings)), headers=HEADERS)
+    rails = request.app.state.registry.enabled_rails(DID_REGISTRATION)
+    card = any(rail.protocol == STRIPE_CHECKOUT for _, rail in rails)
+    return HTMLResponse(page_html(staging, app, mcp_url(settings), card), headers=HEADERS)
 
 
 def _page(request: Request) -> Response:

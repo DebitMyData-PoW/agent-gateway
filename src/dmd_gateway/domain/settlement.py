@@ -9,6 +9,8 @@ normalized payment status").
                            \\-> underpaid (quote expired before the full amount arrived)
     awaiting_payment -> expired (no payment before the quote expired)
     any confirmed state -> reorged -> re-evaluated; double-spent -> failed
+    settled -> refunded (card: the whole payment went back to the card)
+    settled -> disputed (card: the cardholder's bank opened a chargeback)
 
 Payment policy (DEC-04, chosen from the directive's "never silently credit" rule):
   * Only outputs first seen before the quote expired count towards the payment.
@@ -55,6 +57,8 @@ class Summary:
     confirmations: int | None
     conflicted: bool
     expired: bool
+    refunded: bool = False
+    disputed: bool = False
 
     @property
     def has_payment(self) -> bool:
@@ -79,6 +83,8 @@ def summarize(observation: PaymentObservation, ctx: SettlementContext) -> Summar
         confirmations=min((o.confirmations for o in timely), default=None),
         conflicted=bool(observation.conflicted_transactions),
         expired=ctx.now > ctx.quote_expires_at,
+        refunded=observation.refunded,
+        disputed=observation.disputed,
     )
 
 
@@ -135,6 +141,12 @@ def _next(
         return None
 
     if status is S.SETTLED:
+        # Card payments: the provider took the money back. A person decides what happens to
+        # a DID-LLM already issued for it (monitoring alerts).
+        if s.disputed:
+            return S.DISPUTED, "the cardholder disputed the payment (chargeback)"
+        if s.refunded:
+            return S.REFUNDED, "the payment was refunded to the card"
         if not s.has_payment or s.received_base_units < expected or not s.confirmations:
             return S.REORGED, "settled payment was affected by a chain reorganization"
         return None

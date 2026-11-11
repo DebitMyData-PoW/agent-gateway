@@ -31,6 +31,7 @@ Agent Gateway ── quote + payment intent + policy
         │
         ├── Native DMD adapter ──► private DebitMyData nodes (watch-only)
         ├── x402 / USDC Base adapter ──► facilitator
+        ├── Card adapter ──► Stripe Checkout (payment page hosted by Stripe)
         └── future approved rails (disabled until reviewed)
         │
         ▼
@@ -39,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.31.1`). The whole registration flow (quote,
+This is an early development release (`0.32.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -80,7 +81,9 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | The name DID-LLM everywhere people and agents read it (pages, app, policies, API docs, MCP descriptions, error messages); identifiers stay as they are (`did:web`, `did`, `/get-did`, `dids` paths) | done |
 | For AI agents: `/llms.txt` (how to register and pay by themselves, with this server's addresses and the payment options open now), linked from the Get a DID-LLM page's top, its footer and a no-script note; the page gives the MCP server's address | done |
 | The pages' footer lists the three DMD explorers (Mempool explorer, Lite explorer, Rich list & API), as on debitmydata.io; once a DID-LLM is issued, the page offers "Join the Agentic Hub" | done |
-| "Get a DID-LLM" shows a debit or credit card (Stripe) and PayPal greyed as coming soon, after USDC and DMD, until the gateway offers them | done (the payments themselves to come) |
+| "Get a DID-LLM" shows a debit or credit card (Stripe) and PayPal greyed as coming soon, after USDC and DMD, until the gateway offers them | done |
+| Card payments for DID-LLMs (payment option `card_stripe`): each quote gets its own Stripe payment page (Stripe Checkout, `payment_url`), open as long as the 31-minute quote; card details go to Stripe only; the worker checks each payment with Stripe itself (restricted key: Checkout Sessions write, PaymentIntents and Charges read), and settled payments for 30 days for refunds and disputes (`refunded`, `disputed`; a registration not yet issued is cancelled, an issued DID-LLM raises an alert); the page sends people to Stripe and continues by itself when they come back; agents get the link for their human (`pay_at_payment_url`) ([docs/card-payments.md](docs/card-payments.md)) | done (Stripe test mode on staging; production off and unapproved until the staging test and DebitMyData's go-ahead) |
+| PayPal | waiting for DebitMyData's PayPal account access |
 | The company's test DID-LLMs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |
@@ -92,7 +95,9 @@ private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mai
 priced by the higher of a minimum rate (0.001 USD per DMD) and the cost of mining DMD, and
 still needs the gateway's own DebitMyData node with the watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging; on
 Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
-facilitator, which needs DebitMyData's CDP API key (DEC-08). A staging server with the full flow on a private
+facilitator, which needs DebitMyData's CDP API key (DEC-08). Card payments run in Stripe's
+test mode on staging once its restricted test key is set; in production they stay off and
+unapproved until the staging test and DebitMyData's approval ([docs/card-payments.md](docs/card-payments.md)). A staging server with the full flow on a private
 regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
 from its [guided test page](https://staging-api.debitmydata.io/docs), or step by step from
 the [advanced API docs](https://staging-api.debitmydata.io/docs/advanced) (see

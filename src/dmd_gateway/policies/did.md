@@ -1,6 +1,6 @@
 ---
 title: DID-LLM policy
-version: 2026-11-10
+version: 2026-11-11
 status: approved
 summary: What a DebitMyData DID-LLM is and is not, how control is proven, what is public, and how a DID-LLM can be suspended or revoked.
 ---

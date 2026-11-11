@@ -1,6 +1,6 @@
 ---
 title: Terms of service
-version: 2026-11-10
+version: 2026-11-11
 status: approved
 summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID-LLM.
 ---
@@ -37,7 +37,8 @@ buy products for a DID-LLM they already have, such as BottyBotty.
 - Each payment needs a quote. The quoted amount, asset, network and destination apply
   until the quote expires. You are responsible for paying exactly what was quoted, on the
   quoted network, before it expires.
-- A payment only counts once the gateway has verified it on the chain.
+- A payment only counts once the gateway has verified it itself: on the chain, or with the
+  card payment provider (Stripe) for a card payment.
 - Refunds follow the [refund policy]({{ base_url }}/policies/refunds). The registration fee
   is non-refundable.
 - An inference donation (`POST /v1/donations/inference`) is voluntary, in an amount you
@@ -57,6 +58,8 @@ buy products for a DID-LLM they already have, such as BottyBotty.
   ask for them and cannot recover them.
 - **Accurate requests.** Check the asset, network, amount and address before paying.
   Blockchain payments cannot be reversed by us.
+- **Card payments.** Enter your card only on the Stripe payment page that your quote links
+  to (`checkout.stripe.com`). DebitMyData never asks for card details anywhere else.
 - **Official addresses only.** Use only the gateway's official address and the payment
   details in your quote. Treat any other request for payment or keys as fraud.
 - **Lawful use.** You are responsible for complying with the laws that apply to you,

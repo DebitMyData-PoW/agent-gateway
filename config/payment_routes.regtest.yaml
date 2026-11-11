@@ -61,7 +61,8 @@ services:
       DebitMyData Agentic DID-LLM Registration has a commercial fee of $25.00 USD. Agents may
       request a quote and pay using an approved DebitMyData native DMD wallet,
       Coinbase-compatible x402 payment method, or another supported cryptocurrency wallet
-      and asset. Available payment methods are returned dynamically by the DebitMyData
+      and asset; people may also pay by debit or credit card where that option is listed.
+      Available payment methods are returned dynamically by the DebitMyData
       payment quote service and are subject to network availability, wallet support,
       payment policy, and verification requirements.
     method: POST
@@ -73,11 +74,12 @@ services:
     payment_options:
       - dmd_pow_native
       - x402_usdc_base
+      - card_stripe
       - x402_dmd_wrapped_base
       - solana_usdc
     # Version of the terms an agent accepts with each quote: the version of the terms page
     # served at /policies/terms (DEC-09), which the tests keep equal.
-    terms_version: "2026-11-10"
+    terms_version: "2026-11-11"
     # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
     # a full https URL points elsewhere.
     policy_urls:
@@ -110,7 +112,7 @@ donations:
     # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
     recipients:
       x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
-    terms_version: "2026-11-10"
+    terms_version: "2026-11-11"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -145,7 +147,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-10"
+    terms_version: "2026-11-11"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -174,7 +176,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-10"
+    terms_version: "2026-11-11"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -203,7 +205,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-10"
+    terms_version: "2026-11-11"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -281,6 +283,38 @@ rails:
       - approved Base wallets
     enable_env: DMD_RAIL_X402_USDC_BASE_ENABLED
     kill_env: DMD_RAIL_X402_USDC_BASE_KILL
+
+  # Card payments - here in STRIPE TEST MODE: test card numbers only (4242 4242 4242 4242),
+  # no real card is charged. Same rail id as in production.
+  card_stripe:
+    name: Debit or credit card
+    stage: initial
+    approved: true
+    asset:
+      symbol: USD
+      decimals: 2
+      asset_type: fiat
+      canonical_id: iso4217:USD
+      usd_denominated: true
+    network: stripe:test
+    protocol: stripe_checkout
+    adapter: StripeCheckoutAdapter
+    recipient:
+      source: hosted_checkout
+    confirmation_policy:
+      required_confirmations: 1
+      watch_after_settlement_hours: 720
+      recheck_after_settlement_minutes: 15
+    quote_ttl_seconds: 1860
+    checkout:
+      provider: stripe
+      secret_key_env: DMD_STRIPE_SECRET_KEY        # a restricted TEST key (rk_test_...)
+      product_name: DebitMyData DID-LLM registration (test)
+    wallet_compatibility:
+      - Debit and credit cards
+      - Apple Pay and Google Pay
+    enable_env: DMD_RAIL_CARD_STRIPE_ENABLED
+    kill_env: DMD_RAIL_CARD_STRIPE_KILL
 
   # Future rails stay unapproved until they pass their own review (RAIL-01..06).
   # Enable-flag names follow the directive's examples.

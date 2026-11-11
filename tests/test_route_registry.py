@@ -42,6 +42,7 @@ def test_shipped_registry_loads_with_every_rail_off() -> None:
     assert set(registry.rails) == {
         "dmd_pow_native",
         "x402_usdc_base",
+        "card_stripe",
         "x402_dmd_wrapped_base",
         "solana_usdc",
     }
@@ -215,6 +216,95 @@ def test_shipped_usdc_rail_names_circles_contract_and_domain() -> None:
     assert usdc.confirmation_policy.required_confirmations == 5
 
 
+CARD_ADAPTERS = ALL_ADAPTERS | {"StripeCheckoutAdapter"}
+TEST_KEY = "rk_test_" + "k" * 24
+
+
+def _card(data: dict, network: str = "stripe:test") -> dict:
+    """The shipped card rail, approved (as on staging), on the given Stripe mode."""
+    rail = data["rails"]["card_stripe"]
+    rail["approved"] = True
+    rail["network"] = network
+    return data
+
+
+def _card_environ(key: str = TEST_KEY) -> dict[str, str]:
+    return {"DMD_RAIL_CARD_STRIPE_ENABLED": "true", "DMD_STRIPE_SECRET_KEY": key}
+
+
+def test_shipped_card_rail_is_off_and_unapproved_in_production() -> None:
+    registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=CARD_ADAPTERS)
+    card = registry.rails["card_stripe"]
+    assert card.approved is False
+    assert card.network == "stripe:live"
+    assert card.protocol == "stripe_checkout"
+    assert (card.asset.symbol, card.asset.decimals, card.asset.asset_type) == ("USD", 2, "fiat")
+    assert card.recipient.source == "hosted_checkout"
+    assert card.quote_ttl_seconds == 31 * 60
+    assert card.checkout is not None
+    assert card.checkout.secret_key_env == "DMD_STRIPE_SECRET_KEY"
+    assert "card_stripe" in registry.services["did_registration"].payment_options
+
+
+def test_complete_card_rail_is_enabled(tmp_path: Path) -> None:
+    path = _write(tmp_path, _card(_shipped()))
+    registry = load_registry(path, environ=_card_environ(), available_adapters=CARD_ADAPTERS)
+    assert registry.rail_state("card_stripe") is RailState.ENABLED
+
+
+@pytest.mark.parametrize(
+    ("network", "key", "problem"),
+    [
+        ("stripe:test", "", "DMD_STRIPE_SECRET_KEY is empty"),
+        ("stripe:test", "sk_test_" + "k" * 24, "not a full secret test key"),
+        ("stripe:test", "rk_live_" + "k" * 24, "not a restricted live key"),
+        ("stripe:live", TEST_KEY, "restricted live-mode key (rk_live_...), not a restricted test"),
+        ("stripe:live", "pk_live_" + "k" * 24, "not a publishable key"),
+    ],
+)
+def test_card_rail_needs_a_restricted_key_of_its_mode(
+    tmp_path: Path, network: str, key: str, problem: str
+) -> None:
+    path = _write(tmp_path, _card(_shipped(), network))
+    with pytest.raises(RegistryError, match=re.escape(problem)) as raised:
+        load_registry(path, environ=_card_environ(key), available_adapters=CARD_ADAPTERS)
+    if key:
+        assert key not in str(raised.value)  # never the key itself
+
+
+@pytest.mark.parametrize(
+    ("change", "problem"),
+    [
+        (lambda r: r.update(quote_ttl_seconds=900), "quote_ttl_seconds must be at least 1860"),
+        (lambda r: r.pop("quote_ttl_seconds"), "quote_ttl_seconds must be at least 1860"),
+        (lambda r: r.update(network="eip155:8453"), "must be stripe:live or stripe:test"),
+        (lambda r: r["asset"].update(decimals=6), "USD in cents"),
+        (
+            lambda r: r["confirmation_policy"].update(required_confirmations=3),
+            "required_confirmations must be 1",
+        ),
+        (lambda r: r.update(recipient={"source": "per_intent_address"}), "hosted_checkout"),
+        (lambda r: r.pop("checkout"), "checkout settings"),
+    ],
+)
+def test_card_rail_needs_a_complete_configuration(
+    tmp_path: Path, change: Any, problem: str
+) -> None:
+    data = _card(_shipped())
+    change(data["rails"]["card_stripe"])
+    path = _write(tmp_path, data)
+    with pytest.raises(RegistryError, match=re.escape(problem)):
+        load_registry(path, environ=_card_environ(), available_adapters=CARD_ADAPTERS)
+
+
+def test_card_rail_cannot_pay_for_products(tmp_path: Path) -> None:
+    data = _card(_shipped())
+    data["products"]["bottybotty_entry"]["payment_options"].append("card_stripe")
+    path = _write(tmp_path, data)
+    with pytest.raises(RegistryError, match="card payments are only built for DID-LLM"):
+        load_registry(path, environ={}, available_adapters=CARD_ADAPTERS)
+
+
 def test_unapproved_rail_can_never_be_enabled(tmp_path: Path) -> None:
     data = _shipped()
     rail = data["rails"]["solana_usdc"]
@@ -321,7 +411,7 @@ def test_price_source_must_be_implemented(tmp_path: Path) -> None:
 
 def test_terms_version_is_set() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
-    assert registry.services["did_registration"].terms_version == "2026-11-10"
+    assert registry.services["did_registration"].terms_version == "2026-11-11"
 
 
 # --------------------------------------------------------------------------- donations
@@ -341,7 +431,7 @@ def test_shipped_inference_donation() -> None:
     assert (str(donation.amount.minimum), str(donation.amount.maximum)) == ("0.50", "1000.00")
     assert donation.payment_options == ("x402_usdc_base",)
     assert donation.recipients == {"x402_usdc_base": "DMD_USDC_BASE_INFERENCE_ADDRESS"}
-    assert donation.terms_version == "2026-11-10"
+    assert donation.terms_version == "2026-11-11"
     assert registry.donation_rails("inference_donation") == []  # every rail is off
 
 

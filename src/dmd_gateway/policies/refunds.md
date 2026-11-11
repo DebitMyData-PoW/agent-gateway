@@ -1,6 +1,6 @@
 ---
 title: Refund policy
-version: 2026-11-10
+version: 2026-11-11
 status: approved
 summary: The DID-LLM registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
@@ -52,6 +52,9 @@ shows them as `refund_due`.
 
 - **Same asset, same network, same amount of the asset.** A refund returns the asset you
   sent, not its value in US dollars at another time.
+- **Card payments go back to the card.** A card payment is refunded in US dollars, through
+  Stripe, to the card that paid; there is no network fee. Banks usually show it within 5 to
+  10 business days.
 - **To an address you control.** For DMD, send us a DMD address of your own to return the
   payment to: the address a payment came from may belong to an exchange or a shared
   wallet. For USDC through x402, the refund goes back to the wallet that signed the
@@ -64,7 +67,7 @@ shows them as `refund_due`.
 To ask for a refund, write to <info@debitmydata.com> with:
 
 - the `payment_intent_id` of the quote;
-- the transaction ID of your payment;
+- the transaction ID of your payment (for a card, nothing more is needed);
 - the address to return it to (DMD), or confirmation of the paying wallet (USDC).
 
 We may ask you to prove that you control the paying wallet or the DID-LLM's controller.
@@ -84,7 +87,12 @@ Blockchain payments cannot be charged back. If a payment that paid for a DID-LLM
 reversed, for example by a chain reorganization or a double spend, the DID-LLM may be suspended
 until the registration is paid again.
 
+A card payment can be disputed with your bank (a chargeback). Please write to us first: we
+answer every request. A registration whose card payment was refunded or charged back before
+its DID-LLM was issued is cancelled. A DID-LLM whose card payment is disputed or charged back
+may be suspended while the dispute is open, and revoked if the payment is not made good.
+
 ## Test networks
 
-Payments on the staging server use test networks whose coins have no value. They are not
-refunded.
+Payments on the staging server use test networks whose coins have no value, and Stripe's
+test mode for cards. They are not refunded.

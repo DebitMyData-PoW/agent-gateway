@@ -18,7 +18,12 @@ from sqlalchemy.orm import Session
 from dmd_gateway.db.models import PaymentEvent, PaymentIntent, Purchase
 from dmd_gateway.db.session import transaction
 from dmd_gateway.domain.money import format_base_units
-from dmd_gateway.domain.payment_status import NEXT_ACTIONS, PaymentStatus
+from dmd_gateway.domain.payment_status import (
+    HOSTED_PAY_ACTION,
+    HOSTED_PAYMENT_PAGE,
+    NEXT_ACTIONS,
+    PaymentStatus,
+)
 from dmd_gateway.errors import ApiError
 from dmd_gateway.services.payment_references import X402_ADAPTER, submit_reference
 from dmd_gateway.services.registrations import X402_PAY_ACTION
@@ -76,6 +81,8 @@ class PaymentStatusResponse(BaseModel):
     expires_at: datetime
     updated_at: datetime
     next_action: str
+    # Card payments, while unpaid: the payment page where a person enters a card.
+    payment_url: str | None = None
 
 
 @router.get(
@@ -115,6 +122,13 @@ def payment_status(
             next_action = "read_donation_status"
         elif intent.adapter == X402_ADAPTER and status is PaymentStatus.AWAITING_PAYMENT:
             next_action = X402_PAY_ACTION  # paid in answer to POST /v1/dids/registrations
+        payment_url = None
+        if (
+            intent.recipient_kind == HOSTED_PAYMENT_PAGE
+            and status is PaymentStatus.AWAITING_PAYMENT
+        ):
+            next_action = HOSTED_PAY_ACTION
+            payment_url = intent.recipient
         return PaymentStatusResponse(
             payment_intent_id=intent.id,
             registration_intent_id=intent.registration_intent_id,
@@ -132,6 +146,7 @@ def payment_status(
             expires_at=intent.quote_expires_at,
             updated_at=intent.updated_at,
             next_action=next_action,
+            payment_url=payment_url,
         )
 
 

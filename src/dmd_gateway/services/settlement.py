@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import not_, or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.adapters.base import (
@@ -88,18 +88,31 @@ def settled_watch_windows(adapters: Mapping[str, PaymentAdapter]) -> dict[str, t
     return windows
 
 
+def watched_recheck_intervals(adapters: Mapping[str, PaymentAdapter]) -> dict[str, timedelta]:
+    """Rails whose closed payments are checked again only every so often (card payments:
+    each check is a request to the payment provider)."""
+    intervals: dict[str, timedelta] = {}
+    for rail_id, adapter in adapters.items():
+        minutes = adapter.rail.confirmation_policy.recheck_after_settlement_minutes
+        if minutes:
+            intervals[rail_id] = timedelta(minutes=minutes)
+    return intervals
+
+
 def due_intent_ids(
     session: Session,
     rail_ids: list[str],
     now: datetime,
     settled_windows: Mapping[str, timedelta] | None = None,
+    recheck_intervals: Mapping[str, timedelta] | None = None,
 ) -> list[str]:
     """The intents to check in this pass, at most ``BATCH_SIZE``.
 
     Open payments (someone is waiting for them) come first, then closed ones still watched
     for reorganizations and late payments, which always keep ``WATCHED_RESERVE`` places when
     there are enough of them. In each group the least recently checked come first, so every
-    intent is checked in turn, however many there are.
+    intent is checked in turn, however many there are. Closed payments of a rail with a
+    recheck interval wait that long between two checks.
     """
     if not rail_ids:
         return []
@@ -128,13 +141,19 @@ def due_intent_ids(
                 & (PaymentIntent.status == S.SETTLED.value)
                 & (PaymentIntent.updated_at > now - window)
             )
+    query = select(PaymentIntent.id).where(PaymentIntent.rail_id.in_(rail_ids)).where(or_(*watched))
+    checked_lately = [
+        (PaymentIntent.rail_id == rail_id)
+        & PaymentIntent.last_checked_at.is_not(None)
+        & (PaymentIntent.last_checked_at > now - every)
+        for rail_id, every in (recheck_intervals or {}).items()
+        if rail_id in rail_ids
+    ]
+    if checked_lately:
+        query = query.where(not_(or_(*checked_lately)))
     watched_ids = list(
         session.scalars(
-            select(PaymentIntent.id)
-            .where(PaymentIntent.rail_id.in_(rail_ids))
-            .where(or_(*watched))
-            .order_by(*order)
-            .limit(max(BATCH_SIZE - len(open_ids), WATCHED_RESERVE))
+            query.order_by(*order).limit(max(BATCH_SIZE - len(open_ids), WATCHED_RESERVE))
         )
     )
     return open_ids[: BATCH_SIZE - len(watched_ids)] + watched_ids
@@ -398,6 +417,10 @@ def _credit_outputs(session: Session, intent: PaymentIntent, outputs: tuple) -> 
     )
 
 
+# Payment statuses where the money went back to the payer after the payment was settled.
+TAKEN_BACK = frozenset({S.REFUNDED, S.DISPUTED, S.REVERSED})
+
+
 def _sync_registration(
     session: Session,
     intent: PaymentIntent,
@@ -414,6 +437,21 @@ def _sync_registration(
         new_status = "paid"
     elif final is S.EXPIRED and registration.status == "awaiting_payment":
         new_status = "expired"
+    elif final in TAKEN_BACK and reached & TAKEN_BACK:
+        # A card payment refunded or disputed: no DID-LLM is issued for it any more, and one
+        # already issued is for a person to look at (it is not revoked automatically: a
+        # dispute can still be won).
+        if registration.status in ("awaiting_payment", "paid"):
+            new_status = "cancelled"
+        elif registration.status == "issued":
+            record_audit_event(
+                session,
+                action="alert.issued_identity_payment_taken_back",
+                subject_type="registration_intent",
+                subject_id=registration.id,
+                actor_type="worker",
+                data={"payment_intent_id": intent.id, "payment_status": final.value},
+            )
     elif current is S.SETTLED and S.REORGED in reached:
         if registration.status == "paid":
             new_status = "awaiting_payment"
@@ -479,7 +517,13 @@ def run_pass(
     now: datetime,
 ) -> PassResult:
     with transaction(factory) as session:
-        ids = due_intent_ids(session, list(adapters), now, settled_watch_windows(adapters))
+        ids = due_intent_ids(
+            session,
+            list(adapters),
+            now,
+            settled_watch_windows(adapters),
+            watched_recheck_intervals(adapters),
+        )
     processed = changed = unavailable = errors = 0
     for payment_intent_id in ids:
         try:

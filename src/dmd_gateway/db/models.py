@@ -69,7 +69,8 @@ PURCHASE_STATUSES = (
 IDENTITY_STATUSES = ("active", "suspended", "revoked")
 PROOF_STATUSES = ("verified", "rejected")
 CHALLENGE_PURPOSES = ("registration", "rotation", "recovery")
-RECIPIENT_KINDS = ("per_intent_address", "shared_with_reference")
+# hosted_payment_page: a card payment page made for one intent (Stripe Checkout).
+RECIPIENT_KINDS = ("per_intent_address", "shared_with_reference", "hosted_payment_page")
 ACTOR_TYPES = ("system", "worker", "agent", "operator")
 X402_AUTHORIZATION_STATUSES = (
     "received",  # stored, not yet checked by the facilitator
