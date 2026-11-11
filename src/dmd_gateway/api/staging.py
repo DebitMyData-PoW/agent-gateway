@@ -280,7 +280,7 @@ def _sign_x402_test_payment(
             "Once the controller proof is verified, POST /v1/dids/registrations with "
             f'{{"registration_intent_id": "{intent.registration_intent_id}"}} and this '
             "payment_signature in the PAYMENT-SIGNATURE header, before "
-            f"{valid_until:%H:%M:%S} UTC. The payment is settled on Base Sepolia and the DID "
+            f"{valid_until:%H:%M:%S} UTC. The payment is settled on Base Sepolia and the DID-LLM "
             "is issued in the same answer."
         ),
     )
@@ -413,7 +413,7 @@ class StagingWalletResponse(BaseModel):
     balance: str | None = Field(
         description="Its test USDC, or null when the chain could not be read just now."
     )
-    needed: str = Field(description="What one DID registration costs in test USDC.")
+    needed: str = Field(description="What one DID-LLM registration costs in test USDC.")
     enough: bool | None
     paid_back: bool = Field(
         description="True when the test wallet also receives the payments (as on DebitMyData's "
@@ -449,7 +449,7 @@ def _token_balance(adapter: X402PaymentAdapter, address: str) -> int | None:
     summary="Staging only: the USDC test wallet and its balance",
     description=(
         "The wallet that POST /v1/staging/test-payments signs USDC payments with, how much "
-        "test USDC it holds on Base Sepolia, and whether that covers one DID registration. "
+        "test USDC it holds on Base Sepolia, and whether that covers one DID-LLM registration. "
         "Test USDC is free from Circle's faucet (faucet_url)."
     ),
 )

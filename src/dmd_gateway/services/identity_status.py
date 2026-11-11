@@ -81,7 +81,7 @@ def find_identity(session: Session, text: str, *, lock: bool = False) -> AgentId
         query = query.with_for_update()
     identity = session.scalars(query).first()
     if identity is None:
-        raise StatusChangeError(f"No DID found for {value!r} on this gateway.")
+        raise StatusChangeError(f"No DID-LLM found for {value!r} on this gateway.")
     return identity
 
 
@@ -131,9 +131,9 @@ def change_status(
     identity = find_identity(session, text, lock=True)
     old, new = identity.status, TARGETS[command]
     if old == new:
-        raise StatusChangeError(f"This DID is already {old}: nothing was changed.")
+        raise StatusChangeError(f"This DID-LLM is already {old}: nothing was changed.")
     if (old, new) not in ALLOWED:
-        raise StatusChangeError(f"A {old} DID cannot become {new}: nothing was changed.")
+        raise StatusChangeError(f"A {old} DID-LLM cannot become {new}: nothing was changed.")
 
     identity.status = new
     identity.updated_at = now

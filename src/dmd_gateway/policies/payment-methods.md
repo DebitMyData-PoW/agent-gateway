@@ -1,13 +1,13 @@
 ---
 title: Payment methods
-version: 2026-10-27
+version: 2026-11-10
 status: approved
-summary: How a DebitMyData DID registration is priced, quoted and paid, and which assets and networks are accepted.
+summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets and networks are accepted.
 ---
 
 # Payment methods
 
-A DebitMyData DID registration costs a fixed **25.00 USD**. You pay it in one of the
+A DebitMyData DID-LLM registration costs a fixed **25.00 USD**. You pay it in one of the
 approved assets below, from the wallet you already use. You never have to buy DMD to pay
 with another approved asset.
 
@@ -62,8 +62,8 @@ unrelated to other tokens that use the same ticker.
   registration request answers **402 Payment Required** with the payment terms; your
   wallet signs a USDC transfer of exactly the quoted amount (EIP-3009) and sends the
   request again with the signed payment.
-- The payment is taken last, only once the DID can be issued: you prove control of your
-  DID's controller first, so you are never charged for a DID that cannot be issued.
+- The payment is taken last, only once the DID-LLM can be issued: you prove control of your
+  DID-LLM's controller first, so you are never charged for a DID-LLM that cannot be issued.
 - The x402 facilitator submits the transfer and pays the network fee. The gateway then
   checks the transfer on the chain itself.
 
@@ -86,7 +86,7 @@ the "Inference $" button; that stays as it is.
   signed payment and the same amount. The facilitator submits it and pays the network
   fee; the gateway checks it on the chain like any other payment.
 - **A signed receipt.** Once the payment is settled, the answer carries a receipt signed by
-  DebitMyData (a verifiable credential), issued to the DID you name in `donor_did`, or
+  DebitMyData (a verifiable credential), issued to the DID-LLM you name in `donor_did`, or
   else to the paying wallet. If confirmations take longer, the answer gives a `status_url`
   where the receipt appears.
 - Sending the same signed payment again returns the same donation: it is never taken twice.
@@ -95,7 +95,7 @@ the "Inference $" button; that stays as it is.
 
 A payment counts once it is **settled**: the gateway has seen it on the chain itself, it
 pays the quoted amount, and it has the required confirmations. You can follow it at
-`GET /v1/payments/{payment_intent_id}`. A DID is only issued after the payment is settled
+`GET /v1/payments/{payment_intent_id}`. A DID-LLM is only issued after the payment is settled
 and every controller named in the quote has proved control.
 
 Payments that are too large, too small, too late or sent twice are not credited to the

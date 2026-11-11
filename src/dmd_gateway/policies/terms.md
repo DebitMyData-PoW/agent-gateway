@@ -1,14 +1,14 @@
 ---
 title: Terms of service
-version: 2026-11-03
+version: 2026-11-10
 status: approved
-summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID.
+summary: The terms for using the DebitMyData Agent Gateway and registering a DebitMyData DID-LLM.
 ---
 
 # Terms of service
 
 These terms apply to the DebitMyData Agent Gateway (the "gateway"): its API at
-`{{ base_url }}`, its MCP server, and the DIDs, credentials and entitlements it issues. The
+`{{ base_url }}`, its MCP server, and the DID-LLMs, credentials and entitlements it issues. The
 gateway is operated by Debit My Data, Inc. ("DebitMyData", "we", "us").
 
 ## 1. Who agrees to these terms
@@ -24,15 +24,15 @@ dealing with us, or if using it is unlawful where you are.
 ## 2. The service
 
 The gateway lets agents and other participants discover DebitMyData services, get a quote,
-pay in an approved asset, prove control of a key or wallet, and receive a DebitMyData DID
-with a signed credential and entitlements. What a DID means is set out in the
-[DID policy]({{ base_url }}/policies/did). Agents and wallets can also make voluntary
+pay in an approved asset, prove control of a key or wallet, and receive a DebitMyData DID-LLM
+with a signed credential and entitlements. What a DID-LLM means is set out in the
+[DID-LLM policy]({{ base_url }}/policies/did). Agents and wallets can also make voluntary
 donations towards the AI inference behind DebitMyData's agentic services, and, where offered,
-buy products for a DID they already have, such as BottyBotty.
+buy products for a DID-LLM they already have, such as BottyBotty.
 
 ## 3. Prices and payment
 
-- A DID registration costs a fixed 25.00 USD, paid as described in the
+- A DID-LLM registration costs a fixed 25.00 USD, paid as described in the
   [payment methods]({{ base_url }}/policies/payment-methods).
 - Each payment needs a quote. The quoted amount, asset, network and destination apply
   until the quote expires. You are responsible for paying exactly what was quoted, on the
@@ -43,10 +43,10 @@ buy products for a DID they already have, such as BottyBotty.
 - An inference donation (`POST /v1/donations/inference`) is voluntary, in an amount you
   choose within the published range. It buys no product, entitlement or priority, and it
   is non-refundable once settled. You receive a receipt signed by DebitMyData.
-- BottyBotty, where offered (`GET /v1/products`), is bought for an active DID in one of its
+- BottyBotty, where offered (`GET /v1/products`), is bought for an active DID-LLM in one of its
   tiers, at the price the product list and the quote show. It is paid once and belongs to
-  that DID for good: it is suspended while the DID is suspended and ends if the DID is revoked
-  under the [DID policy]({{ base_url }}/policies/did). A DID owns one tier at a time; moving
+  that DID-LLM for good: it is suspended while the DID-LLM is suspended and ends if the DID-LLM is revoked
+  under the [DID-LLM policy]({{ base_url }}/policies/did). A DID-LLM owns one tier at a time; moving
   to a higher tier costs the difference between the two tiers' prices, and a lower or the same
   tier cannot be bought again. BottyBotty itself is provided by DebitMyData's BottyBotty
   service. A completed purchase is non-refundable.
@@ -66,16 +66,16 @@ buy products for a DID they already have, such as BottyBotty.
 
 Do not:
 
-- impersonate any person, organization or agent, or register a DID to mislead others;
+- impersonate any person, organization or agent, or register a DID-LLM to mislead others;
 - use the gateway for fraud, money laundering, terrorist financing or any unlawful purpose;
 - overload the gateway, get around its request limits, or run load or security tests
   against it without our written permission (see the
   [security page]({{ base_url }}/policies/security) for how to report a vulnerability);
-- try to access data, registrations or DIDs that are not yours;
+- try to access data, registrations or DID-LLMs that are not yours;
 - interfere with other users or with the DebitMyData network.
 
-We may refuse quotes, suspend or revoke DIDs, and block access when these terms are broken,
-as set out in the DID policy.
+We may refuse quotes, suspend or revoke DID-LLMs, and block access when these terms are broken,
+as set out in the DID-LLM policy.
 
 ## 6. Availability and changes to the service
 
@@ -86,7 +86,7 @@ try to give notice of planned changes, but cannot promise uninterrupted service.
 ## 7. The staging server
 
 The staging server uses test networks whose coins have no value. It is for testing only:
-its DIDs and credentials are not valid on the production service, and its data may be
+its DID-LLMs and credentials are not valid on the production service, and its data may be
 deleted at any time.
 
 ## 8. Risks of blockchains
@@ -97,7 +97,7 @@ tokens can have defects. You accept these risks when you pay with them.
 
 ## 9. No warranty
 
-The gateway, its DIDs and its credentials are provided **as is**, without warranties of any
+The gateway, its DID-LLMs and its credentials are provided **as is**, without warranties of any
 kind, to the extent the law allows.
 
 ## 10. Limitation of liability

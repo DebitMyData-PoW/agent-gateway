@@ -1,10 +1,10 @@
-"""Products bought for a DID that already exists, such as a BottyBotty tier.
+"""Products bought for a DID-LLM that already exists, such as a BottyBotty tier.
 
 GET  /v1/products                                  the products offered, with price and period
-POST /v1/products/{product}/quotes                 a quote for one DID (active)
+POST /v1/products/{product}/quotes                 a quote for one DID-LLM (active)
 GET  /v1/products/purchases/{purchase_id}          payment progress and what to do next
 POST /v1/products/purchases/{purchase_id}/complete once paid: the signed receipt and the
-                                                   entitlement on the DID
+                                                   entitlement on the DID-LLM
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ PURCHASE_ID = r"^dmd_purchase_[0-9A-HJKMNP-TV-Z]{26}$"
 @router.get(
     "",
     response_model=list[ProductInfo],
-    summary="Products an agent can buy for its DID (such as the BottyBotty tiers)",
+    summary="Products an agent can buy for its DID-LLM (such as the BottyBotty tiers)",
 )
 def products(request: Request) -> list[ProductInfo]:
     return offered_products(request.app.state.quote_context)
@@ -44,10 +44,10 @@ def products(request: Request) -> list[ProductInfo]:
     "/{product}/quotes",
     status_code=201,
     response_model=ProductQuote,
-    summary="Quote a product for an active DID: the amount and where to pay it",
+    summary="Quote a product for an active DID-LLM: the amount and where to pay it",
     responses={
-        404: {"description": "Unknown product or DID."},
-        409: {"description": "The DID is suspended or revoked."},
+        404: {"description": "Unknown product or DID-LLM."},
+        409: {"description": "The DID-LLM is suspended or revoked."},
     },
 )
 def quote(
@@ -75,10 +75,10 @@ def status(request: Request, purchase_id: str = Path(pattern=PURCHASE_ID)) -> Pu
 @router.post(
     "/purchases/{purchase_id}/complete",
     response_model=PurchaseState,
-    summary="Once paid: issue the signed receipt and the entitlement on the DID (idempotent)",
+    summary="Once paid: issue the signed receipt and the entitlement on the DID-LLM (idempotent)",
     responses={
         404: {"description": "Unknown product purchase."},
-        409: {"description": "Not paid yet, or the DID is no longer active."},
+        409: {"description": "Not paid yet, or the DID-LLM is no longer active."},
     },
 )
 def complete(request: Request, purchase_id: str = Path(pattern=PURCHASE_ID)) -> PurchaseState:

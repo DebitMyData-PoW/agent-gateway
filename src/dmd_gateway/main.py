@@ -28,6 +28,7 @@ from dmd_gateway.api import (
     get_did_page,
     health,
     identities,
+    llms,
     payments,
     policies,
     prices,
@@ -157,6 +158,7 @@ def create_app(
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
     app.include_router(get_did_page.router)  # /get-did on every server
+    app.include_router(llms.router)  # /llms.txt: how an agent registers by itself
     if settings.staging_test_tools:
         app.include_router(staging.router)
         app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger
@@ -171,9 +173,9 @@ def create_app(
 
 DESCRIPTION = (
     "Public integration surface for agents: discovery, payment options, quotes, payment "
-    "verification, controller proofs and DebitMyData DID issuance with signed credentials. "
+    "verification, controller proofs and DebitMyData DID-LLM issuance with signed credentials. "
     "Payment options appear only once their payment rail is enabled. AI agents can use the "
-    "same steps through the MCP server at /mcp. Terms, privacy, payment, refund, DID and "
+    "same steps through the MCP server at /mcp. Terms, privacy, payment, refund, DID-LLM and "
     "security policies: [/policies](/policies). DMD is the ticker of the DebitMyData coin, "
     "the native coin of the DebitMyData Proof-of-Work chain (addresses start with dm1); it "
     "is unrelated to other tokens that use the same ticker."
@@ -191,19 +193,22 @@ def _openapi_tags(settings: Settings) -> list[dict[str, str]]:
         },
         {
             "name": "registration",
-            "description": "DID registration: quote, proof of key control, issuance, progress.",
+            "description": "DID-LLM registration: quote, proof of key control, issuance, progress.",
         },
         {"name": "payments", "description": "Payment status and transaction references."},
         {
             "name": "identities",
-            "description": "Issued DIDs, signed credentials, entitlements and DID documents.",
+            "description": (
+                "Issued DID-LLMs, signed credentials, entitlements and DID-LLM documents."
+            ),
         },
         {
             "name": "products",
-            "description": "Products bought for a DID that already exists, such as the BottyBotty "
+            "description": "Products bought for a DID-LLM that already exists, such as the "
+            "BottyBotty "
             "tiers (Entry, Standard, Premium; paid once and owned for good, a higher tier costs "
-            "the difference): a quote for the DID, the payment, then a receipt signed by "
-            "DebitMyData and the product's entitlement on the DID.",
+            "the difference): a quote for the DID-LLM, the payment, then a receipt signed by "
+            "DebitMyData and the product's entitlement on the DID-LLM.",
         },
         {"name": "health", "description": "Liveness and readiness checks."},
     ]
@@ -267,7 +272,7 @@ TRY_IT_STEPS = [
         "post",
         "/v1/dids/registrations",
         "/v1/dids/registrations",
-        "your `registration_intent_id`. You get the DID, its signed credential and the "
+        "your `registration_intent_id`. You get the DID-LLM, its signed credential and the "
         "`dmd_did_holder` entitlement.",
     ),
 ]
@@ -321,7 +326,7 @@ HOW_TO_STEPS: list[tuple[tuple[str, str, str] | None, str]] = [
     ),
     (
         ("post", "/v1/dids/registrations", "/v1/dids/registrations"),
-        "your `registration_intent_id`. DMD: you get the DID, its signed credential and the "
+        "your `registration_intent_id`. DMD: you get the DID-LLM, its signed credential and the "
         "`dmd_did_holder` entitlement. USDC: the first answer is `402` with the payment terms; "
         "an x402 client (the agent's wallet) signs them and sends the same request again with "
         "the `PAYMENT-SIGNATURE` header.",
@@ -361,11 +366,11 @@ PANEL_TITLES = {
         ),
         ("Send the proof", ""),
         (
-            "Register the DID",
+            "Register the DID-LLM",
             f"{_REGISTER_TIP} USDC: the first answer is 402; the agent's x402 client pays and "
             "sends the request again with PAYMENT-SIGNATURE.",
         ),
-        ("Open the DID document", "Open it with the Open link next to it below."),
+        ("Open the DID-LLM document", "Open it with the Open link next to it below."),
     ],
     "staging": [
         ("Create a test key", ""),
@@ -380,11 +385,11 @@ PANEL_TITLES = {
         ),
         ("Send the proof", ""),
         (
-            "Register the DID",
+            "Register the DID-LLM",
             f"{_REGISTER_TIP} USDC: paste the payment_signature from step 3 (the long one, "
             "starting with eyJ).",
         ),
-        ("Open the DID document", "Open it with the Open link next to it below."),
+        ("Open the DID-LLM document", "Open it with the Open link next to it below."),
     ],
 }
 # USDC (x402) is paid when registering, so its steps come in another order: on staging, the
@@ -536,7 +541,7 @@ def _card_text(text: str) -> str:
 
 
 def _add_how_to_guide(app: FastAPI) -> None:
-    """Outside staging: how to register a DID by hand from the docs page, each request step
+    """Outside staging: how to register a DID-LLM by hand from the docs page, each request step
     linked to its endpoint, and where to try the whole flow with test coins first."""
     build = app.openapi
     settings: Settings = app.state.settings
@@ -550,15 +555,15 @@ def _add_how_to_guide(app: FastAPI) -> None:
             "challenge": settings.controller_challenge_ttl_seconds // 60,
         }
         lines = [
-            "### Register a DID from this page",
+            "### Register a DID-LLM from this page",
             "",
-            "**Easiest: [Get a DID](/get-did)** takes you through these steps: you pay and sign in "
-            "your own wallet.",
+            "**Easiest: [Get a DID-LLM](/get-did)** takes you through these steps: you pay and "
+            "sign in your own wallet.",
             "",
             f"**Want to see the whole flow first?** [Try it with test coins on the guided "
             f"staging page]({STAGING_GUIDED_PAGE}): it runs every step for you.",
             "",
-            "On this server every step is real: quotes, payments and DIDs. AI agents usually "
+            "On this server every step is real: quotes, payments and DID-LLMs. AI agents usually "
             "do these steps themselves, through this API or the MCP server at `/mcp`. Paying "
             "and signing happen outside this page, in the agent's own wallet and tools. "
             "**Never paste a private key or a wallet's recovery phrase into this page: the "
@@ -663,7 +668,7 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "step 2. Step 3 then returns a long `payment_signature` (it starts with `eyJ`). "
             "Paste it into the `PAYMENT-SIGNATURE` field of step 8 and click **Execute** "
             "right away: it is valid for 5 minutes. If it has expired, run step 3 again for a "
-            "new one. The payment is settled on Base Sepolia, checked on chain, and the DID "
+            "new one. The payment is settled on Base Sepolia, checked on chain, and the DID-LLM "
             "is issued in the same answer.",
             "",
             "**Which value goes where:**",
@@ -682,7 +687,7 @@ def _add_try_it_guide(app: FastAPI) -> None:
             "`controller_type`). In step 6, use `private_key` when the challenge's "
             "`controller` starts with `ed25519:`, and `wallet_private_key` when it starts "
             "with `eip155:`; the wallet's `signature` starts with `0x`. Step 8 then issues a "
-            "DID that lists the wallet. `GET /v1/dids/registrations/{id}` shows in "
+            "DID-LLM that lists the wallet. `GET /v1/dids/registrations/{id}` shows in "
             "`still_to_prove` what is left.",
             "",
             "Request bodies are shown here as fields to fill in. Agents send the same fields "

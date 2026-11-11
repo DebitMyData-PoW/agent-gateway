@@ -236,8 +236,8 @@
       },
     },
     issue: {
-      title: "Issue the DID",
-      help: "The DID, its signed credential and the entitlement.",
+      title: "Issue the DID-LLM",
+      help: "The DID-LLM, its signed credential and the entitlement.",
       uses: () =>
         values.option === "x402_usdc_base"
           ? { registration_intent_id: values.registrationId, "PAYMENT-SIGNATURE": short(values.paymentSignature) }
@@ -460,10 +460,10 @@
     const open = element(
       "a",
       { class: "big", href: issued.did_document_url, target: "_blank", rel: "noopener" },
-      "Open your DID document"
+      "Open your DID-LLM document"
     );
     resultBox.replaceChildren(
-      element("h2", {}, "Your test DID is ready"),
+      element("h2", {}, "Your test DID-LLM is ready"),
       element("div", { class: "did" }, issued.did),
       open,
       element("br"),
@@ -491,7 +491,7 @@
       );
     }
     resultBox.hidden = false;
-    announce("Your test DID is ready.");
+    announce("Your test DID-LLM is ready.");
   }
 
   // ------------------------------------------------------------------ running

@@ -85,7 +85,9 @@ def _open_registration(session: Session, registration_intent_id: str) -> Registr
     if registration is None:
         raise ApiError(404, "not_found", "Unknown registration intent.")
     if registration.status == "issued":
-        raise ApiError(409, "already_issued", "The DID for this registration was already issued.")
+        raise ApiError(
+            409, "already_issued", "The DID-LLM for this registration was already issued."
+        )
     if registration.status in CLOSED_STATUSES:
         raise ApiError(
             409,

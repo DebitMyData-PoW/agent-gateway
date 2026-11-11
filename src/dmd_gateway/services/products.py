@@ -80,8 +80,8 @@ class ProductQuoteRequest(BaseModel):
     did: str = Field(
         min_length=26,
         max_length=300,
-        description="The DID the product is for (or its identity ID, dmd_identity_...). It must "
-        "be active.",
+        description="The DID-LLM the product is for (or its identity ID, dmd_identity_...). It "
+        "must be active.",
     )
     preferred_payment_option: str = Field(
         min_length=1, max_length=64, description="How the agent pays, e.g. dmd_pow_native."
@@ -103,7 +103,7 @@ class ProductInfo(BaseModel):
     commercial_price: Money
     tier: TierInfo | None = Field(
         default=None,
-        description="One tier of a family: a DID owns one tier, and a higher tier costs the "
+        description="One tier of a family: a DID-LLM owns one tier, and a higher tier costs the "
         "difference in price.",
     )
     payment_options: list[str]
@@ -121,7 +121,7 @@ class ProductQuote(BaseModel):
         "an upgrade, which pays the difference)."
     )
     upgrade_from: str | None = Field(
-        default=None, description="For an upgrade: the tier the DID owns now (product ID)."
+        default=None, description="For an upgrade: the tier the DID-LLM owns now (product ID)."
     )
     selected_payment_option: SelectedPaymentOption
     price_quote: PriceQuote | None
@@ -218,10 +218,10 @@ def _rail(ctx: QuoteContext, product_id: str, product: ProductConfig, rail_id: s
 def _active_identity(session: Session, text: str, *, lock: bool = False) -> AgentIdentity:
     identity = public_identity(session, text, lock=lock)
     if identity is None:
-        raise ApiError(404, "unknown_did", "No DID with this identifier on this gateway.")
+        raise ApiError(404, "unknown_did", "No DID-LLM with this identifier on this gateway.")
     if identity.status != "active":
         raise ApiError(
-            409, "did_not_active", f"This DID is {identity.status}: it cannot buy products."
+            409, "did_not_active", f"This DID-LLM is {identity.status}: it cannot buy products."
         )
     return identity
 
@@ -244,10 +244,12 @@ def _check_can_hold(held: Entitlement | None) -> None:
         raise ApiError(
             409,
             "entitlement_revoked",
-            "This entitlement was revoked for this DID: it cannot be bought again.",
+            "This entitlement was revoked for this DID-LLM: it cannot be bought again.",
         )
     if held.status == "active" and held.expires_at is None:
-        raise ApiError(409, "already_covered", "This DID already holds this entitlement for good.")
+        raise ApiError(
+            409, "already_covered", "This DID-LLM already holds this entitlement for good."
+        )
 
 
 Owned = tuple[Entitlement, str, ProductConfig]
@@ -287,9 +289,9 @@ def _tier_price(
     _, owned_id, owned_product = owned
     if _rank(owned_product) >= _rank(product):
         message = (
-            f"This DID already owns {product.title}."
+            f"This DID-LLM already owns {product.title}."
             if owned_id == product_id
-            else f"This DID already owns {owned_product.title}, a higher tier."
+            else f"This DID-LLM already owns {owned_product.title}, a higher tier."
         )
         raise ApiError(409, "already_covered", message, details={"owned": owned_id})
     return (

@@ -198,10 +198,10 @@ def test_the_values_panel_keeps_values_in_the_page_only() -> None:
 def test_the_docs_page_explains_how_to_register_by_hand(client: TestClient) -> None:
     schema = client.get("/openapi.json").json()
     guide = schema["info"]["description"]
-    assert "### Register a DID from this page" in guide
+    assert "### Register a DID-LLM from this page" in guide
     assert f"]({STAGING_GUIDED_PAGE})" in guide
     assert "Never paste a private key" in guide
-    assert "[Get a DID](/get-did)" in guide
+    assert "[Get a DID-LLM](/get-did)" in guide
     assert "Values from your responses" in guide
     assert "15 minutes of step 2" in guide and "5 minutes of step 5" in guide
     operations = {
@@ -218,7 +218,7 @@ def test_staging_keeps_its_own_guide_and_the_panel_on_the_advanced_page(
     staging_client: TestClient,  # noqa: F811
 ) -> None:
     guide = staging_client.get("/openapi.json").json()["info"]["description"]
-    assert "### Register a DID from this page" not in guide
+    assert "### Register a DID-LLM from this page" not in guide
     assert "Try the whole registration from this page" in guide
     advanced = staging_client.get("/docs/advanced")
     assert advanced.headers["content-security-policy"] == docs_pages.SWAGGER_CSP
@@ -232,13 +232,13 @@ def test_the_advanced_page_opens_like_the_guided_pages(
     production = client.get("/docs/advanced").text
     assert "<h1>Advanced: API docs</h1>" in production
     assert "Every step here is real:" in production
-    assert 'href="/get-did">Easiest: Get a DID' in production
+    assert 'href="/get-did">Easiest: Get a DID-LLM' in production
     assert f'href="{STAGING_GUIDED_PAGE}"' in production
     for section in ("id=adv-steps", "id=adv-guide", "All endpoints"):
         assert section in production
     staging = staging_client.get("/docs/advanced").text
     assert "Staging server." in staging and 'href="/docs">Easiest: the guided test' in staging
-    assert 'href="/get-did">Get a DID with your wallet' in staging
+    assert 'href="/get-did">Get a DID-LLM with your wallet' in staging
     assert 'href="https://api.debitmydata.io/docs/advanced">The real API (production)' in staging
 
 

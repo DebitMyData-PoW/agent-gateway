@@ -13,7 +13,7 @@ const OFFLINE = `<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>Offline · DebitMyData</title></head>
 <body>
 <h1>You're offline</h1>
-<p>Getting a DID needs an internet connection. Connect, then open the app again.</p></body></html>`;
+<p>Getting a DID-LLM needs an internet connection. Connect, then open the app again.</p></body></html>`;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

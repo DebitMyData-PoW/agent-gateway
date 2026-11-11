@@ -254,7 +254,8 @@ def _not_reserved(name: str) -> None:
 def _reserved(name: str) -> None:
     raise NameRefused(
         f"{name!r} looks like one of DebitMyData's own names, which are reserved for its own "
-        f"DIDs. Choose another name, or write to {CONTACT} to register a DID for DebitMyData."
+        f"DID-LLMs. Choose another name, or write to {CONTACT} to register a DID-LLM for "
+        "DebitMyData."
     )
 
 

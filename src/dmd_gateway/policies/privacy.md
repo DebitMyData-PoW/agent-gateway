@@ -23,7 +23,7 @@ DebitMyData's websites and apps are covered by the
   transaction references you report, and, for x402, the signed payment (which names the
   paying wallet).
 - In an inference donation: the amount, the signed payment (which names the paying wallet),
-  and the donor name and DID if you give them. They appear in your donation receipt, which
+  and the donor name and DID-LLM if you give them. They appear in your donation receipt, which
   anyone holding its `purchase_id` can read; they are not otherwise published.
 
 **What we see on blockchains**
@@ -42,10 +42,10 @@ details.
 
 ## What we publish
 
-To make a DID work, some data is public by design: anyone can read it, and it cannot be made
+To make a DID-LLM work, some data is public by design: anyone can read it, and it cannot be made
 private again once published.
 
-- The DID document: your DID and its controllers (public key and/or wallet address).
+- The DID-LLM document: your DID-LLM and its controllers (public key and/or wallet address).
 - The identity record: display name, participant type, controllers, status, registration
   ID, credentials and entitlements.
 - The signed credential: all of the above, plus the payment it records (asset, network,
@@ -56,7 +56,7 @@ happy to make public.
 
 ## Why we use it
 
-- To quote, verify payments and issue DIDs, credentials and entitlements.
+- To quote, verify payments and issue DID-LLMs, credentials and entitlements.
 - To keep the gateway secure and available: request limits, abuse prevention, fraud
   checks and troubleshooting.
 - To keep an accurate, permanent record of payments and registrations for accounting,
@@ -96,9 +96,9 @@ network (jsDelivr), which sees your IP address when you open it.
 
 You can ask us what data we hold about you, ask us to correct it, or object to how we use
 it, by writing to <info@debitmydata.com>. Some data cannot be deleted: what is on blockchains,
-and the records that back an issued DID and its payment. We can deactivate a DID at your
-request (see the [DID policy]({{ base_url }}/policies/did)); its record is then kept but the
-DID no longer resolves. Depending on where you live, you may also have the right to
+and the records that back an issued DID-LLM and its payment. We can deactivate a DID-LLM at your
+request (see the [DID-LLM policy]({{ base_url }}/policies/did)); its record is then kept but the
+DID-LLM no longer resolves. Depending on where you live, you may also have the right to
 complain to a data protection authority.
 
 ## Children

@@ -93,8 +93,8 @@
       deadline: true,
       when: (body) => Boolean(body.payment_signature),
     },
-    { path: "did", label: "Your DID" },
-    { path: "did_document_url", label: "DID document", link: true, goes: "Open it in your browser" },
+    { path: "did", label: "Your DID-LLM" },
+    { path: "did_document_url", label: "DID-LLM document", link: true, goes: "Open it in your browser" },
     { path: "credential_url", label: "Signed credential", link: true },
     { path: "payment_response.transaction", label: "USDC payment transaction" },
   ];
@@ -864,7 +864,7 @@
             finishOutside(entry);
           },
         },
-        "Open your DID document ↗"
+        "Open your DID-LLM document ↗"
       );
     }
     // Outside this page (paying, signing): its card at the top says what to do.
@@ -957,7 +957,7 @@
       const link = element(
         "a",
         { class: "adv-button big", href: kept.get("did_document_url").value, target: "_blank", rel: "noopener" },
-        "Open your DID document"
+        "Open your DID-LLM document"
       );
       link.addEventListener("click", () => finishOutside(entry));
       return link;
@@ -1025,7 +1025,7 @@
     if (!next) {
       const again = element("button", { type: "button", class: "adv-button secondary small" }, "Start over");
       again.addEventListener("click", startAgain);
-      cards.push(element("li", { class: "adv-step all-done" }, element("p", {}, "✓ All steps done. To register another DID: ", again)));
+      cards.push(element("li", { class: "adv-step all-done" }, element("p", {}, "✓ All steps done. To register another DID-LLM: ", again)));
     }
     cardList.replaceChildren(...cards);
   }
@@ -1077,7 +1077,7 @@
           null,
           React.createElement(
             "span",
-            { className: "vp-step-badge", title: `Step ${number} of the DID registration` },
+            { className: "vp-step-badge", title: `Step ${number} of the DID-LLM registration` },
             `Step ${number}`
           ),
           focused ? React.createElement("span", { className: "dmd-focus-mark" }) : null,

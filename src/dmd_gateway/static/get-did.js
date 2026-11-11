@@ -19,10 +19,10 @@
   // they pay from, but a DID is controlled by an Ethereum-style wallet or an agent's key.
   const DMD_ADDRESS = /^(dm|td|dmrt)1[02-9ac-hj-np-z]{6,}$/i;
   const DMD_HINT =
-    "This is a DMD address: you don't need one here. At step 2 the page gives you the amount and the address to pay, from any DMD wallet. Here, give the wallet the DID will belong to: an Ethereum-style wallet (0x…), or choose “My agent's public key”.";
+    "This is a DMD address: you don't need one here. At step 2 the page gives you the amount and the address to pay, from any DMD wallet. Here, give the wallet the DID-LLM will belong to: an Ethereum-style wallet (0x…), or choose “My agent's public key”.";
   // A wallet is not required: the DID needs an owner, a wallet of any kind (0x…) or an agent's key.
   const NO_OWNER =
-    "Every DID needs an owner before step 2 opens: type the 0x… address of any Ethereum-style wallet (MetaMask, Coinbase Wallet, Rabby, Trust Wallet, a hardware wallet…; it needs no USDC or other balance), or choose “My agent's public key” above.";
+    "Every DID-LLM needs an owner before step 2 opens: type the 0x… address of any Ethereum-style wallet (MetaMask, Coinbase Wallet, Rabby, Trust Wallet, a hardware wallet…; it needs no USDC or other balance), or choose “My agent's public key” above.";
 
   const form = $("#details");
   const nameInput = $("#name");
@@ -304,6 +304,12 @@
 
   // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
   const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
+  // Card and PayPal, coming for people (DebitMyData's Stripe and PayPal accounts): shown greyed
+  // after the coins until the gateway offers them, then the real option takes their place.
+  const LATER = [
+    { id: "card-soon", name: "Debit or credit card", help: "Visa, Mastercard and other cards, through Stripe. Coming to this page soon.", offered: (option) => /^(card|stripe)/.test(option.id) },
+    { id: "paypal-soon", name: "PayPal", help: "Your PayPal account. Coming to this page soon.", offered: (option) => /^paypal/.test(option.id) },
+  ];
 
   async function loadOptions() {
     const result = await call("GET", "/v1/payment-options?service=did_registration").catch(() => null);
@@ -318,9 +324,11 @@
     // USDC not switched on yet (production): shown greyed, first, so that people know it is
     // coming. Only on this page: the API lists what can be paid with now, for agents to use.
     if (!open.some((option) => option.asset === "USDC")) open.unshift(USDC_SOON);
+    for (const later of LATER) if (!open.some(later.offered)) open.push(later);
     for (const option of open) {
+      const soon = option === USDC_SOON || LATER.includes(option);
       // USDC is paid by an x402 client when registering: not on this page yet.
-      const onPage = option !== USDC_SOON && option.payment_protocol !== "x402";
+      const onPage = !soon && option.payment_protocol !== "x402";
       const radio = element("input", { type: "radio", name: "option", value: option.id, disabled: !onPage, checked: onPage && first });
       if (onPage) first = false;
       const help = onPage
@@ -329,7 +337,9 @@
           : `Pay in ${option.asset}.`
         : option === USDC_SOON
           ? "The US-dollar stablecoin. Coming to this page soon: for now, pay with DMD."
-          : "Coming to this page soon. Agents can already pay with it through the API.";
+          : LATER.includes(option)
+            ? option.help
+            : "Coming to this page soon. Agents can already pay with it through the API.";
       optionsBox.append(
         element(
           "label",
@@ -370,7 +380,7 @@
 
   function readDetails() {
     const name = nameInput.value.trim();
-    if (!name) return { error: "Give the DID a name." };
+    if (!name) return { error: "Give the DID-LLM a name." };
     const option = form.querySelector("input[name=option]:checked");
     if (!option) return { error: "Choose how to pay." };
     const request = { display_name: name, participant_type: kindSelect.value, preferred_payment_option: option.value };
@@ -378,13 +388,13 @@
     if (controllerChoice() === "wallet") {
       const address = (wallet ? wallet.address : walletAddress.value).trim();
       if (!address) return { error: NO_OWNER, focus: walletAddress };
-      if (DMD_ADDRESS.test(address)) return { error: "Use an Ethereum-style address (0x…) here: a DMD address can't hold a DID (see the note above).", focus: walletAddress };
+      if (DMD_ADDRESS.test(address)) return { error: "Use an Ethereum-style address (0x…) here: a DMD address can't hold a DID-LLM (see the note above).", focus: walletAddress };
       if (!WALLET_ADDRESS.test(address)) return { error: addressProblem(address), focus: walletAddress };
       request.controller_wallet_address = address;
       controller = { kind: "wallet", value: address };
     } else {
       const key = publicKey.value.trim();
-      if (!key) return { error: "Every DID needs an owner: paste the agent's public key (ed25519:z6Mk…), or choose “My wallet” above.", focus: publicKey };
+      if (!key) return { error: "Every DID-LLM needs an owner: paste the agent's public key (ed25519:z6Mk…), or choose “My wallet” above.", focus: publicKey };
       if (!PUBLIC_KEY.test(key)) return { error: "The public key should look like ed25519:z6Mk… (from your agent).", focus: publicKey };
       request.controller_public_key = key;
       controller = { kind: "key", value: key };
@@ -441,7 +451,7 @@
     form.hidden = true;
     const who = state.controller.kind === "wallet" ? `wallet ${short(state.controller.value)}` : `key ${short(state.controller.value)}`;
     body(1).replaceChildren(
-      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID"), ` · controlled by your ${who} · paid in ${state.asset || "DMD"}`),
+      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · paid in ${state.asset || "DMD"}`),
       element("p", { class: "small" }, "Your registration ID (support can find your registration with it): ", element("code", {}, state.registrationId), " ", copyButton(state.registrationId))
     );
   }
@@ -466,7 +476,7 @@
         "ul",
         { class: "rules" },
         element("li", {}, "In one payment, from any DMD wallet."),
-        element("li", {}, "Exactly this amount: with less, the DID cannot be issued."),
+        element("li", {}, "Exactly this amount: with less, the DID-LLM cannot be issued."),
         element("li", {}, "Before the time runs out (see the countdown).")
       ),
       element("div", { class: "actions" }, status, check),
@@ -544,7 +554,7 @@
         delete deadlines.quote;
         tick();
         status.className = "status bad";
-        status.textContent = `The payment received (${payment.amount_received} ${state.asset}) is less than the amount due (${payment.amount_due} ${state.asset}), so the DID cannot be issued. Contact support with your registration ID for a refund (see the refund policy).`;
+        status.textContent = `The payment received (${payment.amount_received} ${state.asset}) is less than the amount due (${payment.amount_due} ${state.asset}), so the DID-LLM cannot be issued. Contact support with your registration ID for a refund (see the refund policy).`;
         return;
       case "expired": {
         delete deadlines.quote;
@@ -598,8 +608,8 @@
         "p",
         {},
         isWallet
-          ? `Sign this message with your wallet ${short(state.controller.value)} to prove the DID is yours. Signing is free: it sends nothing.`
-          : "Sign this message with your agent's key (Ed25519) to prove the DID is yours."
+          ? `Sign this message with your wallet ${short(state.controller.value)} to prove the DID-LLM is yours. Signing is free: it sends nothing.`
+          : "Sign this message with your agent's key (Ed25519) to prove the DID-LLM is yours."
       ),
       element("pre", { class: "message" }, challenge.message),
       element("div", { class: "actions" }, copyButton(challenge.message, "Copy the message")),
@@ -685,7 +695,7 @@
   async function register() {
     show(4);
     const container = body(4);
-    container.replaceChildren(element("p", { class: "status busy" }, "Issuing your DID…"));
+    container.replaceChildren(element("p", { class: "status busy" }, "Issuing your DID-LLM…"));
     const result = await call("POST", "/v1/dids/registrations", { registration_intent_id: state.registrationId }).catch(() => null);
     if (!result || (result.status !== 201 && result.status !== 200)) {
       container.replaceChildren(element("p", { class: "status bad" }, result ? problem(result) : "Could not reach the gateway."));
@@ -701,14 +711,14 @@
     tick();
     state = null;
     save();
-    const open = element("a", { class: "big", href: issued.did_document_url, target: "_blank", rel: "noopener" }, "Open your DID document");
+    const open = element("a", { class: "big", href: issued.did_document_url, target: "_blank", rel: "noopener" }, "Open your DID-LLM document");
     container.replaceChildren(
       element(
         "div",
         { class: "result" },
-        element("h2", {}, "✓ Your DID is ready"),
+        element("h2", {}, "✓ Your DID-LLM is ready"),
         element("div", { class: "did" }, issued.did),
-        element("div", { class: "actions" }, copyButton(issued.did, "Copy the DID")),
+        element("div", { class: "actions" }, copyButton(issued.did, "Copy the DID-LLM")),
         open,
         element(
           "div",
@@ -718,7 +728,7 @@
         )
       )
     );
-    announce("Your DID is ready.");
+    announce("Your DID-LLM is ready.");
     requestAnimationFrame(() => open.focus({ preventScroll: true }));
   }
 
@@ -738,7 +748,7 @@
       return;
     }
     resumeBox.hidden = false;
-    const go = element("button", { type: "button" }, registration.did ? "Show my DID" : "Continue");
+    const go = element("button", { type: "button" }, registration.did ? "Show my DID-LLM" : "Continue");
     const fresh = element("button", { type: "button", class: "secondary" }, "Start a new one");
     go.addEventListener("click", () => {
       resumeBox.hidden = true;
@@ -754,7 +764,7 @@
       resumeBox.hidden = true;
     });
     resumeBox.replaceChildren(
-      element("p", {}, registration.did ? "Your DID was issued: " : "You have a registration in progress: ", element("strong", {}, previous.name || ""), ` (${short(previous.registrationId)}).`),
+      element("p", {}, registration.did ? "Your DID-LLM was issued: " : "You have a registration in progress: ", element("strong", {}, previous.name || ""), ` (${short(previous.registrationId)}).`),
       element("div", { class: "actions" }, go, fresh)
     );
   }

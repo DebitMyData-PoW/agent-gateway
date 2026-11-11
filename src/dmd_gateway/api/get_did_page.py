@@ -1,7 +1,7 @@
-"""The "Get a DID" page: a DID registration for people, in the debitmydata.com look.
+"""The "Get a DID-LLM" page: a DID-LLM registration for people, in the debitmydata.com look.
 
 It takes a visitor through the registration's steps (details and quote, payment, proof of
-control, the DID), filling each one in from the previous answers. The visitor pays from their
+control, the DID-LLM), filling each one in from the previous answers. The visitor pays from their
 own wallet and signs one message with it (EIP-6963 browser wallets, or a signature pasted from
 another wallet or the agent's own tools). The page never asks for a private key or a recovery
 phrase and never sends money. It keeps the registration's IDs in the browser so that a reload
@@ -38,6 +38,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand, docs_pages
+from dmd_gateway.settings import Settings
 
 router = APIRouter(include_in_schema=False)  # every server
 production_router = APIRouter(include_in_schema=False)  # outside staging: /docs leads here
@@ -45,6 +46,7 @@ production_router = APIRouter(include_in_schema=False)  # outside staging: /docs
 PAGE_PATH = brand.GET_DID_PATH
 DOCS_PATH = "/docs"
 ADVANCED_PATH = brand.ADVANCED_PATH
+MCP_PATH = "/mcp"  # the MCP server (mcp_server.MCP_PATH)
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
 # The QR code encoder (qr.js) runs first: step 2 draws the DMD payment link with it.
@@ -63,14 +65,14 @@ FONTS = (
 APP_ROOT = "/"
 MANIFEST_PATH = "/manifest.webmanifest"
 WORKER_PATH = "/sw.js"
-APP_NAME = "DID DebitMyData"  # "DID" first: what people see under the icon
-APP_SHORT_NAME = "DID DebitMyData"
+APP_NAME = "DID-LLM DebitMyData"  # "DID-LLM" first: what people see under the icon
+APP_SHORT_NAME = "DID-LLM DebitMyData"
 THEME_COLOR = "#640000"  # the top bar's red
 APP_ICONS = ("icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png")
 # Raised whenever the icons change, so installed apps and browsers fetch the new ones.
 ICON_VERSION = "3"
 DESCRIPTION = (
-    "Get your DebitMyData DID: a verifiable identity for an AI agent, a bot, a person or an "
+    "Get your DebitMyData DID-LLM: a verifiable identity for an AI agent, a bot, a person or an "
     "organization, with a credential signed by DebitMyData."
 )
 # What the app's service worker keeps, to open without a network.
@@ -135,7 +137,7 @@ PARTICIPANTS = (
 _GET_DMD = """<div id=get-dmd class=explain hidden>
 <h3>About DMD</h3>
 <p>DMD is the native coin of the DebitMyData Proof-of-Work chain. Here it is simply one way to
-pay for your DID: a payment method, not an investment.</p>
+pay for your DID-LLM: a payment method, not an investment.</p>
 <h4>How to get DMD</h4>
 <ol>
 <li><strong>Mine it.</strong> Point SHA-256 mining hardware, your own or rented by the hour, at
@@ -213,13 +215,13 @@ WHAT_IS_A_DID = (
     (
         "globe",
         "Its own address",
-        "Your DID is a web address with a public document that tells anyone how to check "
+        "Your DID-LLM is a web address with a public document that tells anyone how to check "
         "that it is really you.",
     ),
     (
         "key",
         "You hold the key",
-        "Only the owner of the wallet or key can prove they control the DID. DebitMyData "
+        "Only the owner of the wallet or key can prove they control the DID-LLM. DebitMyData "
         "never sees a private key.",
     ),
     (
@@ -231,7 +233,8 @@ WHAT_IS_A_DID = (
     (
         "shield",
         "Trust without passwords",
-        "Agents and apps recognise each other by their DIDs, with no account or password to steal.",
+        "Agents and apps recognise each other by their DID-LLMs, with no account or password "
+        "to steal.",
     ),
 )
 WHO_IT_IS_FOR = (
@@ -244,7 +247,7 @@ WHO_IT_IS_FOR = (
     (
         "person",
         "People",
-        "Get a personal DID right here in four steps, with your own wallet or key.",
+        "Get a personal DID-LLM right here in four steps, with your own wallet or key.",
     ),
     (
         "building",
@@ -256,12 +259,12 @@ HOW_IT_WORKS = (
     ("Tell us about it", "A name, what it is for, and the wallet or key that will own it."),
     ("Pay $25", "Once, with the payment option you choose."),
     ("Prove it is yours", "Sign a one-time message with your wallet or key. Nothing is sent."),
-    ("Get your DID", "Your DID document and signed credential, ready to use."),
+    ("Get your DID-LLM", "Your DID-LLM document and signed credential, ready to use."),
 )
 
 
 def _landing() -> str:
-    """What a DID is, before the steps: numbers, what it is, who it is for, how it works."""
+    """What a DID-LLM is, before the steps: numbers, what it is, who it is for, how it works."""
     stats = "".join(
         f"<li class=stat><span class=icon>{ICONS[icon]}</span><b>{number}</b>"
         f"<span class=label>{label}</span></li>"
@@ -273,17 +276,18 @@ def _landing() -> str:
     )
     return f"""<ul class=stats aria-label="In numbers">{stats}</ul>
 <section class=intro id=what aria-labelledby=what-title>
-<h2 class=section-title id=what-title>What is a <span class=accent>DID</span>?</h2>
-<p class=lead>DID stands for Decentralized Identifier, an open standard of the W3C, the
-organization behind web standards. Think of it as an ID card for the internet, made for people
-and for software alike.</p>
+<h2 class=section-title id=what-title>What is a <span class=accent>DID-LLM</span>?</h2>
+<p class=lead>A DID-LLM is DebitMyData's identity for AI agents, the LLMs behind them, and
+people. It is a Decentralized Identifier (DID), an open standard of the W3C, the organization
+behind web standards. Think of it as an ID card for the internet, made for people and for
+software alike.</p>
 {_cards(WHAT_IS_A_DID)}
 </section>
 <section class=intro id=agents aria-labelledby=agents-title>
 <h2 class=section-title id=agents-title>Why <span class=accent>AI agents</span> need one</h2>
 <p class=lead>AI agents are programs that act on their own, often built on large language
 models (LLMs), the technology behind AI assistants. They search, buy and talk to other agents
-for the people and companies they work for. A DID lets an agent prove which agent it is and who
+for the people and companies they work for. A DID-LLM lets an agent prove which agent it is and who
 stands behind it, so that others can trust it.</p>
 {_cards(WHO_IT_IS_FOR, "features three")}
 </section>
@@ -335,12 +339,21 @@ INSTALL_DIALOG = (
 )
 
 
-def _body(staging: bool, app: bool = False) -> str:
+def _for_agents(mcp_url: str) -> str:
+    """For an AI agent reading this page: where to register by itself (no script needed)."""
+    return (
+        "<p class=for-agents><strong>AI agent or bot?</strong> Register by yourself: read "
+        f'<a href="{brand.LLMS_PATH}">{brand.LLMS_PATH}</a>, or connect to the MCP server at '
+        f"<code>{mcp_url}</code>.</p>"
+    )
+
+
+def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
     )
     staging_note = (
-        "<p class=staging><strong>Staging server.</strong> Test networks and test DIDs: pay "
+        "<p class=staging><strong>Staging server.</strong> Test networks and test DID-LLMs: pay "
         "with the <strong>Pay with test coins</strong> button, and sign with your own wallet "
         "(signing sends nothing).</p>"
         if staging
@@ -355,36 +368,37 @@ def _body(staging: bool, app: bool = False) -> str:
 <main>
 <section class=hero>
 <p class=eyebrow>Identity for the agentic web</p>
-<h1>Get your <span class=accent>DebitMyData</span> DID</h1>
-<p>A DID is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
+<h1>Get your <span class=accent>DebitMyData</span> DID-LLM</h1>
+<p>A DID-LLM is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
 bot, a <strong>person</strong> or an <strong>organization</strong> is, with a credential signed
 by DebitMyData that anyone can check.</p>
 <ul class=perks><li>Signed by DebitMyData</li><li>W3C standard</li><li>No account
 needed</li></ul>
-<p class=cta><a class="button go" href="#start">Get my DID</a>
-<a class="button ghost" href="#what">What is a DID?</a></p>
+<p class=cta><a class="button go" href="#start">Get my DID-LLM</a>
+<a class="button ghost" href="#what">What is a DID-LLM?</a></p>
 <span class=price id=price>$25 USD, paid once</span>
+{_for_agents(mcp_url)}
 </section>
 {staging_note}
 <div id=resume class=resume hidden aria-live=polite></div>
 {_landing()}
 <section class=start id=start aria-labelledby=start-title>
-<h2 class=section-title id=start-title>Get your <span class=accent>DID</span></h2>
+<h2 class=section-title id=start-title>Get your <span class=accent>DID-LLM</span></h2>
 <p class=safe><strong>Safe by design:</strong> this page never asks for a private key or a
 recovery phrase, and never sends money. You pay and sign in your own wallet.</p>
 </section>
 
 <section class="card step current" id=s1>
-<div class=step-head><span class=num>1</span><h2>About your DID</h2></div>
+<div class=step-head><span class=num>1</span><h2>About your DID-LLM</h2></div>
 <div class=body>
 <form id=details novalidate>
-<label class=field for=name>Name<small>Shown in the DID document, e.g. the agent's name.</small>
+<label class=field for=name>Name<small>Shown in the DID-LLM document, e.g. the agent's name.</small>
 <input type=text id=name maxlength=100 autocomplete=off
 placeholder="e.g. My research agent"></label>
 <label class=field for=kind>What is it for?<select id=kind>{participants}</select></label>
 <fieldset>
 <legend>Who owns it</legend>
-<p class=small>Every DID needs an owner: a wallet or an agent's key. The owner proves it once
+<p class=small>Every DID-LLM needs an owner: a wallet or an agent's key. The owner proves it once
 by signing one message (free: signing sends nothing).</p>
 <label class=choice><input type=radio name=controller value=wallet checked>
 <strong>My wallet</strong><span class=tag>Recommended</span>
@@ -411,13 +425,16 @@ placeholder="ed25519:z6Mk…"></label>
 </fieldset>
 <fieldset>
 <legend>How to pay</legend>
-<div id=options><p class=small>Loading the payment options…</p></div>
+<div id=options><p class=small>Loading the payment options…</p>
+<noscript><p class=small>Paying on this page needs JavaScript. AI agents:
+<a href="/llms.txt">/llms.txt</a> explains how to register and pay through the API.</p></noscript>
+</div>
 {_GET_DMD}
 </fieldset>
 <label class=check><input type=checkbox id=terms><span>I accept the
 <a href="/policies/terms" target=_blank>terms</a> and the
 <a href="/policies/payment-methods" target=_blank>payment policy</a>, and I understand that a
-DID registration is <a href="/policies/refunds" target=_blank>not refundable</a>.</span></label>
+DID-LLM registration is <a href="/policies/refunds" target=_blank>not refundable</a>.</span></label>
 <p class=error id=details-error hidden role=alert></p>
 <button type=submit id=get-quote>Get my quote</button>
 </form>
@@ -433,7 +450,7 @@ with any DMD wallet.</p><div class=body></div>
 <p class="small locked">Opens once the payment is confirmed.</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s4>
-<div class=step-head><span class=num>4</span><h2>Your DID</h2></div>
+<div class=step-head><span class=num>4</span><h2>Your DID-LLM</h2></div>
 <p class="small locked">Opens once the owner has signed.</p><div class=body></div>
 </section>
 <p id=announcer class=sr-only aria-live=polite></p>
@@ -442,7 +459,7 @@ with any DMD wallet.</p><div class=body></div>
 """.strip()
 
 
-def page_html(staging: bool, app: bool = False) -> str:
+def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
         f'<link rel=manifest href="{MANIFEST_PATH}">'
@@ -458,11 +475,11 @@ def page_html(staging: bool, app: bool = False) -> str:
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
-        "<title>Get your DID · DebitMyData</title>"
+        "<title>Get your DID-LLM · DebitMyData</title>"
         f'<meta name=description content="{DESCRIPTION}">'
         '<link rel=icon href="/favicon.png">'
         f"{installable}"
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_body(staging, app)}"
+        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_body(staging, app, mcp_url)}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -474,9 +491,15 @@ def is_app(request: Request) -> bool:
     return bool(host) and request.headers.get("host", "").strip().lower() == host
 
 
+def mcp_url(settings: Settings) -> str:
+    """The MCP server's address, as agents reach it (the same as /v1/discovery's mcp_url)."""
+    return settings.mcp_url or f"{settings.public_base_url.rstrip('/')}{MCP_PATH}"
+
+
 def _render(request: Request, app: bool) -> HTMLResponse:
-    staging = bool(request.app.state.settings.staging_test_tools)
-    return HTMLResponse(page_html(staging, app), headers=HEADERS)
+    settings = request.app.state.settings
+    staging = bool(settings.staging_test_tools)
+    return HTMLResponse(page_html(staging, app, mcp_url(settings)), headers=HEADERS)
 
 
 def _page(request: Request) -> Response:

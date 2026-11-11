@@ -1,9 +1,9 @@
-"""The debitmydata.com look shared by the gateway's pages for people: the "Get a DID" page,
+"""The debitmydata.com look shared by the gateway's pages for people: the "Get a DID-LLM" page,
 the staging guided test page, the advanced API docs (Swagger UI) and the policy pages.
 
 ``CSS`` (the Mada font, served by this gateway, and the brand colours) goes at the start of
 each page's own inline style, and ``header`` and ``footer`` give every page the same top bar
-and footer. The links are the same on every page: "Get a DID" at /get-did, the guided test
+and footer. The links are the same on every page: "Get a DID-LLM" at /get-did, the guided test
 (staging only) at /docs, the advanced API docs at /docs/advanced and the policies. On a
 phone the top bar's links fold into a menu button; it needs no script (a checkbox and its
 label), so it works under every page's Content-Security-Policy. The "back to top" button is
@@ -65,6 +65,8 @@ GET_THE_APP_BUTTON = (
     f'<a class=get-app href="{GET_THE_APP}" target=_blank rel=noopener>{_PHONE_ICON}Get the app</a>'
 )
 ADVANCED_PATH = "/docs/advanced"
+# For AI agents: how to register and pay by themselves, in plain text (llms.txt convention).
+LLMS_PATH = "/llms.txt"
 POLICIES_PATH = "/policies"
 # For every HTML page: Cloudflare must not change it on the way. Its email protection rewrites
 # mailto: links into "[email protected]" and needs a script the pages' CSP refuses, and any
@@ -87,7 +89,7 @@ POLICY_LINKS = (
     ("/policies/privacy", "Privacy"),
     ("/policies/refunds", "Refunds"),
     ("/policies/payment-methods", "Payment methods"),
-    ("/policies/did", "DIDs"),
+    ("/policies/did", "DID-LLMs"),
     ("/policies/security", "Security"),
 )
 # DebitMyData's other sites, in the footer.
@@ -101,7 +103,7 @@ SITE_LINKS = (
 
 
 def _pages(staging: bool, get_did: str = GET_DID_PATH) -> list[tuple[str, str, str]]:
-    pages = [("get-did", get_did, "Get a DID")]
+    pages = [("get-did", get_did, "Get a DID-LLM")]
     if staging:
         pages.append(("guided", GUIDED_PATH, "Guided test"))
     pages += [
@@ -124,7 +126,7 @@ _PRODUCTION_PAGE = {
 def header(current: str, staging: bool, get_did: str = GET_DID_PATH) -> str:
     """The top bar: the DebitMyData name (to this site's home) and the gateway's pages, with
     ``current`` (get-did, guided, advanced or policies) marked; on staging, a link to the
-    same page on the real API. ``get_did`` is where "Get a DID" is (the installable app
+    same page on the real API. ``get_did`` is where "Get a DID-LLM" is (the installable app
     serves it at its root). On a phone the pages fold into the menu button."""
     links = "".join(
         f'<a class=on aria-current=page href="{path}">{label}</a>'
@@ -166,13 +168,17 @@ def footer(staging: bool = False, get_did: str = GET_DID_PATH, to_top: bool = Tr
     "Get the app" button, the developers' links, the policies, DebitMyData's other sites and
     the contact address. ``to_top`` adds the "back to top" button (the API docs page has its
     own)."""
-    pages = [(get_did, "Get a DID")]
+    pages = [(get_did, "Get a DID-LLM")]
     if staging:
         pages.append((GUIDED_PATH, "Guided test"))
     pages.append((POLICIES_PATH, "All policies"))
-    developers = [(ADVANCED_PATH, "API docs"), (SOURCE_CODE, "Source code")]
+    developers = [
+        (ADVANCED_PATH, "API docs"),
+        (LLMS_PATH, "For AI agents"),
+        (SOURCE_CODE, "Source code"),
+    ]
     columns = (
-        _column("Get a DID", pages, GET_THE_APP_BUTTON)
+        _column("Get a DID-LLM", pages, GET_THE_APP_BUTTON)
         + _column("Developers", developers)
         + _column("Policies", list(POLICY_LINKS))
         + _column("DebitMyData", list(SITE_LINKS))
@@ -180,7 +186,7 @@ def footer(staging: bool = False, get_did: str = GET_DID_PATH, to_top: bool = Tr
     )
     return (
         f'<footer class="site-footer"><div class=in><div class=cols>{columns}</div>'
-        "<p class=legal>DebitMyData Agent Gateway · DIDs and payments for agents and people"
+        "<p class=legal>DebitMyData Agent Gateway · DID-LLMs and payments for agents and people"
         f"</p></div></footer>{TO_TOP if to_top else ''}"
     )
 

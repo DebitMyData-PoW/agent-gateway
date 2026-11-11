@@ -31,6 +31,7 @@ discovery_terms:
   - DebitMyData
   - Agentics Social Spaces
   - DID
+  - DID-LLM
   - decentralized identity
   - agent identity
   - agentic identity
@@ -52,12 +53,12 @@ discovery_terms:
 
 services:
   did_registration:
-    title: DebitMyData Agentic DID Registration
+    title: DebitMyData Agentic DID-LLM Registration
     # Public wording as specified in the directive ("Use accurate public wording").
     description: >-
-      Register a DebitMyData DID for an autonomous agent, AI agent, bot, agenticbot, claw,
+      Register a DebitMyData DID-LLM for an autonomous agent, AI agent, bot, agenticbot, claw,
       digital twin, human, organization, or approved digital entity.
-      DebitMyData Agentic DID Registration has a commercial fee of $25.00 USD. Agents may
+      DebitMyData Agentic DID-LLM Registration has a commercial fee of $25.00 USD. Agents may
       request a quote and pay using an approved DebitMyData native DMD wallet,
       Coinbase-compatible x402 payment method, or another supported cryptocurrency wallet
       and asset. Available payment methods are returned dynamically by the DebitMyData
@@ -76,7 +77,7 @@ services:
       - solana_usdc
     # Version of the terms an agent accepts with each quote: the version of the terms page
     # served at /policies/terms (DEC-09), which the tests keep equal.
-    terms_version: "2026-11-03"
+    terms_version: "2026-11-10"
     # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
     # a full https URL points elsewhere.
     policy_urls:
@@ -109,7 +110,7 @@ donations:
     # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
     recipients:
       x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
-    terms_version: "2026-11-03"
+    terms_version: "2026-11-10"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -128,9 +129,9 @@ products:
   bottybotty_entry:
     title: BottyBotty Entry
     description: >-
-      BottyBotty for an Agentic that has a DebitMyData DID, Entry tier, provided through
-      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
-      signed by DebitMyData and the bottybotty_entry entitlement on the DID. A DID owns one
+      BottyBotty for an Agentic that has a DebitMyData DID-LLM, Entry tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID-LLM for good, with a receipt
+      signed by DebitMyData and the bottybotty_entry entitlement on the DID-LLM. A DID-LLM owns one
       BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
     path: /v1/products/bottybotty-entry
     commercial_price:
@@ -144,7 +145,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-03"
+    terms_version: "2026-11-10"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -157,9 +158,9 @@ products:
   bottybotty_standard:
     title: BottyBotty Standard
     description: >-
-      BottyBotty for an Agentic that has a DebitMyData DID, Standard tier, provided through
-      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
-      signed by DebitMyData and the bottybotty_standard entitlement on the DID. A DID owns one
+      BottyBotty for an Agentic that has a DebitMyData DID-LLM, Standard tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID-LLM for good, with a receipt
+      signed by DebitMyData and the bottybotty_standard entitlement on the DID-LLM. A DID-LLM owns one
       BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
     path: /v1/products/bottybotty-standard
     commercial_price:
@@ -173,7 +174,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-03"
+    terms_version: "2026-11-10"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -186,9 +187,9 @@ products:
   bottybotty_premium:
     title: BottyBotty Premium
     description: >-
-      BottyBotty for an Agentic that has a DebitMyData DID, Premium tier, provided through
-      DebitMyData's BottyBotty APIs. Paid once and owned by the DID for good, with a receipt
-      signed by DebitMyData and the bottybotty_premium entitlement on the DID. A DID owns one
+      BottyBotty for an Agentic that has a DebitMyData DID-LLM, Premium tier, provided through
+      DebitMyData's BottyBotty APIs. Paid once and owned by the DID-LLM for good, with a receipt
+      signed by DebitMyData and the bottybotty_premium entitlement on the DID-LLM. A DID-LLM owns one
       BottyBotty tier at a time; moving to a higher tier costs only the difference in price.
     path: /v1/products/bottybotty-premium
     commercial_price:
@@ -202,7 +203,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-03"
+    terms_version: "2026-11-10"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms

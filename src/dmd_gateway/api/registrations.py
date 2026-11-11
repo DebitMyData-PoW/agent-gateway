@@ -1,8 +1,8 @@
-"""DID registration: controller challenges and proofs, issuance and registration status.
+"""DID-LLM registration: controller challenges and proofs, issuance and registration status.
 
     POST /v1/dids/registrations/{registration_intent_id}/controller-challenges
     POST /v1/dids/registrations/{registration_intent_id}/controller-proofs
-    POST /v1/dids/registrations                       (issue the DID)
+    POST /v1/dids/registrations                       (issue the DID-LLM)
     GET  /v1/dids/registrations/{registration_intent_id}
 
 The registration intent ID is random and only known to whoever requested the quote.
@@ -260,7 +260,7 @@ class IssuedRegistration(BaseModel):
     status: str
     identity_id: str
     did: str
-    did_status: str = Field(description="The DID's status now: active, suspended or revoked.")
+    did_status: str = Field(description="The DID-LLM's status now: active, suspended or revoked.")
     did_document_url: str
     identity_url: str
     credential_id: str
@@ -311,25 +311,25 @@ def _x402_context(request: Request) -> X402Context:
     "/dids/registrations",
     status_code=201,
     response_model=IssuedRegistration,
-    summary="Issue the DID once the payment is settled and the controller proof is verified",
+    summary="Issue the DID-LLM once the payment is settled and the controller proof is verified",
     description=(
         "For a quote paid in DMD, call this once the payment is settled and the controller "
         "proof verified. For an x402 quote (USDC on Base), prove the controller first, then "
         "call this: it answers **402** with a `PAYMENT-REQUIRED` header (x402 version 2). "
         "Call it again with your signed payment in the `PAYMENT-SIGNATURE` header; the "
-        "payment is settled, checked on chain, and the DID is issued in the same answer "
+        "payment is settled, checked on chain, and the DID-LLM is issued in the same answer "
         "(`PAYMENT-RESPONSE` header), or 202 if confirmations take longer. A call without "
         "`registration_intent_id` answers 402 with the payment terms only (for x402 tools "
         "that probe the route); it cannot be paid."
     ),
     responses={
-        200: {"description": "Already issued: the same DID and credential are returned."},
+        200: {"description": "Already issued: the same DID-LLM and credential are returned."},
         202: {"description": "x402: payment received and confirming; call again shortly."},
         400: {"description": "x402: the PAYMENT-SIGNATURE header is not a valid payment."},
         402: {"description": "x402: payment required, or the payment was refused."},
         404: {"description": "Unknown registration intent."},
         409: {"description": "Not ready: the response lists what is still missing."},
-        503: {"description": "DID issuance or the payment service is not available."},
+        503: {"description": "DID-LLM issuance or the payment service is not available."},
     },
 )
 def register(
@@ -417,7 +417,7 @@ class RegistrationStatus(BaseModel):
     identity_id: str | None
     did: str | None
     did_status: str | None = Field(
-        default=None, description="The DID's status now: active, suspended or revoked."
+        default=None, description="The DID-LLM's status now: active, suspended or revoked."
     )
     expires_at: datetime
 
@@ -440,7 +440,7 @@ def registration_status(
         state = evaluate(session, ctx, registration)
         blockers = list(state.blockers)
         if not ctx.available and state.identity is None:
-            blockers.append("DID issuance is not enabled on this gateway yet")
+            blockers.append("DID-LLM issuance is not enabled on this gateway yet")
         return RegistrationStatus(
             registration_intent_id=registration.id,
             status=registration.status,

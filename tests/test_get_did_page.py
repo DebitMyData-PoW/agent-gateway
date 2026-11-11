@@ -1,4 +1,4 @@
-"""The "Get a DID" page: production's docs page and /get-did everywhere, in the
+"""The "Get a DID-LLM" page: production's docs page and /get-did everywhere, in the
 debitmydata.com look, locked down by its Content-Security-Policy, and never asking for a
 private key."""
 
@@ -38,7 +38,7 @@ def _config(page: str) -> dict:
 def test_on_production_the_docs_address_leads_to_get_a_did(client: TestClient) -> None:
     response = client.get("/get-did")
     assert response.status_code == 200
-    assert "<h1>Get your <span class=accent>DebitMyData</span> DID</h1>" in response.text
+    assert "<h1>Get your <span class=accent>DebitMyData</span> DID-LLM</h1>" in response.text
     assert _config(response.text) == {"staging": False, "app": False}
     assert 'href="/docs/advanced"' in response.text  # the advanced option
     assert "Staging server." not in response.text  # the test-coin button is staging's
@@ -52,7 +52,7 @@ def test_on_staging_it_is_at_get_did_with_test_coins(staging_client: TestClient)
     page = staging_client.get("/get-did").text
     assert _config(page) == {"staging": True, "app": False}
     assert "Staging server." in page and 'href="/docs">Guided test' in page
-    assert "Try a DID registration" in staging_client.get("/docs").text  # still the guided test
+    assert "Try a DID-LLM registration" in staging_client.get("/docs").text  # still the guided test
 
 
 def test_only_the_page_own_script_style_and_font_may_run(client: TestClient) -> None:
@@ -128,7 +128,7 @@ def test_the_page_says_the_did_needs_an_owner_not_a_particular_wallet() -> None:
     # the signature pasted from the wallet app) or an agent's key, and the page says so.
     html = get_did_page.page_html(staging=False)
     assert "<legend>Who owns it</legend>" in html
-    assert "Every DID needs an owner: a wallet or an agent's key." in html
+    assert "Every DID-LLM needs an owner: a wallet or an agent's key." in html
     assert "No browser extension needed" in html
     assert "id=wallet-address-label" in html
     # the steps not open yet say when they open
@@ -136,7 +136,7 @@ def test_the_page_says_the_did_needs_an_owner_not_a_particular_wallet() -> None:
     assert "Opens after <strong>Get my quote</strong> at step 1" in html
     script = get_did_page._SCRIPT
     assert "It needs no balance (no USDC, no ETH)" in html
-    assert "Every DID needs an owner before step 2 opens: type the 0x… address" in script
+    assert "Every DID-LLM needs an owner before step 2 opens: type the 0x… address" in script
     assert "No wallet extension in this browser, and you don't need one" in script
     # a wrong address says what is wrong with it
     assert "characters an Ethereum-style address can't have" in script
@@ -273,11 +273,11 @@ def test_the_app_host_serves_the_page_at_its_root_with_what_installs_it(
         '<meta name=theme-color content="#640000">',
         '<link rel=apple-touch-icon href="/app/apple-touch-icon.png?v=3">',
         "<meta name=apple-mobile-web-app-capable content=yes>",
-        '<meta name=apple-mobile-web-app-title content="DID DebitMyData">',
+        '<meta name=apple-mobile-web-app-title content="DID-LLM DebitMyData">',
     ):
         assert tag in page
     # "Get a DID" in the top bar is the app's root; the old address leads there.
-    assert '<a class=on aria-current=page href="/">Get a DID</a>' in page
+    assert '<a class=on aria-current=page href="/">Get a DID-LLM</a>' in page
     moved = app_client.get("/get-did", follow_redirects=False)
     assert moved.status_code == 307 and moved.headers["location"] == "/"
     # The API the page calls is the same gateway.
@@ -292,7 +292,7 @@ def test_the_manifest_makes_the_root_an_app(app_client: TestClient) -> None:
     assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
     assert manifest["display"] == "standalone"
     # "DID" first: a home screen that shortens the name still shows what the app is for.
-    assert manifest["name"] == manifest["short_name"] == "DID DebitMyData"
+    assert manifest["name"] == manifest["short_name"] == "DID-LLM DebitMyData"
     sizes = {(icon["sizes"], icon["purpose"]) for icon in manifest["icons"]}
     assert {("192x192", "any"), ("512x512", "any"), ("512x512", "maskable")} <= sizes
     for icon in manifest["icons"] + [{"src": "/app/apple-touch-icon.png", "sizes": "180x180"}]:
@@ -403,7 +403,8 @@ def test_usdc_comes_first_and_dmd_is_explained() -> None:
     options = script.split("async function loadOptions()")[1].split("\n  }\n")[0]
     unless_offered = 'if (!open.some((option) => option.asset === "USDC")) open.unshift(USDC_SOON);'
     assert unless_offered in options
-    assert "const onPage = option !== USDC_SOON &&" in options
+    assert "const soon = option === USDC_SOON || LATER.includes(option);" in options
+    assert "const onPage = !soon &&" in options
     assert "disabled: !onPage" in options
     assert "Coming to this page soon: for now, pay with DMD." in options
     assert "What is DMD, and how do I get it?" in script and 'aria-controls": "get-dmd"' in script
@@ -415,6 +416,43 @@ def test_usdc_comes_first_and_dmd_is_explained() -> None:
     assert "not listed on any exchange yet" in guide
     # Links to other sites open in a new tab, without giving them this page.
     assert guide.count("target=_blank") == guide.count("rel=noopener") == 4
+
+
+def test_card_and_paypal_show_as_coming_soon_after_the_coins() -> None:
+    script = get_did_page._SCRIPT
+    options = script.split("async function loadOptions()")[1].split("\n  }\n")[0]
+    # Greyed after USDC and DMD, until the gateway offers them; then the real option is listed.
+    assert "for (const later of LATER) if (!open.some(later.offered)) open.push(later);" in options
+    later = script.split("const LATER = [")[1].split("];")[0]
+    assert '"Debit or credit card"' in later and "through Stripe" in later
+    assert '"PayPal"' in later
+    assert later.count("Coming to this page soon.") == 2
+    # Only on this page: the API keeps listing only what can be paid with now.
+    assert "card" not in json.dumps(get_did_page.PARTICIPANTS)
+
+
+def test_the_page_tells_ai_agents_where_to_register_by_themselves(client: TestClient) -> None:
+    page = client.get("/get-did").text
+    hero = page.split("<section class=hero>")[1].split("</section>")[0]
+    assert "AI agent or bot?" in hero and 'href="/llms.txt"' in hero
+    assert "<code>http://testserver/mcp</code>" in hero or "/mcp</code>" in hero
+    # Without a script, the payment step says where agents find the options.
+    assert "<noscript>" in page and "/llms.txt" in page.split("<noscript>")[1]
+    assert 'href="/llms.txt" target=_blank rel=noopener>For AI agents</a>' in page
+
+
+def test_llms_txt_explains_the_registration_for_agents(client: TestClient) -> None:
+    response = client.get("/llms.txt")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    text = response.text
+    assert text.startswith("# DebitMyData DID-LLM\n")
+    assert "MCP server (streamable HTTP): " in text and "/mcp" in text
+    assert "/v1/dids/registration-quotes" in text and "/controller-proofs" in text
+    assert "## Payment options open now" in text
+    assert "dmd_register_did" in text  # the MCP steps
+    assert "never asks for a private key" in text
+    assert "/llms.txt" not in client.get("/openapi.json").text  # not an API endpoint
 
 
 # --------------------------------------------------------------------------- top bar and footer
@@ -435,7 +473,7 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
             assert "<nav id=site-menu class=modes" in page, path
             assert ".menu-toggle:checked~.modes{display:flex}" in page, path
             # The footer, in columns.
-            for head in ("Get a DID", "Developers", "Policies", "DebitMyData", "Contact"):
+            for head in ("Get a DID-LLM", "Developers", "Policies", "DebitMyData", "Contact"):
                 assert f"<p class=head>{head}</p>" in page, (path, head)
             for href in (
                 "/policies/terms",
@@ -473,8 +511,8 @@ def test_the_top_bar_folds_into_a_menu_on_phones_without_a_script(
 def test_the_page_explains_dids_before_the_steps(client: TestClient) -> None:
     page = client.get("/get-did").text
     # Big buttons to the steps and to the explanation; the steps come after it.
-    assert '<a class="button go" href="#start">Get my DID</a>' in page
-    assert '<a class="button ghost" href="#what">What is a DID?</a>' in page
+    assert '<a class="button go" href="#start">Get my DID-LLM</a>' in page
+    assert '<a class="button ghost" href="#what">What is a DID-LLM?</a>' in page
     order = [
         page.index(marker)
         for marker in ("class=stats", "id=what", "id=agents", "id=how", "id=start", "id=s1")
@@ -484,7 +522,7 @@ def test_the_page_explains_dids_before_the_steps(client: TestClient) -> None:
     for number, label in (("$25", "paid once"), ("4", "simple steps"), ("0", "accounts")):
         assert f"<b>{number}</b><span class=label>{label}" in page
     for text in (
-        "DID stands for Decentralized Identifier",
+        "It is a Decentralized Identifier (DID), an open standard of the W3C",
         "large language\nmodels (LLMs)",
         "You hold the key",
         "AI agents and bots",

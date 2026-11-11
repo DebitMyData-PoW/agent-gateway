@@ -238,14 +238,14 @@ def complete_registration(
         raise ApiError(
             503,
             "issuance_unavailable",
-            "DID issuance is not enabled on this gateway yet.",
+            "DID-LLM issuance is not enabled on this gateway yet.",
             headers={"Retry-After": "3600"},
         )
     if state.blockers:
         raise ApiError(
             409,
             "registration_not_ready",
-            "The DID cannot be issued yet.",
+            "The DID-LLM cannot be issued yet.",
             details={"blockers": state.blockers, "next_action": state.next_action},
         )
     return _issue(session, ctx, ctx.issuer, state, now)

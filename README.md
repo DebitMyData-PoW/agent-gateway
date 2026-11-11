@@ -7,7 +7,7 @@
 The Agent Gateway is being built as the public integration surface that will let autonomous
 agents, bots, digital twins, people and organizations **discover DebitMyData, get a quote,
 pay through an approved rail, prove control of their wallet or key, and receive a
-DebitMyData DID, signed credential and entitlements**.
+DebitMyData DID-LLM, signed credential and entitlements**.
 
 The gateway sits *around* the DebitMyData Proof-of-Work chain. It does not change
 DebitMyData consensus, and it never exposes node RPC, private keys or treasury controls to
@@ -34,13 +34,13 @@ Agent Gateway ── quote + payment intent + policy
         └── future approved rails (disabled until reviewed)
         │
         ▼
-Settlement & finality ──► DID + receipt + credential + entitlements ──► append-only audit
+Settlement & finality ──► DID-LLM + receipt + credential + entitlements ──► append-only audit
 ```
 
 ## Status
 
-This is an early development release (`0.30.1`). The whole registration flow (quote,
-payment, controller proof, DID and signed credential) works end to end on test networks,
+This is an early development release (`0.31.0`). The whole registration flow (quote,
+payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
 
@@ -48,8 +48,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | --- | --- |
 | FastAPI service, settings, structured JSON logs, request correlation IDs | done |
 | `/healthz`, `/readyz`, `/v1/discovery`, `/v1/payment-options`, OpenAPI at `/docs/advanced` | done |
-| "Get a DID" page for people at `/get-did` (production's `/docs` leads there): quote, payment, a message signed with their wallet, the DID | done (DMD; USDC through the API) |
-| The debitmydata.com look (top bar, footer, colours, font) on every page for people: "Get a DID", the advanced API docs, the policies, staging's guided test | done |
+| "Get a DID-LLM" page for people at `/get-did` (production's `/docs` leads there): quote, payment, a message signed with their wallet, the DID-LLM | done (DMD; USDC through the API) |
+| The debitmydata.com look (top bar, footer, colours, font) on every page for people: "Get a DID-LLM", the advanced API docs, the policies, staging's guided test | done |
 | Advanced API docs that open like the guided pages: the steps as cards that follow the answers, bigger text and buttons, every endpoint below | done |
 | Payment route registry with per-rail enable flags and kill switches | done |
 | Normalized payment state machine and the DID-issuance rule | done |
@@ -59,7 +59,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Native DMD payment adapter: per-quote address, independent verification, confirmations, reorg and double-spend handling | done (regtest) |
 | Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
 | Controller proof: one-time challenges signed with the agent's Ed25519 key and/or its EVM wallet (ordinary wallets, and smart wallets through ERC-1271 and ERC-6492) | done |
-| DID issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
+| DID-LLM issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
 | Staging server behind Cloudflare; the whole flow can be tried from its docs page, a guided test page on staging (advanced: Swagger UI step by step at `/docs/advanced`; staging-only test tools) | done |
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
@@ -67,17 +67,20 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DebitMyData difficulty from the public explorer) |
 | Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
-| Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
-| Policy pages (terms, privacy, security, payment methods, refunds, DID policy) served at `/policies`, linked from every quote | done (approved, published 2026-11-02) |
+| Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID-LLM costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
+| Policy pages (terms, privacy, security, payment methods, refunds, DID-LLM policy) served at `/policies`, linked from every quote | done (approved, published 2026-11-02) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`dmd_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
-| Products bought for a DID: BottyBotty in three tiers (Entry 49, Standard 99, Premium 199 USD), each paid once and owned for good, a higher tier for the difference (`/v1/products`), paid in DMD, then a receipt signed by DebitMyData and the tier's entitlement on the DID; REST and MCP (`dmd_purchase`, `dmd_complete_purchase`) | done (on staging; off in production until BottyBotty's side is connected) |
-| "Get a DID": the DMD payment as a QR code and an "Open in my DMD wallet" link (`debitmydata:` payment link) | done |
-| "Get a DID" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](docs/production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first (greyed, "coming soon", while it is off); a short guide to what DMD is and how to get it | done (needs the DNS record) |
+| Products bought for a DID-LLM: BottyBotty in three tiers (Entry 49, Standard 99, Premium 199 USD), each paid once and owned for good, a higher tier for the difference (`/v1/products`), paid in DMD, then a receipt signed by DebitMyData and the tier's entitlement on the DID-LLM; REST and MCP (`dmd_purchase`, `dmd_complete_purchase`) | done (on staging; off in production until BottyBotty's side is connected) |
+| "Get a DID-LLM": the DMD payment as a QR code and an "Open in my DMD wallet" link (`debitmydata:` payment link) | done |
+| "Get a DID-LLM" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](docs/production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first (greyed, "coming soon", while it is off); a short guide to what DMD is and how to get it | done (needs the DNS record) |
 | The pages' top bar is white and stays at the top while scrolling, folds into a menu button on phones (no script needed), the DebitMyData name leads to the site's home, and the footer is in columns like the Agentic Spaces site; a "back to top" button appears as the page scrolls | done |
 | DebitMyData's own logo (the coin side of debitmydata.com's logo, redrawn sharp) in the pages' top bar and as the favicon, with black binary lines; the app's icons show it with red lines (for dark home screens) in a white circle with a gold ring | done |
 | The app offers itself on phones and tablets in a window centred on the screen, with its icon: never inside the app nor when the browser says it is installed (`getInstalledRelatedApps`, asked at every visit, so the offer comes back once the app is removed); only "Not now" is remembered in the browser, for 30 days (the cross or a tap outside just close it); a "Get the app" button in every page's footer opens it again, or says the app is already installed | done |
-| "Get a DID" explains DIDs before the steps, in the Agentic Spaces style: the numbers, what a DID is, why AI agents need one, how it works, with cards that rise into view and lift under the mouse or a tap; the app is named "DID DebitMyData" on the home screen | done |
-| The company's test DIDs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
+| "Get a DID-LLM" explains DID-LLMs before the steps, in the Agentic Spaces style: the numbers, what a DID-LLM is, why AI agents need one, how it works, with cards that rise into view and lift under the mouse or a tap; the app is named "DID-LLM DebitMyData" on the home screen | done |
+| The name DID-LLM everywhere people and agents read it (pages, app, policies, API docs, MCP descriptions, error messages); identifiers stay as they are (`did:web`, `did`, `/get-did`, `dids` paths) | done |
+| For AI agents: `/llms.txt` (how to register and pay by themselves, with this server's addresses and the payment options open now), linked from the Get a DID-LLM page's top, its footer and a no-script note; the page gives the MCP server's address | done |
+| "Get a DID-LLM" shows a debit or credit card (Stripe) and PayPal greyed as coming soon, after USDC and DMD, until the gateway offers them | done (the payments themselves to come) |
+| The company's test DID-LLMs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |
 | Credential signer (ID-15): in production the issuer key is held only by `dmd-gateway-signer` (own user, no network), which checks the database before signing; the API checks every signature | done |
@@ -136,7 +139,7 @@ curl http://localhost:8000/v1/discovery
 curl "http://localhost:8000/v1/payment-options?service=did_registration"
 ```
 
-Request a DID registration quote (the directive's example request, with an example
+Request a DID-LLM registration quote (the directive's example request, with an example
 controller key; `python scripts/demo_agent.py new-key agent-key.pem` creates a real one):
 
 ```bash
@@ -160,11 +163,11 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Get a one-time message to sign with the controller key or wallet | `POST /v1/dids/registrations/{registration_intent_id}/controller-challenges` |
 | Send the signature | `POST /v1/dids/registrations/{registration_intent_id}/controller-proofs` |
 | See what is still missing | `GET /v1/dids/registrations/{registration_intent_id}` |
-| Receive the DID, signed credential and entitlements (x402: pay here, see below) | `POST /v1/dids/registrations` |
+| Receive the DID-LLM, signed credential and entitlements (x402: pay here, see below) | `POST /v1/dids/registrations` |
 | Optionally report the payment transaction (a hint only) | `POST /v1/payments/{payment_intent_id}/references` |
-| Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` (the identity ID or the DID itself) |
-| Resolve the DID and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
-| Read the terms, privacy, payment, refund, DID and security policies | `/policies`, `GET /v1/policies` |
+| Look them up | `GET /v1/dids/{identity_id}`, `GET /v1/credentials/{credential_id}`, `GET /v1/entitlements/{identity_id}` (the identity ID or the DID-LLM itself) |
+| Resolve the DID-LLM and the issuer key | `GET /agents/{id}/did.json`, `GET /.well-known/did.json` |
+| Read the terms, privacy, payment, refund, DID-LLM and security policies | `/policies`, `GET /v1/policies` |
 
 The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_discover`,
 `dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,
@@ -176,9 +179,9 @@ tool calls the REST API above in-process, so both give the same results and erro
 **Inference donations (agents).** `POST /v1/donations/inference` with
 `{"amount_usd": "5.00"}` (from 0.50 to 1,000.00 USD; optionally `donor_name` and
 `donor_did`) answers `402` with the x402 terms for exactly that amount, paid to
-DebitMyData's inference wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, not the DID payment
+DebitMyData's inference wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`, not the DID-LLM payment
 address). Send the same body again with the signed payment in `PAYMENT-SIGNATURE`: no quote
-is needed, the payment is checked on chain like a DID payment, and the answer (`201`) carries
+is needed, the payment is checked on chain like a DID-LLM payment, and the answer (`201`) carries
 a receipt signed by DebitMyData (a `DebitMyDataDonationReceipt` credential), or `202` with a
 `status_url` (`GET /v1/donations/{purchase_id}`) while confirmations come in. Sending the
 same payment again returns the same donation. Through MCP: `dmd_catalog` lists
@@ -192,14 +195,14 @@ answers `402` with a `PAYMENT-REQUIRED` header (x402 version 2, scheme `exact`: 
 amount in USDC base units, the USDC contract, the network and DebitMyData's receiving
 address, plus a Bazaar discovery description). Call it again with the signed payment in the
 `PAYMENT-SIGNATURE` header: the gateway checks it against the quote, the facilitator verifies
-and settles it, the gateway checks the settlement on chain itself, and the DID comes back in
+and settles it, the gateway checks the settlement on chain itself, and the DID-LLM comes back in
 the same answer with a `PAYMENT-RESPONSE` header (or `202` if the confirmations take longer;
 then call again without paying). Payment is asked for only once everything else is ready, so
-an agent is never charged for a DID that cannot be issued. Any standard x402 client can pay
+an agent is never charged for a DID-LLM that cannot be issued. Any standard x402 client can pay
 it; through MCP, `dmd_register_did` returns the payment requirements and takes the payment in
 `x402_payment` or `_meta["x402/payment"]`.
 
-DID issuance needs a credential signing key (`DMD_GW_ISSUER_KEY_PATH`, created with
+DID-LLM issuance needs a credential signing key (`DMD_GW_ISSUER_KEY_PATH`, created with
 `dmd-gateway-issuer-key secrets/issuer-key.pem`). Without it, everything else works and the
 issuance endpoint answers `503`. See [docs/architecture.md](docs/architecture.md) for the
 rules behind each step.
@@ -268,7 +271,7 @@ dmd-gateway-worker --once   # one pass
 ```
 
 It never changes a payment while the node is unreachable, and several workers can run at
-once safely. To try the whole flow on a private chain, from quote to DID, follow
+once safely. To try the whole flow on a private chain, from quote to DID-LLM, follow
 [docs/regtest-demo.md](docs/regtest-demo.md).
 
 ## Project layout

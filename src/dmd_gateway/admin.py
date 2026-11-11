@@ -37,9 +37,11 @@ from dmd_gateway.settings import get_settings
 
 DONE = {"suspended": "Suspended", "active": "Reactivated", "revoked": "Revoked"}
 PUBLIC = {
-    "suspended": "Its DID document now answers 410 Gone until it is reactivated.",
-    "active": "Its DID document resolves again.",
-    "revoked": "Its DID document answers 410 Gone for good, and its credentials show as revoked.",
+    "suspended": "Its DID-LLM document now answers 410 Gone until it is reactivated.",
+    "active": "Its DID-LLM document resolves again.",
+    "revoked": (
+        "Its DID-LLM document answers 410 Gone for good, and its credentials show as revoked."
+    ),
 }
 
 
@@ -48,18 +50,22 @@ def parser() -> argparse.ArgumentParser:
         prog="dmd-gateway-admin", description="DebitMyData Agent Gateway operator commands"
     )
     groups = top.add_subparsers(dest="group", required=True)
-    did = groups.add_parser("did", help="show, suspend, reactivate or revoke a DID")
+    did = groups.add_parser("did", help="show, suspend, reactivate or revoke a DID-LLM")
     commands = did.add_subparsers(dest="command", required=True)
-    show = commands.add_parser("show", help="a DID's status, entitlements, credentials, history")
-    show.add_argument("id", help="the DID, its did.json address, identity ID or registration ID")
+    show = commands.add_parser(
+        "show", help="a DID-LLM's status, entitlements, credentials, history"
+    )
+    show.add_argument(
+        "id", help="the DID-LLM, its did.json address, identity ID or registration ID"
+    )
     for name, text in (
-        ("suspend", "suspend a DID (temporary: it stops resolving until reactivated)"),
-        ("reactivate", "make a suspended DID active again"),
-        ("revoke", "revoke a DID for good, with its credentials and entitlements"),
+        ("suspend", "suspend a DID-LLM (temporary: it stops resolving until reactivated)"),
+        ("reactivate", "make a suspended DID-LLM active again"),
+        ("revoke", "revoke a DID-LLM for good, with its credentials and entitlements"),
     ):
         command = commands.add_parser(name, help=text)
         command.add_argument(
-            "id", help="the DID, its did.json address, identity ID or registration ID"
+            "id", help="the DID-LLM, its did.json address, identity ID or registration ID"
         )
         command.add_argument(
             "--reason", required=True, help="why (3 to 300 characters, no secrets)"
@@ -67,9 +73,9 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--by", required=True, help="your name, kept in the audit trail")
         if name == "revoke":
             command.add_argument("--yes", action="store_true", help="do not ask to confirm")
-    names = groups.add_parser("names", help="check the names of the DIDs already issued")
+    names = groups.add_parser("names", help="check the names of the DID-LLMs already issued")
     names.add_subparsers(dest="command", required=True).add_parser(
-        "check", help="list the active and suspended DIDs whose name a quote would refuse today"
+        "check", help="list the active and suspended DID-LLMs whose name a quote would refuse today"
     )
     return top
 
@@ -109,7 +115,10 @@ def run(
                 code = identity.id[-6:]
                 out(f"Revoke {identity.display_name!r}, now {identity.status}:")
                 out(f"  {identity.public_identifier}")
-                out("This is permanent: the DID, its credentials and its entitlements can never be")
+                out(
+                    "This is permanent: the DID-LLM, its credentials and its entitlements can "
+                    "never be"
+                )
                 out("made active again.")
             try:
                 typed = ask(f"Type {code} to confirm: ")
@@ -155,7 +164,7 @@ def _show(session: Session, text: str, out: Callable[[str], None]) -> None:
         .order_by(Credential.issued_at)
     ).all()
     rows = [
-        ("DID", identity.public_identifier),
+        ("DID-LLM", identity.public_identifier),
         ("Identity", identity.id),
         ("Name", identity.display_name),
         ("Status", identity.status),
@@ -198,9 +207,9 @@ def _check_names(session: Session, brand: frozenset[str], out: Callable[[str], N
         except NameRefused as exc:
             refused.append((identity, str(exc)))
     if not refused:
-        out(f"Checked {len(identities)} DIDs: every name passes.")
+        out(f"Checked {len(identities)} DID-LLMs: every name passes.")
         return 0
-    out(f"Checked {len(identities)} DIDs: {len(refused)} would be refused today.")
+    out(f"Checked {len(identities)} DID-LLMs: {len(refused)} would be refused today.")
     for identity, reason in refused:
         out(f"  {identity.id} ({identity.status}) {identity.display_name!r}")
         out(f"    {reason}")

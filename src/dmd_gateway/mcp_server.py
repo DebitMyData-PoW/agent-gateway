@@ -1,7 +1,7 @@
 """MCP server (Phase 6): the directive's agent tools, served at ``/mcp``.
 
 Agents that speak the Model Context Protocol can discover DebitMyData, get a quote, follow
-their payment, prove control of their key and receive their DID without custom code.
+their payment, prove control of their key and receive their DID-LLM without custom code.
 
 Every tool calls the gateway's own REST API in-process, so MCP and REST share one
 implementation: the same validation, the same issuance rule, the same audit trail and the
@@ -37,12 +37,12 @@ MCP_PATH = "/mcp"
 _INTERNAL_BASE = "http://gateway.internal"
 
 INSTRUCTIONS = """\
-DebitMyData Agent Gateway: register a DebitMyData DID for an agent. The commercial fee is \
+DebitMyData Agent Gateway: register a DebitMyData DID-LLM for an agent. The commercial fee is \
 fixed at 25.00 USD and is paid in an approved asset of the agent's choice.
 
 1. dmd_get_did_registration_offer (or dmd_list_supported_payment_options): the fee and the \
 payment options that are enabled right now.
-2. dmd_create_did_payment_quote: send the controller of your DID, your Ed25519 public key \
+2. dmd_create_did_payment_quote: send the controller of your DID-LLM, your Ed25519 public key \
 (ed25519:z6Mk...) and/or your EVM wallet address (0x..., on Base by default), and the \
 payment option you chose. The quote gives the exact amount, the destination and the expiry. \
 Never pay an amount that was not quoted.
@@ -57,14 +57,14 @@ with the controller it names (Ed25519 key: its exact UTF-8 bytes; wallet: person
 signMessage, smart wallets included), then call it again with the challenge_id and the \
 signature. With both a key and a wallet, prove each one. This can also be done before the \
 payment settles.
-6. dmd_register_did: receive your DID, a signed credential (also your receipt) and your \
+6. dmd_register_did: receive your DID-LLM, a signed credential (also your receipt) and your \
 entitlements. dmd_get_registration_status shows what is still missing at any time.
 
-Add-ons for a DID you have (dmd_catalog, kind "add_on", such as BottyBotty in three tiers: \
+Add-ons for a DID-LLM you have (dmd_catalog, kind "add_on", such as BottyBotty in three tiers: \
 bottybotty_entry, bottybotty_standard, bottybotty_premium): dmd_purchase with details \
-{"did": ...} gives a quote; pay it like the DID; when dmd_get_payment_status says \
+{"did": ...} gives a quote; pay it like the DID-LLM; when dmd_get_payment_status says \
 "settled", dmd_complete_purchase returns the receipt signed by DebitMyData, and the add-on's \
-entitlement is on your DID (a BottyBotty tier for good: a higher tier later costs only the \
+entitlement is on your DID-LLM (a BottyBotty tier for good: a higher tier later costs only the \
 difference in price).
 
 DebitMyData never asks for private keys, seed phrases or wallet access."""
@@ -79,7 +79,7 @@ ABOUT = (
     "dm1): it is not a token on Ethereum, Base or any other network, and it is unrelated "
     "to other tokens that use the same ticker. "
     "Payment options listed here are the ones currently enabled; each payment is verified "
-    "before a DID or entitlement is issued."
+    "before a DID-LLM or entitlement is issued."
 )
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
@@ -171,7 +171,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
     server: MCPServer = MCPServer(
         name="debitmydata-agent-gateway",
         title="DebitMyData Agent Gateway",
-        description="DebitMyData Agentic DID Registration: quote, pay, prove control, get a DID.",
+        description=(
+            "DebitMyData Agentic DID-LLM Registration: quote, pay, prove control, get a DID-LLM."
+        ),
         instructions=INSTRUCTIONS,
         version=__version__,
     )
@@ -203,9 +205,9 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         discovery = await api.call("GET", "/v1/discovery")
         return {"about": ABOUT, **discovery}
 
-    @server.tool(title="DID registration offer", annotations=READ_ONLY)
+    @server.tool(title="DID-LLM registration offer", annotations=READ_ONLY)
     async def dmd_get_did_registration_offer() -> dict[str, Any]:
-        """The 25.00 USD commercial fee for a DebitMyData DID and every payment option that
+        """The 25.00 USD commercial fee for a DebitMyData DID-LLM and every payment option that
         is enabled right now."""
         offer = next(o for o in await offers() if o["id"] == DID_REGISTRATION)
         return {"offer": offer, "payment_options": await payment_options(DID_REGISTRATION)}
@@ -222,7 +224,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
     # ------------------------------------------------------------------ quote and payment
 
-    @server.tool(title="Create a DID payment quote", annotations=CREATES)
+    @server.tool(title="Create a DID-LLM payment quote", annotations=CREATES)
     async def dmd_create_did_payment_quote(
         display_name: Annotated[str, Field(description="Public name of the agent", max_length=100)],
         participant_type: Annotated[ParticipantType, Field(description="What kind of participant")],
@@ -232,7 +234,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         controller_public_key: Annotated[
             str | None,
             Field(
-                description="Ed25519 public key that will control the DID: ed25519:z6Mk..., "
+                description="Ed25519 public key that will control the DID-LLM: ed25519:z6Mk..., "
                 "or ed25519: followed by 64 hex characters or base64. Give this, a wallet, "
                 "or both."
             ),
@@ -240,7 +242,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         controller_wallet_address: Annotated[
             str | None,
             Field(
-                description="EVM wallet that will control the DID: 0x... (checksummed or all "
+                description="EVM wallet that will control the DID-LLM: 0x... (checksummed or all "
                 "lower case) or eip155:<chain id>:0x.... Its control is proven like the key's, "
                 "by signing a challenge (smart wallets included)."
             ),
@@ -369,7 +371,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             json_body={"challenge_id": challenge_id, "signature": signature},
         )
 
-    @server.tool(title="Register the DID", annotations=IDEMPOTENT)
+    @server.tool(title="Register the DID-LLM", annotations=IDEMPOTENT)
     async def dmd_register_did(
         registration_intent_id: RegistrationId,
         ctx: Context,
@@ -382,13 +384,13 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             ),
         ] = None,
     ) -> CallToolResult:
-        """Issue the DID once the payment is settled and the controller proof is verified.
-        Returns the DID, its DID document URL, the signed credential (the receipt) and the
-        entitlements. Calling it again returns the same DID.
+        """Issue the DID-LLM once the payment is settled and the controller proof is verified.
+        Returns the DID-LLM, its DID-LLM document URL, the signed credential (the receipt) and the
+        entitlements. Calling it again returns the same DID-LLM.
 
         x402 quotes (USDC on Base): prove control first, then call this tool. It fails
         with the x402 payment requirements; sign them with your wallet and call it again
-        with x402_payment. The DID is issued once the payment is settled on chain."""
+        with x402_payment. The DID-LLM is issued once the payment is settled on chain."""
         payment = x402_payment or _meta_payment(ctx)
         headers = {PAYMENT_SIGNATURE: encode_header(payment)} if payment else None
         try:
@@ -463,7 +465,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                     "period_days": add_on["period_days"],
                     "tier": add_on.get("tier"),
                     "entitlement": add_on["entitlement"],
-                    "requires": "an active DebitMyData DID (details.did in dmd_purchase)",
+                    "requires": "an active DebitMyData DID-LLM (details.did in dmd_purchase)",
                     "accepting_payments": bool(add_on["payment_options"]),
                     "payment_options": add_on["payment_options"],
                 }
@@ -500,7 +502,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
                 "participant_type, controller_public_key and/or controller_wallet_address "
                 "(with optional controller_network), and optionally metadata. For a "
                 "donation (inference_donation): amount_usd, and optionally donor_name and "
-                "donor_did. For an add-on (such as bottybotty_entry): did, the DID it is for"
+                "donor_did. For an add-on (such as bottybotty_entry): did, the DID-LLM it is for"
             ),
         ],
         ctx: Context,
@@ -525,7 +527,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
 
         did_registration: returns a payable quote (the same as dmd_create_did_payment_quote).
 
-        Add-ons for a DID (bottybotty_entry, bottybotty_standard, bottybotty_premium): returns
+        Add-ons for a DID-LLM (bottybotty_entry, bottybotty_standard, bottybotty_premium): returns
         a payable quote for details.did; for a higher BottyBotty tier than the one owned, it
         charges the difference.
         Pay it, wait for dmd_get_payment_status to say "settled", then dmd_complete_purchase.
@@ -612,7 +614,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         ],
     ) -> dict[str, Any]:
         """Once the add-on's payment is settled: the receipt signed by DebitMyData, and the
-        add-on's entitlement on your DID until covers_until. Safe to call again: a completed
+        add-on's entitlement on your DID-LLM until covers_until. Safe to call again: a completed
         purchase is returned as it is. Before settlement it fails with next_action."""
         return await api.call("POST", f"/v1/products/purchases/{purchase_id}/complete")
 
@@ -625,7 +627,7 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
             "message": (
                 "Selling through DebitMyData is not open through this gateway yet, and the "
                 "provider requirements have not been published. They will be returned here "
-                "once they are. Registering a DID is the first step for any participant."
+                "once they are. Registering a DID-LLM is the first step for any participant."
             ),
             "policy_urls": discovery["policy_urls"],
         }

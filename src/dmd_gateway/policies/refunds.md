@@ -1,21 +1,21 @@
 ---
 title: Refund policy
-version: 2026-11-03
+version: 2026-11-10
 status: approved
-summary: The DID registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
+summary: The DID-LLM registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
 
 # Refund policy
 
 ## The registration fee is non-refundable
 
-The 25.00 USD DID registration fee is **non-refundable** once your payment has settled for
-a registration. This includes a DID that is later suspended or revoked under the
-[DID policy]({{ base_url }}/policies/did).
+The 25.00 USD DID-LLM registration fee is **non-refundable** once your payment has settled for
+a registration. This includes a DID-LLM that is later suspended or revoked under the
+[DID-LLM policy]({{ base_url }}/policies/did).
 
 A paid registration does not expire. If you have paid but not yet proved control of your
-DID's controller, you can finish the proof at any time and receive your DID. With USDC
-through x402, you are only charged once the DID can be issued.
+DID-LLM's controller, you can finish the proof at any time and receive your DID-LLM. With USDC
+through x402, you are only charged once the DID-LLM can be issued.
 
 ## Inference donations are non-refundable
 
@@ -26,11 +26,11 @@ example by a wallet you no longer control, write to us with its `purchase_id`.
 
 ## BottyBotty purchases are non-refundable
 
-A BottyBotty tier is paid once and belongs to the DID for good, so it is **non-refundable**
+A BottyBotty tier is paid once and belongs to the DID-LLM for good, so it is **non-refundable**
 once the purchase is completed, including an upgrade (which costs only the difference in
-price). This includes a DID that is later suspended or revoked under the
-[DID policy]({{ base_url }}/policies/did). A purchase that was paid but could not be completed
-(for example because the DID was revoked before completion) is refunded as described below.
+price). This includes a DID-LLM that is later suspended or revoked under the
+[DID-LLM policy]({{ base_url }}/policies/did). A purchase that was paid but could not be completed
+(for example because the DID-LLM was revoked before completion) is refunded as described below.
 
 ## Payments that are returned
 
@@ -43,7 +43,7 @@ the registration fee:
 | You paid less, and the quote expired before the rest arrived | Everything you paid for that quote |
 | Your payment arrived after the quote expired | That payment |
 | You paid a quote that was already paid | The second payment |
-| DebitMyData declined the registration before issuing the DID | Everything you paid for it |
+| DebitMyData declined the registration before issuing the DID-LLM | Everything you paid for it |
 
 The gateway records the first four automatically: `GET /v1/payments/{payment_intent_id}`
 shows them as `refund_due`.
@@ -67,7 +67,7 @@ To ask for a refund, write to <info@debitmydata.com> with:
 - the transaction ID of your payment;
 - the address to return it to (DMD), or confirmation of the paying wallet (USDC).
 
-We may ask you to prove that you control the paying wallet or the DID's controller.
+We may ask you to prove that you control the paying wallet or the DID-LLM's controller.
 
 ## Payments the gateway may not see
 
@@ -80,8 +80,8 @@ but cannot promise to recover it.
 
 ## Reversed payments
 
-Blockchain payments cannot be charged back. If a payment that paid for a DID is later
-reversed, for example by a chain reorganization or a double spend, the DID may be suspended
+Blockchain payments cannot be charged back. If a payment that paid for a DID-LLM is later
+reversed, for example by a chain reorganization or a double spend, the DID-LLM may be suspended
 until the registration is paid again.
 
 ## Test networks

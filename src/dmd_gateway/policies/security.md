@@ -1,6 +1,6 @@
 ---
 title: Security
-version: 2026-10-27
+version: 2026-11-10
 status: approved
 summary: How the gateway protects payments and identities, how to check you are talking to it, and how to report a vulnerability.
 ---
@@ -28,7 +28,7 @@ summary: How the gateway protects payments and identities, how to check you are 
   claim is never enough on its own.
 - **Exact quotes.** No amount is charged that was not quoted, and no payment is credited to
   more than one registration.
-- **Proof of control.** A DID is only issued after each of its controllers has signed a
+- **Proof of control.** A DID-LLM is only issued after each of its controllers has signed a
   one-time challenge that expires after a few minutes.
 - **Records that cannot be rewritten.** Payments, proofs and the audit trail are written
   once and never changed.

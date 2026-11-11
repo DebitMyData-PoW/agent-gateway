@@ -58,7 +58,7 @@ def _notices(request: Request, page: PolicyPage | None) -> str:
     if request.app.state.settings.environment != "production":
         notes.append(
             "<p class=note><strong>Test server.</strong> Payments here use test networks "
-            "whose coins have no value, and DIDs issued here are test DIDs.</p>"
+            "whose coins have no value, and DID-LLMs issued here are test DID-LLMs.</p>"
         )
     if page is not None and page.status == "draft":
         notes.append(
@@ -110,7 +110,7 @@ def policy_index(request: Request) -> HTMLResponse:
     )
     body = (
         f"{_notices(request, None)}<h1>Policies</h1>"
-        "<p>These policies apply to the DebitMyData Agent Gateway and the DIDs it issues.</p>"
+        "<p>These policies apply to the DebitMyData Agent Gateway and the DID-LLMs it issues.</p>"
         f"<ul class=pages>{items}</ul>{website}"
     )
     return HTMLResponse(_document(request, "Policies", None, body), headers=HTML_HEADERS)
@@ -154,7 +154,7 @@ class PolicyList(BaseModel):
     "/v1/policies",
     response_model=PolicyList,
     tags=["discovery"],
-    summary="The policies that apply to registrations: terms, privacy, payments, refunds, DIDs",
+    summary="The policies that apply to registrations: terms, privacy, payments, refunds, DID-LLMs",
 )
 def policy_list(request: Request, response: Response) -> PolicyList:
     response.headers["Cache-Control"] = CACHE

@@ -137,8 +137,8 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
     donations = sum(count for _, for_did, count, _ in completed if not for_did)
     donated = sum((Decimal(total) for _, for_did, _, total in completed if not for_did), Decimal(0))
     products = [(pid, count, Decimal(total)) for pid, for_did, count, total in completed if for_did]
-    add(f"- DID registration quotes: {quotes}")
-    add(f"- DIDs issued: {issued}")
+    add(f"- DID-LLM registration quotes: {quotes}")
+    add(f"- DID-LLMs issued: {issued}")
     add(f"- Inference donations completed: {donations} ({donated:.2f} USD)")
     if products:
         for product_id, count, total in products:
@@ -177,13 +177,13 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
     # ------------------------------------------------------------------ since the start
     add("SINCE THE START")
     total_ids = session.scalar(issued_query)
-    add(f"- DIDs issued: {total_ids}")
+    add(f"- DID-LLMs issued: {total_ids}")
     totals = _settled_since(session, None, excluded)
     for (rail_id, symbol, decimals), (count, units) in sorted(totals.items()):
         add(f"- Settled with {rail_id}: {count} payment(s), {_amount(units, decimals)} {symbol}")
     if excluded:
         add(
-            f"- Left out of these figures: {len(dids)} test DID(s) "
+            f"- Left out of these figures: {len(dids)} test DID-LLM(s) "
             "(DMD_GW_REPORT_EXCLUDED_DIDS), with their products and payments"
         )
     add("")
@@ -296,7 +296,7 @@ def _database_checks(session: Session, day: str, add: Callable[[str], None]) -> 
     ).all()
     for name, ids, title in (
         ("short", short, "Settled payments not fully credited"),
-        ("unpaid_dids", unpaid_dids, "DIDs whose payment is not settled"),
+        ("unpaid_dids", unpaid_dids, "DID-LLMs whose payment is not settled"),
         (
             "unpaid_receipts",
             unpaid_receipts,
@@ -315,7 +315,7 @@ def _database_checks(session: Session, day: str, add: Callable[[str], None]) -> 
             )
     if not findings:
         add(
-            "- Database: every settled payment is fully credited; every DID and receipt has a "
+            "- Database: every settled payment is fully credited; every DID-LLM and receipt has a "
             "settled payment."
         )
     return findings
@@ -375,7 +375,7 @@ def _chain_checks(
                 "Payments: "
                 + ", ".join(missing[:10])
                 + (" …" if len(missing) > 10 else "")
-                + "\nThe DIDs or receipts they paid for may have been given without payment. "
+                + "\nThe DID-LLMs or receipts they paid for may have been given without payment. "
                 "Check each one with GET /v1/payments/{id} and on the chain's explorer.",
                 kind="event",
             )

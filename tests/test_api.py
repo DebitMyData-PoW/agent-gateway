@@ -53,7 +53,7 @@ def test_payment_options_lists_only_enabled_rails(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["commercial_fee"] == {"currency": "USD", "amount": "25.00"}
-    assert body["service"] == "DebitMyData Agentic DID Registration"
+    assert body["service"] == "DebitMyData Agentic DID-LLM Registration"
     assert body["supported_payment_options"] == []
     assert body["notice"] == (
         "Payment availability may vary by asset, network, wallet policy, geographic "

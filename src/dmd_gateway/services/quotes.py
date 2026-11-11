@@ -106,14 +106,14 @@ class QuoteRequest(BaseModel):
         default=None,
         max_length=256,
         pattern=r"^[a-z0-9-]{2,32}:[A-Za-z0-9+/=_.:-]{8,220}$",
-        description="The agent's public key, e.g. ed25519:z6Mk...: the DID's controller "
+        description="The agent's public key, e.g. ed25519:z6Mk...: the DID-LLM's controller "
         "(with a wallet, or alone).",
     )
     controller_wallet_address: str | None = Field(
         default=None,
         max_length=128,
         pattern=r"^[A-Za-z0-9:_.-]{8,128}$",
-        description="An EVM wallet that controls the DID: `0x...` or `eip155:8453:0x...`. "
+        description="An EVM wallet that controls the DID-LLM: `0x...` or `eip155:8453:0x...`. "
         "Ordinary wallets and smart-contract wallets (such as Coinbase Smart Wallet) both "
         "work. Give a public key, a wallet, or both; each one given must prove control.",
     )
@@ -157,7 +157,7 @@ class QuoteRequest(BaseModel):
         if not self.controller_public_key and not self.controller_wallet_address:
             raise ValueError(
                 "controller_public_key or controller_wallet_address is required "
-                "(the controller of the DID)"
+                "(the controller of the DID-LLM)"
             )
         if self.controller_network and not self.controller_wallet_address:
             raise ValueError("controller_network goes with controller_wallet_address")

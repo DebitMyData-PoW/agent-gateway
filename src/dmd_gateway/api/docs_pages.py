@@ -4,7 +4,7 @@ pages' top bar.
 FastAPI's built-in docs pages are switched off in ``create_app`` and served here instead,
 so that they carry the DebitMyData logo and open with "Try it out" already enabled. The
 Swagger UI page is the advanced option at /docs/advanced: /docs is the guided test page on
-staging (``try_page``) and the "Get a DID" page elsewhere (``get_did_page``).
+staging (``try_page``) and the "Get a DID-LLM" page elsewhere (``get_did_page``).
 
 Both pages load Swagger UI or ReDoc from jsDelivr at an exact version, and the browser checks
 each file against its SHA-384 fingerprint before running it (Subresource Integrity). Their
@@ -15,7 +15,7 @@ below and both fingerprints, from:
     curl -sL <file URL> | openssl dgst -sha384 -binary | openssl base64 -A
 
 The Swagger UI page also keeps the values each answer gives (IDs, the payment address and
-amount, the message to sign, signatures, the DID links) in a panel, each with its own Copy
+amount, the message to sign, signatures, the DID-LLM links) in a panel, each with its own Copy
 button and the step it goes into (``static/docs-helper.js``). It keeps them in the open page
 only: nothing is stored or sent anywhere.
 
@@ -131,12 +131,12 @@ def _intro(staging: bool, version: str) -> str:
     if staging:
         note = (
             "<p class=adv-note><strong>Staging server.</strong> Test networks whose coins have "
-            "no value, and test DIDs. The three <strong>staging</strong> endpoints stand in for "
-            "what a real agent does with its own key and wallet.</p>"
+            "no value, and test DID-LLMs. The three <strong>staging</strong> endpoints stand in "
+            "for what a real agent does with its own key and wallet.</p>"
         )
         buttons = (
             f'<a class="adv-button" href="{brand.GUIDED_PATH}">Easiest: the guided test</a>'
-            f'<a class="adv-button secondary" href="{brand.GET_DID_PATH}">Get a DID with your '
+            f'<a class="adv-button secondary" href="{brand.GET_DID_PATH}">Get a DID-LLM with your '
             "wallet</a>"
             f'<a class="adv-button secondary" href="{brand.PRODUCTION_SITE}{brand.ADVANCED_PATH}">'
             "The real API (production)</a>"
@@ -144,12 +144,12 @@ def _intro(staging: bool, version: str) -> str:
     else:
         note = (
             "<p class=adv-safe><strong>Every step here is real:</strong> quotes, payments and "
-            "DIDs. Paying and signing happen outside this page, in your own wallet and tools. "
+            "DID-LLMs. Paying and signing happen outside this page, in your own wallet and tools. "
             "Never paste a private key or a recovery phrase into this page: the gateway never "
             "asks for one.</p>"
         )
         buttons = (
-            f'<a class="adv-button" href="{brand.GET_DID_PATH}">Easiest: Get a DID</a>'
+            f'<a class="adv-button" href="{brand.GET_DID_PATH}">Easiest: Get a DID-LLM</a>'
             f'<a class="adv-button secondary" href="{brand.STAGING_GUIDED_PAGE}">Try it first '
             "with test coins</a>"
         )
@@ -165,7 +165,7 @@ server at <code>/mcp</code>.</p>
 <a href="/redoc">ReDoc</a> · <a href="{brand.POLICIES_PATH}">Policies</a></p>
 </section>
 <section class=adv-section aria-labelledby=adv-steps-title>
-<h2 id=adv-steps-title>Register a DID, step by step</h2>
+<h2 id=adv-steps-title>Register a DID-LLM, step by step</h2>
 <p class=adv-sub>The next step is in red: open it, paste what it needs, click
 <strong>Execute</strong>. The panel at the bottom right keeps every value the answers give, with
 a <strong>Copy</strong> button.</p>

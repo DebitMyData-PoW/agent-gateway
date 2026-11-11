@@ -25,7 +25,7 @@ def test_the_guided_page_is_the_docs_page_on_staging(staging_client: TestClient)
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     page = response.text
-    assert "Try a DID registration" in page
+    assert "Try a DID-LLM registration" in page
     assert "value=dmd_pow_native" in page and "value=x402_usdc_base" in page
     assert "Run all steps" in page and "id=countdown" in page and "id=funding" in page
     assert 'href="/docs/advanced"' in page

@@ -68,7 +68,7 @@ _ERRORS = {
     "/dids/registration-quotes",
     status_code=201,
     response_model=RegistrationQuote,
-    summary="Get a time-limited quote for a DebitMyData DID registration",
+    summary="Get a time-limited quote for a DebitMyData DID-LLM registration",
     responses={**_ERRORS},
 )
 def create_quote(

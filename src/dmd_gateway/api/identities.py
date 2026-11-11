@@ -1,12 +1,12 @@
-"""Issued identities, credentials, entitlements and DID documents.
+"""Issued identities, credentials, entitlements and DID-LLM documents.
 
 GET /v1/dids/{identity_id}             identity record
 GET /v1/credentials/{credential_id}    signed registration credential
 GET /v1/entitlements/{identity_id}     entitlements of an identity (such as BottyBotty
                                        protection, with the end of the period bought)
 
-{identity_id} is the identity ID (dmd_identity_...) or the DID itself.
-GET /agents/{id}/did.json              DID document (did:web resolution)
+{identity_id} is the identity ID (dmd_identity_...) or the DID-LLM itself.
+GET /agents/{id}/did.json              DID-LLM document (did:web resolution)
 GET /.well-known/did.json              issuer DID document (credential verification key)
 """
 
@@ -42,7 +42,7 @@ router = APIRouter(tags=["identities"])
 
 ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
 IDENTITY_HELP = (
-    "The identity ID (`dmd_identity_...`) or the DID itself "
+    "The identity ID (`dmd_identity_...`) or the DID-LLM itself "
     "(`did:web:api.debitmydata.io:agents:...`)."
 )
 CREDENTIAL_ID = rf"^dmd_credential_{ULID}$"
@@ -112,7 +112,7 @@ def identity(
 
 class CredentialRecord(BaseModel):
     credential_id: str
-    status: str = Field(description="active, suspended (with its DID) or revoked")
+    status: str = Field(description="active, suspended (with its DID-LLM) or revoked")
     format: str
     issued_at: datetime
     revoked_at: datetime | None
@@ -168,7 +168,7 @@ class Entitlements(BaseModel):
 @router.get(
     "/v1/entitlements/{identity_id}",
     response_model=Entitlements,
-    summary="Entitlements of a DID, such as its BottyBotty tier (and any end of period)",
+    summary="Entitlements of a DID-LLM, such as its BottyBotty tier (and any end of period)",
     responses={404: {"description": "Unknown identity."}},
 )
 def entitlements(
@@ -207,17 +207,20 @@ def entitlements(
 
 @router.get(
     "/agents/{suffix}/did.json",
-    summary="DID document of an issued identity (did:web)",
-    responses={404: {"description": "Unknown DID."}, 410: {"description": "DID deactivated."}},
+    summary="DID-LLM document of an issued identity (did:web)",
+    responses={
+        404: {"description": "Unknown DID-LLM."},
+        410: {"description": "DID-LLM deactivated."},
+    },
 )
 def agent_document(request: Request, suffix: str = Path(pattern=rf"^{ULID}$")) -> JSONResponse:
     base = _ctx(request).public_base_url
     with transaction(request.app.state.session_factory) as session:
         record = session.get(AgentIdentity, f"dmd_identity_{suffix}")
         if record is None:
-            raise ApiError(404, "not_found", "Unknown DID.")
+            raise ApiError(404, "not_found", "Unknown DID-LLM.")
         if record.status != "active":
-            raise ApiError(410, "deactivated", f"This DID is {record.status}.")
+            raise ApiError(410, "deactivated", f"This DID-LLM is {record.status}.")
         controller = (
             parse_controller_key(record.controller_public_key)
             if record.controller_public_key

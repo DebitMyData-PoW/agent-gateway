@@ -72,7 +72,7 @@ SHOWN_IDS = 5
 CONFIRMING = (PaymentStatus.DETECTED, PaymentStatus.CONFIRMING, PaymentStatus.VERIFIED)
 AUDIT_TITLES = {
     "alert.issued_identity_payment_reorged": (
-        "A DID's payment left the chain after the DID was issued"
+        "A DID-LLM's payment left the chain after the DID-LLM was issued"
     ),
     "alert.completed_purchase_payment_reorged": (
         "A donation's or product's payment left the chain after its receipt was issued"
@@ -139,7 +139,7 @@ def check_worker(ctx: MonitorContext, session: Session, now: datetime) -> list[F
                 "worker.stopped",
                 C,
                 "The payment worker has stopped",
-                f"Last sign of life: {seen}. Payments are not being verified, so DIDs and "
+                f"Last sign of life: {seen}. Payments are not being verified, so DID-LLMs and "
                 "receipts are not issued after payment, and the DMD price is not updated. "
                 "On the server: systemctl status dmd-gateway-worker",
             )
@@ -291,7 +291,7 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
                     C,
                     AUDIT_TITLES.get(event.action, f"Alert recorded: {event.action}"),
                     f"{event.subject_type} {event.subject_id}, {when} UTC.\n{data}\nThe "
-                    "payment is watched again; if it does not come back on chain, the DID or "
+                    "payment is watched again; if it does not come back on chain, the DID-LLM or "
                     "receipt was given without payment.",
                     kind="event",
                 )
@@ -316,7 +316,7 @@ def _status_finding(session: Session, event: AuditEvent) -> Finding:
     return Finding(
         f"audit.{event.id}",
         W,
-        f"A DID was {word}: {name}",
+        f"A DID-LLM was {word}: {name}",
         f"{data.get('did')} went from {data.get('from')} to {data.get('to')} on {when} UTC, "
         f"by {event.actor_id} (dmd-gateway-admin).\nReason: {redact(str(data.get('reason')))}\n"
         "If nobody on the team made this change, someone else has access to the server.",

@@ -55,13 +55,13 @@ _COUNTDOWN = (
 )
 _BODY = """
 <main>
-<h1>Try a DID registration</h1>
+<h1>Try a DID-LLM registration</h1>
 <p class=lead>This page runs every step of a registration for you, the way an AI agent does
 it through the API. Click <strong>Execute</strong> on each step, or <strong>Run all
 steps</strong>.</p>
 <p class=note><strong>Staging server.</strong> Payments use test networks whose coins have no
-value, and the DID you get is a test DID. The test agent's private key never leaves this
-page. To try it as a person, with your own wallet, use <a href="/get-did">Get a DID</a>.
+value, and the DID-LLM you get is a test DID-LLM. The test agent's private key never leaves this
+page. To try it as a person, with your own wallet, use <a href="/get-did">Get a DID-LLM</a>.
 Developers: the same steps by hand, and every other endpoint, are in the
 <a href="/docs/advanced">advanced API docs</a>.</p>
 <fieldset>
@@ -99,7 +99,7 @@ def page_html() -> str:
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
-        "<title>Try a DID registration · DebitMyData Agent Gateway</title>"
+        "<title>Try a DID-LLM registration · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
         f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_COUNTDOWN}{_body()}"
         f"<script>{_SCRIPT}</script></body></html>"

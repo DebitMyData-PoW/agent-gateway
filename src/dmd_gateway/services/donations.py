@@ -95,7 +95,7 @@ class DonationRequest(BaseModel):
     donor_did: str | None = Field(
         default=None,
         pattern=DID_PATTERN,
-        description="Optional DID of the donor; the receipt is issued to it. Otherwise the "
+        description="Optional DID-LLM of the donor; the receipt is issued to it. Otherwise the "
         "receipt names the paying wallet.",
     )
 

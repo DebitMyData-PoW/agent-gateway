@@ -12,6 +12,8 @@ font-size:.72rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase;pa
 .hero h1{font-size:2.6rem;line-height:1.08;font-weight:800;text-transform:uppercase;letter-spacing:-.01em;margin:0 0 14px}
 .hero h1 .accent{color:var(--red-text)}
 .hero p{margin:0 auto 14px;color:var(--body);max-width:620px}
+.hero .for-agents{font-size:.92rem;margin:16px auto 0}
+.for-agents code{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.86em;color:var(--code-text);overflow-wrap:anywhere}
 .perks{list-style:none;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:0;margin:0 0 14px}
 .perks li{background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 2px 8px rgba(17,17,26,.05);
 font-size:.74rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:5px 14px}

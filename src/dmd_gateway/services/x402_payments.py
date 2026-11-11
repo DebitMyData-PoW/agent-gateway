@@ -267,7 +267,7 @@ def resource_info(public_base_url: str, path: str, title: str) -> dict[str, Any]
     info: dict[str, Any] = {
         "url": f"{base}{path}",
         "description": (
-            f"{title}. Issues a DebitMyData DID (did:web), a signed W3C credential and the "
+            f"{title}. Issues a DebitMyData DID-LLM (did:web), a signed W3C credential and the "
             "dmd_did_holder entitlement for a registration whose controller key or wallet "
             "has been proven. Fixed fee 25.00 USD, paid here in USDC on Base. The "
             "registration_intent_id comes from POST /v1/dids/registration-quotes, which "
@@ -558,7 +558,7 @@ def _prepare(
         raise ApiError(
             503,
             "issuance_unavailable",
-            "DID issuance is not enabled on this gateway yet.",
+            "DID-LLM issuance is not enabled on this gateway yet.",
             headers={"Retry-After": "3600"},
         )
     other_blockers = [b for b in state.blockers if not b.startswith("payment is ")]
@@ -566,7 +566,7 @@ def _prepare(
         raise ApiError(
             409,
             "registration_not_ready",
-            "The DID cannot be issued yet, so no payment is taken.",
+            "The DID-LLM cannot be issued yet, so no payment is taken.",
             details={"blockers": other_blockers, "next_action": state.next_action},
         )
     status = PaymentStatus(payment.status)
