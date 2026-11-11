@@ -302,6 +302,9 @@
     keyBox.hidden = kind !== "key";
   }
 
+  // The Agentic Hub, offered once the DID-LLM is issued.
+  const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";
+
   // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
   const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
   // Card and PayPal, coming for people (DebitMyData's Stripe and PayPal accounts): shown greyed
@@ -725,6 +728,13 @@
           { class: "links" },
           element("a", { href: issued.credential_url, target: "_blank", rel: "noopener" }, "View the signed credential"),
           element("a", { href: "/docs/advanced" }, "API docs")
+        ),
+        // What to do with it next: the Agentic Hub, where DID-LLM holders join DebitMyData's directory.
+        element(
+          "div",
+          { class: "next" },
+          element("p", {}, "Next: join the Agentic Hub, DebitMyData's directory of AI agents, bots and people."),
+          element("a", { class: "button go", href: AGENTIC_HUB, target: "_blank", rel: "noopener" }, "Join the Agentic Hub")
         )
       )
     );

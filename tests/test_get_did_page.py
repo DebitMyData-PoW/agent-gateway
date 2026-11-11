@@ -533,3 +533,21 @@ def test_the_page_explains_dids_before_the_steps(client: TestClient) -> None:
     # Icons are drawn in the page: nothing loads from elsewhere.
     assert page.count('<svg viewBox="0 0 24 24"') >= 11
     assert '<img src="http' not in page
+
+
+def test_the_footer_lists_the_three_explorers(client: TestClient) -> None:
+    footer = client.get("/get-did").text.split('<footer class="site-footer">')[1]
+    for url, label in (
+        ("https://mempool.debitmydata.io/", "Mempool explorer"),
+        ("https://chain.debitmydata.io/", "Lite explorer"),
+        ("https://explorer.debitmydata.io/", "Rich list &amp; API"),
+    ):
+        assert f'<a href="{url}" target=_blank rel=noopener>{label}</a>' in footer
+
+
+def test_an_issued_did_llm_leads_to_the_agentic_hub() -> None:
+    script = get_did_page._SCRIPT
+    assert 'const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";' in script
+    issued = script.split("async function register()")[1].split("\n  }\n")[0]
+    assert '{ class: "next" }' in issued and '"Join the Agentic Hub"' in issued
+    assert 'href: AGENTIC_HUB, target: "_blank", rel: "noopener"' in issued

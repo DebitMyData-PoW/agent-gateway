@@ -92,12 +92,14 @@ POLICY_LINKS = (
     ("/policies/did", "DID-LLMs"),
     ("/policies/security", "Security"),
 )
-# DebitMyData's other sites, in the footer.
+# DebitMyData's other sites, in the footer, with the three DMD explorers (as on debitmydata.io).
 SITE_LINKS = (
     ("https://debitmydata.com/", "debitmydata.com"),
     ("https://agenticssocialspaces.debitmydata.com/", "Agentic Spaces"),
     ("https://debitmydata.io/", "DMD coin"),
-    ("https://mempool.debitmydata.io/", "Explorer"),
+    ("https://mempool.debitmydata.io/", "Mempool explorer"),
+    ("https://chain.debitmydata.io/", "Lite explorer"),
+    ("https://explorer.debitmydata.io/", "Rich list &amp; API"),
     ("https://pool.debitmydata.io/", "Mining pool"),
 )
 

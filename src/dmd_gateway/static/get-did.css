@@ -178,6 +178,8 @@ background:var(--green);color:#fff;margin:4px}
 a.big:hover{background:var(--green-hover);color:#fff}
 .result .links a{display:inline-block;margin:10px 10px 0}
 .result .actions{justify-content:center;margin:0 0 10px}
+.result .next{margin:20px 0 0;padding-top:18px;border-top:1px solid var(--line-2)}
+.result .next p{margin:0 0 14px;color:var(--body)}
 #countdown{position:fixed;top:78px;right:14px;z-index:10;min-width:150px;text-align:center;border-radius:12px;
 padding:8px 14px;background:var(--card);border:2px solid var(--red);box-shadow:0 4px 18px rgba(0,0,0,.15)}
 #countdown[hidden]{display:none}
