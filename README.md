@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.32.2`). The whole registration flow (quote,
+This is an early development release (`0.33.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -84,6 +84,10 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | "Get a DID-LLM" shows a debit or credit card (Stripe) and PayPal greyed as coming soon, after USDC and DMD, until the gateway offers them | done |
 | Card payments for DID-LLMs (payment option `card_stripe`): each quote gets its own Stripe payment page (Stripe Checkout, `payment_url`), open as long as the 31-minute quote; card details go to Stripe only; the worker checks each payment with Stripe itself (restricted key: Checkout Sessions write, PaymentIntents and Charges read), and settled payments for 30 days for refunds and disputes (`refunded`, `disputed`; a registration not yet issued is cancelled, an issued DID-LLM raises an alert); the page sends people to Stripe and continues by itself when they come back; agents get the link for their human (`pay_at_payment_url`) ([docs/card-payments.md](docs/card-payments.md)) | done (tested on staging in Stripe test mode; approved for production by DebitMyData on 2026-11-11, on once the production server has its live key) |
 | Card payments always in US dollars: Stripe's prices in the payer's own currency (Adaptive Pricing, which adds a 2–4% conversion fee for the payer) are off on every payment page; "Get a DID-LLM" says the signature formats once | done |
+| Own a DID-LLM with a key instead of a wallet: `scripts/did-owner-key.py` makes an Ed25519 owner key on the owner's computer and signs the registration's message (https gateways only, never for another key or gateway), with a guide ([docs/owner-key.md](docs/owner-key.md)); step 3 of "Get a DID-LLM" says how to continue after signing with a tool, and explains a pasted message instead of a signature | done |
+| After a reload, "Get a DID-LLM" brings the registration in progress into view: it scrolls to it, puts the focus on Continue and makes it glow for a moment (no glow with reduced motion) | done |
+| "Join the Agentic Hub" hidden after issuance until the hub's "Create Entity" saves entries (`SHOW_AGENTIC_HUB` in `get-did.js`) | done (back once the hub is ready) |
+| Updates pause the monitor and the daily report (`deploy/*/update.sh`), so new settings are never read by the old code (no false "configuration cannot be loaded" alert); they start again at the end, even after a failed update | done |
 | PayPal | waiting for DebitMyData's PayPal account access |
 | The company's test DID-LLMs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
@@ -311,6 +315,7 @@ src/dmd_gateway/
   db/                        SQLAlchemy models and session handling
   domain/                    money, ids, payment states, settlement rules, issuance rule, registry
 scripts/demo_agent.py        agent side for demos: key, signature, credential check, MCP client
+scripts/did-owner-key.py     owner key for a DID-LLM without a wallet (docs/owner-key.md)
 scripts/load_test.py         load test: requests per second and response times
 tests/
 docs/                        architecture, roadmap, operator checklists

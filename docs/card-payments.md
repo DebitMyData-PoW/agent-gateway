@@ -78,7 +78,9 @@ Staging uses Stripe's **test mode**: test card numbers only, no real money moves
 sudo nano /etc/dmd-gateway/gateway.env
 ```
 
-Add these two lines at the end (paste the key between the single quotes):
+Add these two lines at the end (paste the key between the single quotes), and press Enter
+after the last one: the file must end with a line break, or a line added later would be glued
+onto the key:
 
 ```bash
 DMD_RAIL_CARD_STRIPE_ENABLED=true

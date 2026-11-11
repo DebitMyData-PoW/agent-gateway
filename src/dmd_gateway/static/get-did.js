@@ -302,8 +302,12 @@
     keyBox.hidden = kind !== "key";
   }
 
-  // The Agentic Hub, offered once the DID-LLM is issued.
+  // The Agentic Hub, offered once the DID-LLM is issued. Hidden for now: the hub's "Create
+  // Entity" does not save entries yet. Set to true once it does.
   const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";
+  const SHOW_AGENTIC_HUB = false;
+  // The owner-key tool, for people who sign with their own key rather than a wallet.
+  const OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md";
   // Card payments: the quote links to Stripe's payment page (Stripe Checkout), which sends the
   // payer back here with ?card=paid (or back) and the payment's ID.
   const CARD = "stripe_checkout";
@@ -674,9 +678,17 @@
       sign.addEventListener("click", () => signWithWallet(challenge, sign, status));
       parts.push(element("div", { class: "actions" }, sign));
     } else {
+      const signed = element("button", { type: "button", class: "secondary small" }, "Continue");
+      signed.addEventListener("click", () => checkSignedElsewhere(signed, status));
       parts.push(
         element("p", { class: "small" }, "The signature can be base64url, base64 or hex."),
-        element("div", { class: "copyline act" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id))
+        element("div", { class: "copyline act" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id)),
+        element(
+          "div",
+          { class: "elsewhere act" },
+          element("p", { class: "small" }, "Signed with a tool that sends the signature itself (your agent, or ", element("a", { href: OWNER_KEY_GUIDE, target: "_blank", rel: "noopener" }, "the owner-key tool"), ")? Once it says the signature was accepted, click Continue: nothing needs pasting here."),
+          element("div", { class: "actions" }, signed)
+        )
       );
     }
     const pasted = element("textarea", { rows: 3, placeholder: isWallet ? "0x…" : "The signature", "aria-label": "Signature" });
@@ -713,10 +725,34 @@
     }
   }
 
+  // The owner signed with a tool that sent the proof itself: carry on once the gateway has it.
+  async function checkSignedElsewhere(button, status) {
+    button.disabled = true;
+    status.className = "status busy";
+    status.textContent = "Checking…";
+    const result = await call("GET", `/v1/dids/registrations/${state.registrationId}`).catch(() => null);
+    button.disabled = false;
+    if (result && result.status === 200 && (result.data.did || result.data.next_action === "register_did")) {
+      delete deadlines.challenge;
+      tick();
+      status.className = "status ok";
+      status.textContent = "Signature verified ✓";
+      announce("Signature verified.");
+      return register();
+    }
+    status.className = "status bad";
+    status.textContent = result ? "The gateway has no signature for this DID-LLM yet: sign first, then click Continue." : "Could not reach the gateway.";
+  }
+
   async function sendProof(challenge, signature, status) {
     if (!signature) {
       status.className = "status bad";
       status.textContent = "Paste the signature first.";
+      return;
+    }
+    if (signature.startsWith("DebitMyData controller proof")) {
+      status.className = "status bad";
+      status.textContent = "That is the message to sign, not the signature: sign it with your key, then paste the signature it gives (about 86 characters).";
       return;
     }
     status.className = "status busy";
@@ -782,12 +818,14 @@
           element("a", { href: "/docs/advanced" }, "API docs")
         ),
         // What to do with it next: the Agentic Hub, where DID-LLM holders join DebitMyData's directory.
-        element(
-          "div",
-          { class: "next" },
-          element("p", {}, "Next: join the Agentic Hub, DebitMyData's directory of AI agents, bots and people."),
-          element("a", { class: "button go", href: AGENTIC_HUB, target: "_blank", rel: "noopener" }, "Join the Agentic Hub")
-        )
+        SHOW_AGENTIC_HUB
+          ? element(
+              "div",
+              { class: "next" },
+              element("p", {}, "Next: join the Agentic Hub, DebitMyData's directory of AI agents, bots and people."),
+              element("a", { class: "button go", href: AGENTIC_HUB, target: "_blank", rel: "noopener" }, "Join the Agentic Hub")
+            )
+          : ""
       )
     );
     announce("Your DID-LLM is ready.");
@@ -837,6 +875,15 @@
       element("p", {}, registration.did ? "Your DID-LLM was issued: " : "You have a registration in progress: ", element("strong", {}, previous.name || ""), ` (${short(previous.registrationId)}).`),
       element("div", { class: "actions" }, go, fresh)
     );
+    // After a reload the browser may keep its scroll position: bring the box into view, put
+    // the focus on Continue, and make it glow for a moment so nobody misses it.
+    resumeBox.classList.remove("attention");
+    const calm = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => {
+      resumeBox.scrollIntoView({ block: "center", behavior: calm ? "auto" : "smooth" });
+      go.focus({ preventScroll: true });
+      resumeBox.classList.add("attention");
+    });
   }
 
   // ------------------------------------------------------------------ start

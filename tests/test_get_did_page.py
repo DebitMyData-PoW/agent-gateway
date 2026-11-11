@@ -545,12 +545,48 @@ def test_the_footer_lists_the_three_explorers(client: TestClient) -> None:
         assert f'<a href="{url}" target=_blank rel=noopener>{label}</a>' in footer
 
 
-def test_an_issued_did_llm_leads_to_the_agentic_hub() -> None:
+def test_the_agentic_hub_button_waits_until_the_hub_saves_entries() -> None:
     script = get_did_page._SCRIPT
     assert 'const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";' in script
+    # Hidden for now: the hub's "Create Entity" does not save entries yet.
+    assert "const SHOW_AGENTIC_HUB = false;" in script
     issued = script.split("async function register()")[1].split("\n  }\n")[0]
+    assert "SHOW_AGENTIC_HUB\n          ? element(" in issued
     assert '{ class: "next" }' in issued and '"Join the Agentic Hub"' in issued
     assert 'href: AGENTIC_HUB, target: "_blank", rel: "noopener"' in issued
+
+
+def test_after_a_reload_the_registration_in_progress_is_brought_into_view() -> None:
+    script = get_did_page._SCRIPT
+    resume = script.split("async function resume(previous, back = null) {")[1].split("\n  }\n")[0]
+    assert (
+        'resumeBox.scrollIntoView({ block: "center", behavior: calm ? "auto" : "smooth" });'
+        in resume
+    )
+    assert "go.focus({ preventScroll: true });" in resume
+    assert 'resumeBox.classList.add("attention");' in resume
+    css = (files("dmd_gateway") / "static" / "get-did.css").read_text(encoding="utf-8")
+    assert ".resume.attention{animation:resume-glow" in css
+    # No glow for people who turned animations off.
+    assert "@media (prefers-reduced-motion:reduce){.resume.attention{animation:none" in css
+
+
+def test_step_3_helps_people_who_sign_with_a_tool() -> None:
+    script = get_did_page._SCRIPT
+    assert (
+        '"https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md"' in script
+    )
+    assert "Once it says the signature was accepted, click Continue" in script
+    check = script.split("async function checkSignedElsewhere(button, status) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert "/v1/dids/registrations/${state.registrationId}" in check
+    assert 'result.data.next_action === "register_did"' in check and "return register();" in check
+    # Pasting the message instead of its signature is explained, not sent.
+    send = script.split("async function sendProof(challenge, signature, status) {")[1]
+    assert (
+        'signature.startsWith("DebitMyData controller proof")' in send.split("controller-proofs")[0]
+    )
 
 
 def test_cards_are_paid_on_stripes_page_and_come_back_here() -> None:
