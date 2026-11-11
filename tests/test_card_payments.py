@@ -190,6 +190,8 @@ def test_quote_creates_a_payment_page_for_exactly_the_quote() -> None:
         "DebitMyData DID-LLM registration (test)"
     )
     assert fields["allowed_payment_method_types[0]"] == "card"
+    # Always in US dollars: Stripe's prices in the payer's own currency are off.
+    assert fields["adaptive_pricing[enabled]"] == "false"
     assert "allowed_payment_method_types[1]" not in fields
     assert fields["client_reference_id"] == "dmd_payment_intent_A"
     assert fields["metadata[payment_intent_id]"] == "dmd_payment_intent_A"

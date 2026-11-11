@@ -675,7 +675,7 @@
       parts.push(element("div", { class: "actions" }, sign));
     } else {
       parts.push(
-        element("p", { class: "small" }, `The signature can be base64url, base64 or hex (${challenge.signature_encoding || "base64url"}).`),
+        element("p", { class: "small" }, "The signature can be base64url, base64 or hex."),
         element("div", { class: "copyline act" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id))
       );
     }

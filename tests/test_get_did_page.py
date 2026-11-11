@@ -571,6 +571,9 @@ def test_cards_are_paid_on_stripes_page_and_come_back_here() -> None:
     assert 'history.replaceState(null, "", location.pathname + location.hash)' in start
     assert "previous.paymentId === backFor" in start and "resume(previous, back)" in start
     assert "if (back) return carryOn();" in script
+    # The signature formats are said once (the API's own wording is not repeated in brackets).
+    assert '"The signature can be base64url, base64 or hex."' in script
+    assert "challenge.signature_encoding" not in script
     # Back after paying: no second button to pay, only the wait.
     paid = card.split("if (paid) {")[1].split("\n    }\n")[0]
     assert '"Pay $' not in paid and "return checkPayment(status);" in paid

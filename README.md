@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.32.0`). The whole registration flow (quote,
+This is an early development release (`0.32.1`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -83,6 +83,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | The pages' footer lists the three DMD explorers (Mempool explorer, Lite explorer, Rich list & API), as on debitmydata.io; once a DID-LLM is issued, the page offers "Join the Agentic Hub" | done |
 | "Get a DID-LLM" shows a debit or credit card (Stripe) and PayPal greyed as coming soon, after USDC and DMD, until the gateway offers them | done |
 | Card payments for DID-LLMs (payment option `card_stripe`): each quote gets its own Stripe payment page (Stripe Checkout, `payment_url`), open as long as the 31-minute quote; card details go to Stripe only; the worker checks each payment with Stripe itself (restricted key: Checkout Sessions write, PaymentIntents and Charges read), and settled payments for 30 days for refunds and disputes (`refunded`, `disputed`; a registration not yet issued is cancelled, an issued DID-LLM raises an alert); the page sends people to Stripe and continues by itself when they come back; agents get the link for their human (`pay_at_payment_url`) ([docs/card-payments.md](docs/card-payments.md)) | done (Stripe test mode on staging; production off and unapproved until the staging test and DebitMyData's go-ahead) |
+| Card payments always in US dollars: Stripe's prices in the payer's own currency (Adaptive Pricing, which adds a 2–4% conversion fee for the payer) are off on every payment page; "Get a DID-LLM" says the signature formats once | done |
 | PayPal | waiting for DebitMyData's PayPal account access |
 | The company's test DID-LLMs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |

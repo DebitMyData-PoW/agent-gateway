@@ -140,6 +140,9 @@ class StripeCheckoutAdapter(PaymentAdapter):
             # Cards only (Apple Pay and Google Pay are cards too): paid at once, never days
             # later like a bank debit.
             "allowed_payment_method_types": ["card"],
+            # Always 25.00 USD: no price in the payer's own currency (Stripe's Adaptive
+            # Pricing adds a conversion fee for the payer, and the payment must be in USD).
+            "adaptive_pricing": {"enabled": False},
             "client_reference_id": quote.payment_intent_id,
             "metadata": reference,
             "payment_intent_data": {

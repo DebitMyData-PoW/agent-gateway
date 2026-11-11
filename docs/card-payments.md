@@ -11,6 +11,9 @@ stores a card number.
    that quote alone and closes when the quote ends. A card quote lasts **31 minutes**: Stripe
    keeps a payment page open for 30 minutes at least, and the quote outlives it, so no card is
    ever charged for an expired quote.
+   The page always charges US dollars: Stripe's prices in the payer's own currency (Adaptive
+   Pricing, which adds a 2–4% conversion fee for the payer) are switched off on every page, so
+   everyone pays exactly 25.00 USD, as the payment policy says.
 2. The Get a DID-LLM page sends the person to that page (**Pay $25.00 by card**). After paying,
    Stripe sends them back to the page (`?card=paid&payment=...`), which continues by itself:
    the payment is confirmed, then the owner signs, then the DID-LLM is issued.
