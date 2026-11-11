@@ -141,9 +141,9 @@ def test_suspend_reactivate_then_revoke(client: TestClient, engine: Engine) -> N
 
     # A revoked DID never comes back.
     code, out = run(engine, "did", "reactivate", did, "--reason", "Changed our mind", "--by", "T")
-    assert (code, out) == (1, "A revoked DID cannot become active: nothing was changed.")
+    assert (code, out) == (1, "A revoked DID-LLM cannot become active: nothing was changed.")
     code, out = run(engine, "did", "suspend", did, "--reason", "Changed our mind", "--by", "T")
-    assert (code, out) == (1, "A revoked DID cannot become suspended: nothing was changed.")
+    assert (code, out) == (1, "A revoked DID-LLM cannot become suspended: nothing was changed.")
 
     # The whole history is in the audit trail, with who and why, and it cannot be rewritten.
     history = changes(engine, iid)
@@ -179,7 +179,7 @@ def test_refused_changes_write_nothing(client: TestClient, engine: Engine) -> No
         (("suspend", did, "--reason", "x", "--by", "Tyler"), "Give a reason of 3 to 300"),
         (("suspend", did, "--reason", "y" * 301, "--by", "Tyler"), "Give a reason of 3 to 300"),
         (("suspend", did, "--reason", REASON, "--by", "$(whoami)"), "Give your name with --by"),
-        (("suspend", unknown, "--reason", REASON, "--by", "Tyler"), "No DID found"),
+        (("suspend", unknown, "--reason", REASON, "--by", "Tyler"), "No DID-LLM found"),
         (("reactivate", did, "--reason", REASON, "--by", "Tyler"), "already active"),
     ):
         code, out = run(engine, "did", *argv)

@@ -368,7 +368,7 @@ def test_issuance_needs_an_issuer_key(ready_registry: Path, engine: Engine) -> N
         prove(client, rid)
         settle(client, q, txid="ef" * 32)
         status = registration(client, rid)
-        assert status["blockers"] == ["DID issuance is not enabled on this gateway yet"]
+        assert status["blockers"] == ["DID-LLM issuance is not enabled on this gateway yet"]
         response = register(client, rid)
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "issuance_unavailable"

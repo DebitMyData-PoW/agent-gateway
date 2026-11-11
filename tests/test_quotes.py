@@ -219,7 +219,7 @@ def test_usdc_quote_matches_the_directive(db_client: TestClient, engine: Engine)
 
     assert quote["registration_intent_id"].startswith("dmd_did_intent_")
     assert quote["payment_intent_id"].startswith("dmd_payment_intent_")
-    assert quote["service"] == "DebitMyData Agentic DID Registration"
+    assert quote["service"] == "DebitMyData Agentic DID-LLM Registration"
     assert quote["commercial_price"] == {"currency": "USD", "amount": "25.00"}
     option = quote["selected_payment_option"]
     assert option["id"] == "x402_usdc_base"
@@ -239,7 +239,7 @@ def test_usdc_quote_matches_the_directive(db_client: TestClient, engine: Engine)
     # x402: the controller is proven first; the payment answers the 402 of the registration.
     assert quote["next_action"] == "prove_wallet_control"
     assert quote["controller_proof_required"] is True
-    assert quote["terms_version"] == "2026-11-03"
+    assert quote["terms_version"] == "2026-11-10"
     # Links to the policy pages this server serves.
     assert quote["policy_urls"]["refund_policy"] == "http://localhost:8000/policies/refunds"
 

@@ -599,7 +599,7 @@ def test_audit_check(db: Session) -> None:
     db.flush()
     reorged, refund = mc.check_audit(ctx, db, NOW)
     assert (reorged.severity, reorged.kind) == (C, "event")
-    assert reorged.title == "A DID's payment left the chain after the DID was issued"
+    assert reorged.title == "A DID-LLM's payment left the chain after the DID-LLM was issued"
     assert (refund.severity, refund.title) == (
         W,
         f"A payment needs a refund: 1.500000 USDC on {NETWORK}",
@@ -625,7 +625,7 @@ def test_audit_check_reports_did_status_changes(db: Session) -> None:
     db.flush()
     (finding,) = mc.check_audit(ctx, db, NOW)
     assert (finding.severity, finding.kind) == (W, "event")
-    assert finding.title == "A DID was suspended: dmd_identity_unknown"
+    assert finding.title == "A DID-LLM was suspended: dmd_identity_unknown"
     assert "did:web:x went from active to suspended" in finding.detail
     assert "by Tyler (dmd-gateway-admin)" in finding.detail
     assert "Reason: Under review" in finding.detail
@@ -812,7 +812,7 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
             report = build_report(ctx, session, now)
         body = "\n".join(report.lines)
         assert report.findings == []
-        assert "- DIDs issued: 1" in body
+        assert "- DID-LLMs issued: 1" in body
         assert "- Inference donations completed: 1 (2.00 USD)" in body
         assert "- Payments settled with x402_usdc_base: 2, 27 USDC" in body
         assert f"- x402_usdc_base: {MERCHANT}" in body
@@ -831,11 +831,11 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
             report = build_report(replace(ctx, settings=test_dids), session, now)
         body = "\n".join(report.lines)
         assert report.findings == []
-        assert body.count("- DIDs issued: 0") == 2  # the last 24 hours, and since the start
-        assert "- DID registration quotes: 0" in body
+        assert body.count("- DID-LLMs issued: 0") == 2  # the last 24 hours, and since the start
+        assert "- DID-LLM registration quotes: 0" in body
         assert "- Payments settled with x402_usdc_base: 1, 2 USDC" in body  # the donation
         assert "- Settled with x402_usdc_base: 1 payment(s), 2 USDC" in body
-        assert "- Left out of these figures: 1 test DID(s)" in body
+        assert "- Left out of these figures: 1 test DID-LLM(s)" in body
         assert "checked again on chain, all found" in body
 
         # The blocks holding both payments leave the chain.
@@ -855,7 +855,7 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
             )
         with transaction(factory) as session:
             report = build_report(ctx, session, now)
-        assert {f.title for f in report.findings} >= {"DIDs whose payment is not settled: 1"}
+        assert {f.title for f in report.findings} >= {"DID-LLMs whose payment is not settled: 1"}
     reset_chain()
 
 

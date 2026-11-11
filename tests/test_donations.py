@@ -299,7 +299,7 @@ def test_a_paid_donation_answers_with_a_signed_receipt(client: TestClient, engin
     assert subject["id"] == "did:web:a.b"
     assert subject["donation"]["amount"] == {"currency": "USD", "amount": "5.00"}
     assert subject["donation"]["donorName"] == "ResearchClaw-01"
-    assert subject["donation"]["termsVersion"] == "2026-11-03"
+    assert subject["donation"]["termsVersion"] == "2026-11-10"
     assert subject["payment"]["payer"] == f"{NETWORK}:{payer.address.lower()}"
     assert subject["payment"]["transactions"] == [settlement["transaction"]]
     assert subject["payment"]["amount"] == "5.000000"
