@@ -245,3 +245,21 @@ def test_directory_never_signs_for_another_owner(
     with pytest.raises(SystemExit, match="not by this key"):
         tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
     assert not any(c[0] == "POST" for c in calls)
+
+
+def test_a_message_missing_on_the_default_gateway_points_to_staging(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tool = _tool()
+    path, _ = _new_key(tool, tmp_path, capsys)
+    monkeypatch.delenv("DMD_GATEWAY_API", raising=False)
+    tool.call = lambda *_args, **_kwargs: (404, {"detail": "Not Found"})
+    with pytest.raises(SystemExit, match="DMD_GATEWAY_API=https://staging-api.debitmydata.io"):
+        tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    with pytest.raises(SystemExit, match="This asked https://api.debitmydata.io"):
+        tool.prove(str(path), REGISTRATION)
+    # Already pointed at a gateway: no hint.
+    monkeypatch.setenv("DMD_GATEWAY_API", "https://staging-api.debitmydata.io")
+    with pytest.raises(SystemExit) as stopped:
+        tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    assert "This asked" not in str(stopped.value)

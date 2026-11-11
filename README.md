@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.34.0`). The whole registration flow (quote,
+This is an early development release (`0.34.1`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -94,6 +94,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Production server package (`deploy/production`, [docs/production.md](docs/production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), go-live checklist | done (needs the production server) |
 | Credential signer (ID-15): in production the issuer key is held only by `dmd-gateway-signer` (own user, no network), which checks the database before signing; the API checks every signature | done |
 | DID-LLM directory: owners list their DID-LLM with a public profile (the Agentic Hub's fields, no pictures: type avatar/robot/sentient, specialty, description, optional owner's name, region, country, creation date), signed with the DID-LLM's own key or wallet like the proof of control, and change or remove it the same way; plain text only (no links, e-mail addresses or hidden characters); shown while the DID-LLM is active; open API with CORS (`GET /v1/directory`, search, type, pages), pages `/directory`, `/directory/{id}` and `/directory/list`, MCP (`dmd_search_directory`, `dmd_list_in_directory`), `did-owner-key.py directory`; operators hide a listing (`dmd-gateway-admin directory hide`), and the monitor reports every new or changed listing; "Get a DID-LLM" offers it after issuance ([docs/directory.md](docs/directory.md)) | done |
+| The top bar is wider than the page (1180 px) so every link fits on one line with "Directory" (staging's too), with the links a little closer on narrower screens and folded into the menu button below 900 px done |
+| On staging, the directory page's owner-key command names the staging gateway (`DMD_GATEWAY_API=...`), and the tool says which gateway it asked when a message is not found there | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

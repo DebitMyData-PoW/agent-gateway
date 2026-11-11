@@ -67,7 +67,9 @@ python3 did-owner-key.py directory ~/did-keys/my-agent.key dmd_challenge_...
 ```
 
 The tool shows what will be published and asks you to confirm before it signs. Then click
-**Continue** on the page. Changing or removing the listing works the same way.
+**Continue** on the page. Changing or removing the listing works the same way. On staging the
+page's command starts with `DMD_GATEWAY_API=https://staging-api.debitmydata.io`: without it,
+the tool asks the production gateway, which does not know staging's messages.
 
 ## Good to know
 

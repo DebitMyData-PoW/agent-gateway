@@ -503,6 +503,8 @@ def test_the_directory_pages(client: TestClient) -> None:  # noqa: F811
     csp = listing_page.headers["content-security-policy"]
     assert "script-src 'sha256-" in csp and "connect-src 'self'" in csp
     assert "never asks for a private key" in listing_page.text
+    # Off production, the tool's command names this gateway (DMD_GATEWAY_API=...).
+    assert 'const PRODUCTION_API = "https://api.debitmydata.io";' in listing_page.text
 
 
 def test_the_get_did_page_offers_the_directory(client: TestClient) -> None:  # noqa: F811

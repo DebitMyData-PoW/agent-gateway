@@ -9,7 +9,7 @@ src:url(/fonts/mada-latin-800-normal.woff2) format("woff2")}
 :root{--red:#c80815;--red-hover:#e12330;--red-deep:#640000;--red-brand:#bf030c;--pink:#fff0f1;
 --grey:#f5f5f5;--line:#e6e6e6;--text:#211f1f;--muted:#7d8797;--green:#098551;--green-hover:#0ead6a;
 --warn:#b35900;--code:#f6f6f6;--sans:Mada,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
---page:880px;color-scheme:light;
+--page:880px;--bar:1180px;color-scheme:light;
 /* The colours the light and dark themes change (the dark ones are at the end of this file) */
 --red-text:#c80815;--green-text:#098551;--code-text:#640000;--page-bg:#fff;--paper:#fff;--card:#fff;--card-2:#fbfbfc;--topbar:#fff;
 --line-2:#ececf0;--body:#55606e;--text-2:#3d3b3b;--input-line:#cfcfcf;--disabled:#5b5959;--pick:#fffafa;
@@ -26,7 +26,8 @@ box-shadow:var(--bar-shadow)}
 .site-footer{background:var(--red-deep)}
 .topbar .in,.site-footer .in{max-width:var(--page);margin:0 auto;padding:12px 16px;display:flex;align-items:center;
 flex-wrap:wrap}
-.topbar .in{gap:12px}
+/* The top bar is wider than the page, so that every page's link fits on one line. */
+.topbar .in{gap:12px;max-width:var(--bar)}
 .brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;font-weight:800;font-size:1.15rem}
 .brand img{width:auto;height:40px}
 .brand .logo-dark,[data-theme=dark] .brand .logo-light{display:none}
@@ -61,7 +62,9 @@ border-radius:999px;background:#fff;color:var(--red-deep);font-weight:700}
 .site-footer .legal{margin:26px 0 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.2);font-size:.85rem}
 .site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
 .topbar a:focus-visible,.menu-toggle:focus-visible+.menu-button{outline:3px solid var(--red-text);outline-offset:2px}
-@media (max-width:760px){
+/* Narrower screens: the links get closer, then fold into the menu button. */
+@media (max-width:1180px){.modes{gap:2px;font-size:.92rem}.modes a{padding:6px 10px}}
+@media (max-width:900px){
 .theme-toggle{order:1;margin-left:auto}
 .menu-button{order:2}
 .modes{order:3}
@@ -81,6 +84,8 @@ background:var(--text);border-radius:2px;transition:transform .2s,background .2s
 .modes a{padding:11px 14px;border-radius:10px}
 .topbar{max-height:100vh;overflow-y:auto}
 .modes a.real{align-self:flex-start;margin-top:4px}
+}
+@media (max-width:760px){
 .site-footer .cols{grid-template-columns:repeat(2,minmax(0,1fr))}
 .site-footer .col:last-child{grid-column:1/-1}
 }

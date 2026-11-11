@@ -8,6 +8,7 @@
   const DID = /^did:web:[^\s/?#]+:agents:[0-9A-HJKMNP-TV-Z]{26}$/;
   const IDENTITY = /^dmd_identity_[0-9A-HJKMNP-TV-Z]{26}$/;
   const MAX_WORDS = 100;
+  const PRODUCTION_API = "https://api.debitmydata.io"; // the owner-key tool's default gateway
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const findForm = $("#find");
@@ -275,7 +276,10 @@
       }
       parts.push(pasteBox(challenge, note, "0x…", list.length > 0));
     } else {
-      const command = `python3 did-owner-key.py directory ~/did-keys/my-agent.key ${challenge.challenge_id}`;
+      // The tool talks to the production gateway unless told otherwise: name this one (staging).
+      const audience = (challenge.message.match(/^Audience: (\S+)$/m) || [])[1] || "";
+      const gateway = audience && audience !== PRODUCTION_API ? `DMD_GATEWAY_API=${audience} ` : "";
+      const command = `${gateway}python3 did-owner-key.py directory ~/did-keys/my-agent.key ${challenge.challenge_id}`;
       const signed = element("button", { type: "button", class: "secondary small" }, "Continue");
       signed.addEventListener("click", () => checkSignedElsewhere(challenge, signed, note));
       parts.push(
