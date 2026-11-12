@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.34.3`). The whole registration flow (quote,
+This is an early development release (`0.34.4`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -99,6 +99,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | The directory's pages have one address for people, the app's (id.debitmydata.io): on the API's address they lead there (308, same path and query), and `entry_url` and the alerts link there; the API stays on api.debitmydata.io | done |
 | Signing with a key, on "Get a DID-LLM" (step 3) and the directory's listing page: the owner-key tool's command (with the registration or message ID, and `DMD_GATEWAY_API` off production) and a full-size **Continue** are the main way; pasting a signature made with other software is folded below | done |
 | The owner-key tool takes the folder of key files (`~/did-keys`) and signs with the one that owns the DID-LLM, or says that none does (listing the keys it found) and signs nothing; the pages' commands give the folder | done |
+| "Get a DID-LLM", step 1, "My agent's public key": how to make a key with the owner-key tool (the `new` command and the guide; on staging, a test key of its own and the guide's staging part) | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

@@ -655,3 +655,15 @@ def test_the_page_offers_cards_once_the_card_option_is_on() -> None:
             "stripe_checkout",
             "USD",
         )
+
+
+def test_the_key_option_says_how_to_make_a_key() -> None:
+    real = get_did_page.page_html(staging=False)
+    assert f'href="{get_did_page.OWNER_KEY_GUIDE}"' in real
+    assert "<code>python3 did-owner-key.py new ~/did-keys/my-agent.key</code>" in real
+    assert "make a test key of its own" not in real
+    # On staging: a test key of its own, and the guide's staging part.
+    staging = get_did_page.page_html(staging=True)
+    assert "owner-key.md#staging-the-test-server" in staging
+    assert "<code>python3 did-owner-key.py new ~/did-keys/staging-test.key</code>" in staging
+    assert "make a test key of its own" in staging

@@ -62,6 +62,7 @@ background:var(--card)}
 .tag{display:inline-block;background:var(--pink);color:var(--red-brand);border-radius:999px;font-size:.78rem;
 font-weight:700;padding:0 8px;margin-left:6px;vertical-align:middle}
 .sub{margin:6px 0 12px 26px}
+.sub code{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.86em;color:var(--code-text);overflow-wrap:anywhere}
 .hint{background:var(--note-bg);border-left:4px solid var(--note-line);border-radius:8px;padding:8px 12px;margin:-4px 0 12px;font-size:.95rem}
 .wallets{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 10px}
 .wallets img{width:20px;height:20px;vertical-align:middle;margin-right:6px}

@@ -350,6 +350,28 @@ def _for_agents(mcp_url: str) -> str:
     )
 
 
+OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md"
+
+
+def _new_key_help(staging: bool) -> str:
+    """Under "My agent's public key": how to make a key, with the owner-key tool. On staging, a
+    test key of its own, and the guide's staging part."""
+    guide = OWNER_KEY_GUIDE + ("#staging-the-test-server" if staging else "")
+    name = "staging-test" if staging else "my-agent"
+    test_key = (
+        " On this test server, make a test key of its own: keep your real key for real DID-LLMs."
+        if staging
+        else ""
+    )
+    return (
+        "<p class=small>No key yet? Make one on your own computer with the "
+        f'<a href="{guide}" target=_blank rel=noopener>owner-key tool</a>: '
+        f"<code>python3 did-owner-key.py new ~/did-keys/{name}.key</code> prints the public key "
+        "to paste here. The private key stays on your computer: back it up, it is the proof "
+        f"that the DID-LLM is yours.{test_key}</p>"
+    )
+
+
 def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
     participants = "".join(
         f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
@@ -430,12 +452,13 @@ address (0x…)</span>
 </div>
 <label class=choice><input type=radio name=controller value=key>
 <strong>My agent's public key</strong>
-<small>For developers: the agent's Ed25519 public key. You will sign one message with the
-agent's key.</small></label>
+<small>An Ed25519 key, for AI agents, or for people without a wallet app. You will sign one
+message with its private key (the owner-key tool does it for you).</small></label>
 <div id=key-box class=sub hidden>
 <label class=field for=public-key>Public key
 <input type=text id=public-key autocomplete=off spellcheck=false
 placeholder="ed25519:z6Mk…"></label>
+{_new_key_help(staging)}
 </div>
 </fieldset>
 <fieldset>
