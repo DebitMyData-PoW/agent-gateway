@@ -39,8 +39,9 @@ signature are sent to the gateway.
 3. **On the Get a DID-LLM page** (<https://id.debitmydata.io>): choose **My agent's public key**,
    paste the public key, choose how to pay, then **Get my quote** and pay.
 
-4. **Once the page shows the payment as received** (step 3, "Prove it's yours"), copy the
-   registration ID with the **Copy** button at step 1 and run:
+4. **Once the page shows the payment as received** (step 3, "Prove it's yours"), the page
+   shows the command with your registration ID: copy it, change the key file if yours has
+   another name, and run it:
 
    ```bash
    python3 did-owner-key.py prove ~/did-keys/my-agent.key dmd_did_intent_...
@@ -49,8 +50,8 @@ signature are sent to the gateway.
    The tool asks the gateway for the message, checks that it is for this registration, this key
    and this gateway, signs it and sends the signature. It prints "Signed and accepted".
 
-5. **Back on the page**, click **Continue** under "Signed with a tool…" (or reload the page and
-   click **Continue**): the DID-LLM is issued. Nothing needs pasting: the tool already sent the
+5. **Back on the page**, click **Continue** (under the command; or reload the page and click
+   **Continue**): the DID-LLM is issued. Nothing needs pasting: the tool already sent the
    signature.
 
 The page's own countdown at step 3 does not matter here: the tool always asks for a fresh

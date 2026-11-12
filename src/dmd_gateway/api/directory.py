@@ -27,6 +27,7 @@ from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import ApiError, error_body
 from dmd_gateway.identity.did import did_document_url, did_suffix
 from dmd_gateway.services import directory
+from dmd_gateway.services.directory import pages_base
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.registrations import identity_record_url
 
@@ -50,8 +51,8 @@ def _base(request: Request) -> str:
     return request.app.state.settings.public_base_url.rstrip("/")
 
 
-def entry_url(base: str, identity_id: str) -> str:
-    return f"{base}{PAGE_PATH}/{did_suffix(identity_id)}"
+def entry_url(pages: str, identity_id: str) -> str:
+    return f"{pages}{PAGE_PATH}/{did_suffix(identity_id)}"
 
 
 # --------------------------------------------------------------------------- reading
@@ -76,7 +77,9 @@ class DirectoryEntry(BaseModel):
     identity_url: str
 
 
-def entry(base: str, identity: AgentIdentity, listing: DirectoryListing) -> DirectoryEntry:
+def entry(
+    base: str, identity: AgentIdentity, listing: DirectoryListing, pages: str | None = None
+) -> DirectoryEntry:
     assert listing.listed_at is not None
     return DirectoryEntry(
         did=identity.public_identifier,
@@ -92,7 +95,7 @@ def entry(base: str, identity: AgentIdentity, listing: DirectoryListing) -> Dire
         created_on=listing.created_on,
         listed_at=listing.listed_at,
         updated_at=listing.updated_at,
-        entry_url=entry_url(base, identity.id),
+        entry_url=entry_url(pages or base, identity.id),
         did_document_url=did_document_url(base, identity.id),
         identity_url=identity_record_url(base, identity.id),
     )
@@ -125,7 +128,10 @@ def listings(
     with transaction(request.app.state.session_factory) as session:
         page = directory.search(session, text=q, entity_type=type, cursor=cursor, limit=limit)
         body = DirectoryPage(
-            entries=[entry(base, identity, listing) for identity, listing in page.entries],
+            entries=[
+                entry(base, identity, listing, pages_base(request.app.state.settings))
+                for identity, listing in page.entries
+            ],
             next_cursor=page.next_cursor,
         )
     return JSONResponse(body.model_dump(mode="json"), headers=PUBLIC)
@@ -146,7 +152,8 @@ def listing(
         if found is None:
             body: dict[str, Any] = error_body("not_listed", "This DID-LLM is not in the directory.")
             return JSONResponse(body, status_code=404, headers=PUBLIC)
-        body = entry(base, *found).model_dump(mode="json")
+        pages = pages_base(request.app.state.settings)
+        body = entry(base, *found, pages).model_dump(mode="json")
     return JSONResponse(body, headers=PUBLIC)
 
 
@@ -348,7 +355,9 @@ def submit_proof(
             status=outcome.proof.status,
             listed=bool(outcome.listing and outcome.listing.listed),
             shown=shown,
-            entry=entry(base, outcome.identity, outcome.listing)
+            entry=entry(
+                base, outcome.identity, outcome.listing, pages_base(request.app.state.settings)
+            )
             if shown and outcome.listing
             else None,
         )

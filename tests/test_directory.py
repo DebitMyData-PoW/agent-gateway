@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -21,8 +22,9 @@ from dmd_gateway.services import directory
 from .conftest import TEST_DATABASE_URL
 from .fakes import AGENT_CONTROLLER, sign_challenge
 from .test_identity_status import issue, run
-from .test_quotes import ready_registry  # noqa: F401
+from .test_quotes import _app_client, ready_registry  # noqa: F401
 from .test_registration import (  # noqa: F401
+    ISSUER,
     answer,
     challenge,
     clean_chain,
@@ -538,3 +540,31 @@ def test_the_profile_rules_without_a_database() -> None:
         expires_at=now + timedelta(minutes=15),
     )
     assert "Terms:" not in removal and "Listed: no (remove it from the directory)" in removal
+
+
+def test_people_see_the_directory_on_the_apps_address(
+    client: TestClient,  # noqa: F811
+    ready_registry: Path,  # noqa: F811
+    engine: Engine,  # noqa: F811
+) -> None:
+    issued = issue(client)
+    list_it(client, issued["did"])
+    suffix = issued["identity_id"].removeprefix("dmd_identity_")
+    app = _app_client(
+        ready_registry,
+        engine,
+        issuer_key=ISSUER,
+        settings_overrides={"app_host": "id.debitmydata.io"},
+    )
+    pages = ("/directory?q=renewable&type=robot", "/directory/list?did=x", f"/directory/{suffix}")
+    for path in pages:
+        moved = app.get(path, follow_redirects=False)
+        assert moved.status_code == 308, path
+        assert moved.headers["location"] == f"https://id.debitmydata.io{path}"
+    there = app.get("/directory", headers={"Host": "id.debitmydata.io"})
+    assert there.status_code == 200 and "ResearchClaw-01" in there.text
+    # The API stays on the API's address, and links to the people's page.
+    api = app.get(f"/v1/directory/{issued['did']}")
+    assert api.status_code == 200
+    assert api.json()["entry_url"] == f"https://id.debitmydata.io/directory/{suffix}"
+    assert "People see it at https://id.debitmydata.io/directory" in app.get("/llms.txt").text

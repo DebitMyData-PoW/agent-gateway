@@ -56,6 +56,7 @@ from dmd_gateway.services.identity_status import (
     find_identity,
     public_identity,
 )
+from dmd_gateway.settings import Settings
 
 PURPOSE = "directory_listing"
 MESSAGE_TITLE = "DebitMyData directory listing"
@@ -556,6 +557,14 @@ def _apply(
 
 
 # --------------------------------------------------------------------------- reading
+
+
+def pages_base(settings: Settings) -> str:
+    """Where people see the directory: the app's address (id.debitmydata.io) when there is
+    one, else this server. The directory's pages on the API's address lead there."""
+    if settings.app_host:
+        return f"https://{settings.app_host}"
+    return settings.public_base_url.rstrip("/")
 
 
 def _shown():

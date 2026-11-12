@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.34.1`). The whole registration flow (quote,
+This is an early development release (`0.34.2`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -96,6 +96,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | DID-LLM directory: owners list their DID-LLM with a public profile (the Agentic Hub's fields, no pictures: type avatar/robot/sentient, specialty, description, optional owner's name, region, country, creation date), signed with the DID-LLM's own key or wallet like the proof of control, and change or remove it the same way; plain text only (no links, e-mail addresses or hidden characters); shown while the DID-LLM is active; open API with CORS (`GET /v1/directory`, search, type, pages), pages `/directory`, `/directory/{id}` and `/directory/list`, MCP (`dmd_search_directory`, `dmd_list_in_directory`), `did-owner-key.py directory`; operators hide a listing (`dmd-gateway-admin directory hide`), and the monitor reports every new or changed listing; "Get a DID-LLM" offers it after issuance ([docs/directory.md](docs/directory.md)) | done |
 | The top bar is wider than the page (1180 px) so every link fits on one line with "Directory" (staging's too), with the links a little closer on narrower screens and folded into the menu button below 900 px done |
 | On staging, the directory page's owner-key command names the staging gateway (`DMD_GATEWAY_API=...`), and the tool says which gateway it asked when a message is not found there | done |
+| The directory's pages have one address for people, the app's (id.debitmydata.io): on the API's address they lead there (308, same path and query), and `entry_url` and the alerts link there; the API stays on api.debitmydata.io | done |
+| Signing with a key, on "Get a DID-LLM" (step 3) and the directory's listing page: the owner-key tool's command (with the registration or message ID, and `DMD_GATEWAY_API` off production) and a full-size **Continue** are the main way; pasting a signature made with other software is folded below | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

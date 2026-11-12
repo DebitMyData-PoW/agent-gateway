@@ -354,7 +354,7 @@ def _directory_finding(ctx: MonitorContext, session: Session, event: AuditEvent)
         )
     else:
         listing = session.get(DirectoryListing, event.subject_id)
-        page = ctx.settings.public_base_url.rstrip("/") + "/directory/" + did.rsplit(":", 1)[-1]
+        page = f"{directory.pages_base(ctx.settings)}/directory/{did.rsplit(':', 1)[-1]}"
         profile = ""
         if listing is not None and listing.listed:
             profile = (

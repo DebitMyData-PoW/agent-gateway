@@ -4,7 +4,10 @@ The directory lists the DID-LLMs whose owners chose to be listed, each with a sh
 profile. It is DebitMyData's own list of agents, bots and the people behind them, and the
 source for the Agentic Hub's directory.
 
-- People: <https://api.debitmydata.io/directory> (also on <https://id.debitmydata.io/directory>).
+- People: <https://id.debitmydata.io/directory>, the Get a DID-LLM app's address. The same
+  pages on the API's address (`https://api.debitmydata.io/directory...`) lead there (308), and
+  the API's `entry_url` and the monitor's alerts link there too. Without an app address
+  (`DMD_GW_APP_HOST`, staging), the pages stay on the gateway's own address.
 - Owners list their DID-LLM at `/directory/list`; "Get a DID-LLM" offers it once a DID-LLM is
   issued (**List it in the directory**).
 - Software: `GET /v1/directory` (open to every site: CORS), and the MCP tools
@@ -48,8 +51,9 @@ source for the Agentic Hub's directory.
 3. Sign the message:
    - a **wallet** owner signs in the browser wallet (EIP-6963, the same as "Get a DID-LLM"), or
      pastes a signature made in the wallet app;
-   - a **key** owner runs the owner-key tool (below) or pastes a signature, then clicks
-     **Continue**.
+   - a **key** owner runs the owner-key tool command the page shows (below), then clicks
+     **Continue**; a signature made with other software is pasted under "Or sign it with other
+     software".
 
 The same page changes the listing (it fills in the current profile) or removes it (**Remove it
 from the directory**). Each message is valid for 15 minutes and can be answered once.

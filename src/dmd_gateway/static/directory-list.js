@@ -274,20 +274,21 @@
       } else {
         parts.push(element("p", { class: "small" }, `No wallet extension in this browser: sign the message in the app of the owner wallet (${short(address)}), for example with “Sign message”, and paste the signature below.`));
       }
-      parts.push(pasteBox(challenge, note, "0x…", list.length > 0));
+      parts.push(pasteBox(challenge, note, "0x…", list.length > 0 ? "Or paste a signature made in another wallet" : null));
     } else {
       // The tool talks to the production gateway unless told otherwise: name this one (staging).
       const audience = (challenge.message.match(/^Audience: (\S+)$/m) || [])[1] || "";
       const gateway = audience && audience !== PRODUCTION_API ? `DMD_GATEWAY_API=${audience} ` : "";
       const command = `${gateway}python3 did-owner-key.py directory ~/did-keys/my-agent.key ${challenge.challenge_id}`;
-      const signed = element("button", { type: "button", class: "secondary small" }, "Continue");
+      // The usual way for a person: the tool signs and sends the signature itself, then Continue.
+      // Pasting a signature made with other software is the other way, folded below.
+      const signed = element("button", { type: "button" }, "Continue");
       signed.addEventListener("click", () => checkSignedElsewhere(challenge, signed, note));
       parts.push(
-        element("p", { class: "small" }, "Sign it with the owner key. With ", element("a", { href: config.ownerKeyGuide, target: "_blank", rel: "noopener" }, "the owner-key tool"), " (use your own key file):"),
+        element("p", { class: "small" }, "Sign it with the owner key. With ", element("a", { href: config.ownerKeyGuide, target: "_blank", rel: "noopener" }, "the owner-key tool"), ", use your own key file:"),
         element("div", { class: "copyline" }, element("code", {}, command), copyButton(command)),
-        element("div", { class: "elsewhere" }, element("p", { class: "small" }, "Once the tool says the listing was accepted, click Continue."), element("div", { class: "actions" }, signed)),
-        element("p", { class: "small" }, "Or sign the message with your agent's own software (Ed25519, base64url, base64 or hex) and paste the signature:"),
-        pasteBox(challenge, note, "The signature", false)
+        element("div", { class: "elsewhere" }, element("p", {}, "Once the tool says the listing was accepted, click Continue: nothing needs pasting here."), element("div", { class: "actions" }, signed)),
+        pasteBox(challenge, note, "The signature", "Or sign it with other software and paste the signature", "Ed25519 signature of the message: base64url, base64 or hex.")
       );
     }
     parts.push(note);
@@ -295,12 +296,13 @@
     announce("The message to sign is ready.");
   }
 
-  function pasteBox(challenge, note, placeholder, folded) {
+  // folded: the summary of a closed box (another way to sign), or null for an open box (the way).
+  function pasteBox(challenge, note, placeholder, folded, hint = null) {
     const pasted = element("textarea", { rows: 3, placeholder, "aria-label": "Signature" });
     const send = element("button", { type: "button", class: folded ? "secondary" : "" }, "Send the signature");
     send.addEventListener("click", () => sendProof(challenge, pasted.value.trim(), note));
-    const box = element("div", {}, pasted, element("div", { class: "actions" }, send));
-    return folded ? element("details", { class: "paste" }, element("summary", {}, "Or paste a signature made in another wallet"), box) : box;
+    const box = element("div", {}, hint && element("p", { class: "small" }, hint), pasted, element("div", { class: "actions" }, send));
+    return folded ? element("details", { class: "paste" }, element("summary", {}, folded), box) : box;
   }
 
   async function signWithWallet(entry, address, challenge, button, note) {

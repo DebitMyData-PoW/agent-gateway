@@ -286,6 +286,14 @@
     return `The wallet answered: ${(error && error.message) || error}`;
   }
 
+  // The owner-key tool talks to the production gateway unless told otherwise: on another server
+  // (staging), its command names this one, as the message's Audience line says.
+  const PRODUCTION_API = "https://api.debitmydata.io";
+  function toolGateway(message) {
+    const audience = (message.match(/^Audience: (\S+)$/m) || [])[1] || "";
+    return audience && audience !== PRODUCTION_API ? `DMD_GATEWAY_API=${audience} ` : "";
+  }
+
   function toHex(text) {
     return `0x${[...new TextEncoder().encode(text)].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
   }
@@ -675,29 +683,42 @@
       element("pre", { class: "message" }, challenge.message),
       element("div", { class: "actions" }, copyButton(challenge.message, "Copy the message")),
     ];
+    const pasted = element("textarea", { rows: 3, placeholder: isWallet ? "0x…" : "The signature", "aria-label": "Signature" });
+    const send = element("button", { type: "button", class: "secondary" }, "Send the signature");
+    send.addEventListener("click", () => sendProof(challenge, pasted.value.trim(), status));
     if (isWallet) {
       const sign = element("button", { type: "button", class: "act" }, "Sign with my wallet");
       sign.addEventListener("click", () => signWithWallet(challenge, sign, status));
-      parts.push(element("div", { class: "actions" }, sign));
+      parts.push(
+        element("div", { class: "actions" }, sign),
+        element("details", { class: "paste act" }, element("summary", {}, "Or paste a signature made in another wallet"), pasted, element("div", { class: "actions" }, send))
+      );
     } else {
-      const signed = element("button", { type: "button", class: "secondary small" }, "Continue");
+      // The usual way for a person: the owner-key tool signs and sends the signature itself, then
+      // Continue. Pasting a signature made with other software is the other way, folded below.
+      const command = `${toolGateway(challenge.message)}python3 did-owner-key.py prove ~/did-keys/my-agent.key ${state.registrationId}`;
+      const signed = element("button", { type: "button" }, "Continue");
       signed.addEventListener("click", () => checkSignedElsewhere(signed, status));
       parts.push(
-        element("p", { class: "small" }, "The signature can be base64url, base64 or hex."),
-        element("div", { class: "copyline act" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id)),
+        element("p", { class: "small act" }, "With ", element("a", { href: OWNER_KEY_GUIDE, target: "_blank", rel: "noopener" }, "the owner-key tool"), ", use your own key file:"),
+        element("div", { class: "copyline act" }, element("code", {}, command), copyButton(command)),
         element(
           "div",
           { class: "elsewhere act" },
-          element("p", { class: "small" }, "Signed with a tool that sends the signature itself (your agent, or ", element("a", { href: OWNER_KEY_GUIDE, target: "_blank", rel: "noopener" }, "the owner-key tool"), ")? Once it says the signature was accepted, click Continue: nothing needs pasting here."),
+          element("p", {}, "Once the tool (or your agent) says the signature was accepted, click Continue: nothing needs pasting here."),
           element("div", { class: "actions" }, signed)
+        ),
+        element(
+          "details",
+          { class: "paste act" },
+          element("summary", {}, "Or sign it with other software and paste the signature"),
+          element("p", { class: "small" }, "The signature can be base64url, base64 or hex."),
+          element("div", { class: "copyline" }, element("span", { class: "small" }, "Challenge ID, for your agent's tools:"), element("code", {}, challenge.challenge_id), copyButton(challenge.challenge_id)),
+          pasted,
+          element("div", { class: "actions" }, send)
         )
       );
     }
-    const pasted = element("textarea", { rows: 3, placeholder: isWallet ? "0x…" : "The signature", "aria-label": "Signature" });
-    const send = element("button", { type: "button", class: isWallet ? "secondary act" : "act" }, "Send the signature");
-    send.addEventListener("click", () => sendProof(challenge, pasted.value.trim(), status));
-    const paste = element("div", { class: isWallet ? "" : "act" }, pasted, element("div", { class: "actions" }, send));
-    parts.push(isWallet ? element("details", { class: "paste act" }, element("summary", {}, "Or paste a signature made in another wallet"), paste) : paste);
     parts.push(status);
     container.replaceChildren(...parts);
   }

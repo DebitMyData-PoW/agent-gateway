@@ -21,7 +21,7 @@ from importlib.resources import files
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand
 from dmd_gateway.api.directory import LIST_PATH, PAGE_PATH
@@ -167,13 +167,26 @@ FINE_PRINT = (
 )
 
 
+def _elsewhere(request: Request) -> RedirectResponse | None:
+    """The directory's pages have one address for people: the app's (id.debitmydata.io), like
+    "Get a DID-LLM". On the API's address they lead there, with the same path and query; the
+    API itself (/v1/directory) stays where it is."""
+    host = request.app.state.settings.app_host
+    if not host or is_app(request):
+        return None
+    query = f"?{request.url.query}" if request.url.query else ""
+    return RedirectResponse(f"https://{host}{request.url.path}{query}", status_code=308)
+
+
 @router.get(PAGE_PATH)
 def directory_page(
     request: Request,
     q: str | None = Query(default=None, max_length=directory.MAX_SEARCH),
     type: str | None = Query(default=None, max_length=20),  # noqa: A002
     cursor: str | None = Query(default=None, max_length=200),
-) -> HTMLResponse:
+) -> Response:
+    if moved := _elsewhere(request):
+        return moved
     base = request.app.state.settings.public_base_url.rstrip("/")
     entity_type = type if type in directory.ENTITY_LABELS else None
     text = " ".join((q or "").split())
@@ -232,7 +245,9 @@ def directory_page(
 
 
 @router.get(LIST_PATH)
-def list_page(request: Request) -> HTMLResponse:
+def list_page(request: Request) -> Response:
+    if moved := _elsewhere(request):
+        return moved
     options = "".join(
         f"<option value={key}>{label}</option>" for key, label in directory.ENTITY_LABELS.items()
     )
@@ -310,7 +325,9 @@ and the <a href="/policies/privacy" target=_blank rel=noopener>privacy policy</a
 
 
 @router.get(PAGE_PATH + "/{suffix}")
-def entry_page(request: Request, suffix: str) -> HTMLResponse:
+def entry_page(request: Request, suffix: str) -> Response:
+    if moved := _elsewhere(request):
+        return moved
     base = request.app.state.settings.public_base_url.rstrip("/")
     with transaction(request.app.state.session_factory) as session:
         found = None

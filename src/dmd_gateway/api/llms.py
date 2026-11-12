@@ -16,6 +16,7 @@ from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import mcp_url, page_url
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
+from dmd_gateway.services.directory import pages_base
 
 router = APIRouter(include_in_schema=False)
 
@@ -116,7 +117,7 @@ Add-ons for a DID-LLM you have, such as BottyBotty: `GET {base}/v1/products`.
 
 DID-LLMs whose owners chose to be listed, with a short profile: `GET {base}/v1/directory`
 (`q` to search, `type` avatar, robot or sentient, `cursor` for the next page), one listing at
-`GET {base}/v1/directory/{{did}}`. People see it at {base}/directory.
+`GET {base}/v1/directory/{{did}}`. People see it at {pages_base(settings)}/directory.
 
 To list your own DID-LLM (optional, public, free): `POST {base}/v1/directory/{{did}}/challenges`
 with `listed: true` and a `profile` (`entity_type`, `specialty`, `description`; optional
