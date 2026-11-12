@@ -94,6 +94,12 @@ is missing, links to Circle's faucet with the wallet's address to copy, and hold
 back until the balance is enough; it checks again when the visitor comes back from the
 faucet's tab, or on **Check again**.
 
+The guided test makes its own throwaway agent key, which only the page has: its DID-LLMs
+cannot be signed for afterwards, so they cannot be listed in the directory. To try the owner-key
+tool or the directory, use the "Get a DID" page (`/get-did`) with your own key, and put
+`DMD_GATEWAY_API=https://staging-api.debitmydata.io` in front of the tool's commands (the
+staging pages' commands include it): see [owner-key.md](owner-key.md#staging-the-test-server).
+
 On the "Get a DID" page (`/get-did`), a DMD payment also shows a QR code and an **Open in my
 DMD wallet** button with the payment link (`debitmydata:<address>?amount=<amount>`): scan it
 with a DMD wallet app to check that the wallet fills in the address and the amount (on

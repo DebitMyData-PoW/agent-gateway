@@ -9,6 +9,10 @@ without a wallet app: it makes an Ed25519 owner key on your own computer and sig
 message for you. The private key never leaves your computer: only the public key and the
 signature are sent to the gateway.
 
+> **On the staging server (tests)?** The commands below are for the real service
+> (<https://id.debitmydata.io>). On staging, see [Staging](#staging-the-test-server) first:
+> one setting goes in front of the `prove` and `directory` commands.
+
 ## What you need
 
 - Python 3.10 or later, and the `cryptography` package
@@ -74,9 +78,29 @@ The tool finds the key file that owns the DID-LLM in `~/did-keys`, shows what wi
 page's command starts with `DMD_GATEWAY_API=https://staging-api.debitmydata.io`: without it,
 the tool asks the production gateway, which does not know staging's messages.
 
+## Staging (the test server)
+
+Staging (<https://staging-api.debitmydata.io>) is the gateway's test copy: test coins, test
+DID-LLMs, nothing real. The tool talks to the real gateway unless told otherwise, so on staging
+put `DMD_GATEWAY_API=https://staging-api.debitmydata.io` in front of `prove` and `directory`:
+
+```bash
+DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py prove ~/did-keys dmd_did_intent_...
+DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py directory ~/did-keys dmd_challenge_...
+```
+
+- Staging's pages show their commands with it already: copy them as they are.
+- Without it, the tool asks the real gateway, which does not know staging's registrations: the
+  tool then says it asked the real gateway and how to point it at staging.
+- `new` needs nothing: a key can own DID-LLMs on both. Each DID-LLM belongs to the server that
+  issued it (its DID says which: `did:web:staging-api.debitmydata.io:...` on staging).
+- Staging's **guided test** page (`/docs`) makes its own throwaway key, which only that page
+  has. A DID-LLM made there cannot be signed for afterwards, so it cannot be listed in the
+  directory: to try the directory, make the DID-LLM on staging's **Get a DID-LLM** page with
+  your own key.
+
 ## Good to know
 
-- **Staging:** `DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py prove ...`
 - **Safety checks:** the tool only talks to `https://` gateways, refuses to sign a message for
   another gateway or for a registration owned by another key, and never shows the private key.
 - **Which key?** Each DID-LLM can only be signed for with the key it was registered with. A
