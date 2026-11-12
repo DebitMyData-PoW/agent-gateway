@@ -279,13 +279,13 @@
       // The tool talks to the production gateway unless told otherwise: name this one (staging).
       const audience = (challenge.message.match(/^Audience: (\S+)$/m) || [])[1] || "";
       const gateway = audience && audience !== PRODUCTION_API ? `DMD_GATEWAY_API=${audience} ` : "";
-      const command = `${gateway}python3 did-owner-key.py directory ~/did-keys/my-agent.key ${challenge.challenge_id}`;
+      const command = `${gateway}python3 did-owner-key.py directory ~/did-keys ${challenge.challenge_id}`;
       // The usual way for a person: the tool signs and sends the signature itself, then Continue.
       // Pasting a signature made with other software is the other way, folded below.
       const signed = element("button", { type: "button" }, "Continue");
       signed.addEventListener("click", () => checkSignedElsewhere(challenge, signed, note));
       parts.push(
-        element("p", { class: "small" }, "Sign it with the owner key. With ", element("a", { href: config.ownerKeyGuide, target: "_blank", rel: "noopener" }, "the owner-key tool"), ", use your own key file:"),
+        element("p", { class: "small" }, "Sign it with the owner key. With ", element("a", { href: config.ownerKeyGuide, target: "_blank", rel: "noopener" }, "the owner-key tool"), " (~/did-keys is the folder of your key files: the tool finds the one that owns this DID-LLM, ", element("code", {}, short(challenge.controller)), "):"),
         element("div", { class: "copyline" }, element("code", {}, command), copyButton(command)),
         element("div", { class: "elsewhere" }, element("p", {}, "Once the tool says the listing was accepted, click Continue: nothing needs pasting here."), element("div", { class: "actions" }, signed)),
         pasteBox(challenge, note, "The signature", "Or sign it with other software and paste the signature", "Ed25519 signature of the message: base64url, base64 or hex.")

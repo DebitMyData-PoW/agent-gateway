@@ -263,3 +263,46 @@ def test_a_message_missing_on_the_default_gateway_points_to_staging(
     with pytest.raises(SystemExit) as stopped:
         tool.directory(str(path), LISTING_CHALLENGE, confirm=lambda _: "yes")
     assert "This asked" not in str(stopped.value)
+
+
+def test_a_folder_of_keys_signs_with_the_owner_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    keys = tmp_path / "did-keys"
+    keys.mkdir()
+    tool.new(str(keys / "other.key"))
+    tool.new(str(keys / "owner.key"))
+    (keys / "notes.txt").write_text("not a key")
+    owner = capsys.readouterr().out.strip().splitlines()[-1]
+    calls = _directory_gateway(tool, owner)
+    tool.directory(str(keys), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    proof = calls[-1][2]
+    key = parse_controller_key(owner)
+    assert key.verify(decode_signature(proof["signature"]), calls[0][1].encode("utf-8"))
+    assert f"The owner key is {keys / 'owner.key'}." in capsys.readouterr().out
+
+    # The registration's proof too.
+    calls = _gateway(tool, owner)
+    tool.prove(str(keys), REGISTRATION)
+    assert calls[-1][1].endswith("/controller-proofs")
+
+
+def test_a_folder_without_the_owner_key_signs_nothing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    keys = tmp_path / "did-keys"
+    keys.mkdir()
+    tool.new(str(keys / "mine.key"))
+    mine = capsys.readouterr().out.strip().splitlines()[-1]
+    stranger = "ed25519:z6MkpCvDgxrfSmniB8DQeSdnzVAHAfrS1DQXHngrEzggvob8"
+    calls = _directory_gateway(tool, stranger)
+    with pytest.raises(SystemExit) as stopped:
+        tool.directory(str(keys), LISTING_CHALLENGE, confirm=lambda _: "yes")
+    text = str(stopped.value)
+    assert f"its owner key is\n  {stranger}" in text
+    assert f"mine.key  {mine}" in text and "Nothing was signed." in text
+    assert not any(c[0] == "POST" for c in calls)
+    with pytest.raises(SystemExit, match="No key file or folder"):
+        tool.directory(str(tmp_path / "missing"), LISTING_CHALLENGE, confirm=lambda _: "yes")

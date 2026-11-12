@@ -76,6 +76,16 @@ def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
         sys.exit(f"Could not reach {API}: {error.reason}")
 
 
+def elsewhere(status: int) -> str:
+    """A 404 from the default gateway often means the page was on another one (staging)."""
+    if status != 404 or "DMD_GATEWAY_API" in os.environ:
+        return ""
+    return (
+        f"\nThis asked {API}. If the page is on another server, say which, for example:\n"
+        "  DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py ..."
+    )
+
+
 def problem(answer: dict) -> str:
     error = answer.get("error") if isinstance(answer.get("error"), dict) else answer
     return f"{error.get('code', '')} {error.get('message', '')}".strip() or json.dumps(answer)
@@ -113,7 +123,7 @@ def prove(path: str, registration_id: str) -> None:
         "POST", f"/v1/dids/registrations/{registration_id}/controller-challenges", {}
     )
     if status not in (200, 201):
-        sys.exit(f"No message to sign (HTTP {status}): {problem(challenge)}")
+        sys.exit(f"No message to sign (HTTP {status}): {problem(challenge)}{elsewhere(status)}")
     if challenge.get("controller") != mine:
         sys.exit(
             f"This registration is owned by {challenge.get('controller')}, not by this key "
@@ -145,7 +155,7 @@ def directory(path: str, challenge_id: str, confirm=input) -> None:
     mine = public_key(key)
     status, challenge = call("GET", f"/v1/directory/challenges/{challenge_id}")
     if status != 200:
-        sys.exit(f"No such message (HTTP {status}): {problem(challenge)}")
+        sys.exit(f"No such message (HTTP {status}): {problem(challenge)}{elsewhere(status)}")
     if challenge.get("status") != "open":
         sys.exit(f"This message is {challenge.get('status')}: get a new one on the page.")
     if challenge.get("controller") != mine:

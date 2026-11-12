@@ -5,14 +5,17 @@
         Makes a new key, saves it in KEYFILE (readable by you only) and prints its public key
         (ed25519:z6Mk...), to paste under "My agent's public key" on the Get a DID-LLM page.
 
-    python3 did-owner-key.py prove  KEYFILE  dmd_did_intent_...
+    python3 did-owner-key.py prove  KEYS  dmd_did_intent_...
         Once the registration is paid: asks the gateway for the message to sign, signs it with
-        KEYFILE and sends the signature. Then reload the Get a DID-LLM page and click Continue.
+        the owner key and sends the signature. Then click Continue on the Get a DID-LLM page.
 
-    python3 did-owner-key.py directory  KEYFILE  dmd_challenge_...
+    python3 did-owner-key.py directory  KEYS  dmd_challenge_...
         Signs a directory listing made on the directory's "List your DID-LLM" page (listing the
         DID-LLM, changing its listing or removing it): shows what you are signing, asks you to
-        confirm, signs it with KEYFILE and sends the signature. Then click Continue on the page.
+        confirm, signs it with the owner key and sends the signature. Then click Continue.
+
+KEYS is a key file, or a folder of key files (such as ~/did-keys): the tool then uses the one
+that owns the DID-LLM, and says so.
 
 The private key never leaves this machine: only the public key and signatures are sent.
 Keep KEYFILE (and a backup of it): it is the proof that the DID-LLM is yours.
@@ -114,21 +117,54 @@ def load(path: str) -> Ed25519PrivateKey:
     return key
 
 
+def owner_key(path: str, controller: str, what: str) -> Ed25519PrivateKey:
+    """The owner key in ``path``: that key file, or the key file in that folder whose public key
+    is ``controller``. Never another key: anything else stops here, before signing."""
+    if not os.path.isdir(path):
+        key = load(path)
+        mine = public_key(key)
+        if mine != controller:
+            sys.exit(
+                f"This {what} is owned by {controller}, not by this key ({mine}): nothing was "
+                "signed.\nGive the folder of your key files instead (for example ~/did-keys): "
+                "the tool then finds the one that owns it, if you have it."
+            )
+        return key
+    found = []
+    for name in sorted(os.listdir(path)):
+        file = os.path.join(path, name)
+        try:
+            with open(file, "rb") as handle:
+                key = serialization.load_pem_private_key(handle.read(), password=None)
+        except (OSError, ValueError, TypeError):
+            continue  # not a key file
+        if not isinstance(key, Ed25519PrivateKey):
+            continue
+        mine = public_key(key)
+        if mine == controller:
+            print(f"The owner key is {file}.")
+            return key
+        found.append(f"  {file}  {mine}")
+    sys.exit(
+        f"No key file in {path} owns this {what}: its owner key is\n  {controller}\n"
+        + ("Your key files there:\n" + "\n".join(found) if found else "No key file there.")
+        + f"\nThe {what} was registered with another key, and only that key can sign for it. "
+        "(A DID-LLM made on staging's guided test page has a throwaway key that only that page "
+        "had: nobody can sign for it afterwards.) Nothing was signed."
+    )
+
+
 def prove(path: str, registration_id: str) -> None:
     if not REGISTRATION.match(registration_id):
         sys.exit("The registration ID starts with dmd_did_intent_ (Copy button at step 1).")
-    key = load(path)
-    mine = public_key(key)
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
     status, challenge = call(
         "POST", f"/v1/dids/registrations/{registration_id}/controller-challenges", {}
     )
     if status not in (200, 201):
         sys.exit(f"No message to sign (HTTP {status}): {problem(challenge)}{elsewhere(status)}")
-    if challenge.get("controller") != mine:
-        sys.exit(
-            f"This registration is owned by {challenge.get('controller')}, not by this key "
-            f"({mine}): nothing was signed."
-        )
+    key = owner_key(path, str(challenge.get("controller")), "registration")
     message = challenge["message"]
     expected = f"Audience: {API}"
     if expected not in message.split("\n"):
@@ -151,18 +187,15 @@ def prove(path: str, registration_id: str) -> None:
 def directory(path: str, challenge_id: str, confirm=input) -> None:
     if not CHALLENGE.match(challenge_id):
         sys.exit("The message's ID starts with dmd_challenge_ (step 3 of the listing page).")
-    key = load(path)
-    mine = public_key(key)
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
     status, challenge = call("GET", f"/v1/directory/challenges/{challenge_id}")
     if status != 200:
         sys.exit(f"No such message (HTTP {status}): {problem(challenge)}{elsewhere(status)}")
     if challenge.get("status") != "open":
         sys.exit(f"This message is {challenge.get('status')}: get a new one on the page.")
-    if challenge.get("controller") != mine:
-        sys.exit(
-            f"This DID-LLM is owned by {challenge.get('controller')}, not by this key "
-            f"({mine}): nothing was signed."
-        )
+    key = owner_key(path, str(challenge.get("controller")), "DID-LLM")
+    mine = public_key(key)
     message = challenge["message"]
     lines = message.split("\n")
     did = str(challenge.get("did") or "")

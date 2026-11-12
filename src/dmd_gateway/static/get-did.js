@@ -696,11 +696,11 @@
     } else {
       // The usual way for a person: the owner-key tool signs and sends the signature itself, then
       // Continue. Pasting a signature made with other software is the other way, folded below.
-      const command = `${toolGateway(challenge.message)}python3 did-owner-key.py prove ~/did-keys/my-agent.key ${state.registrationId}`;
+      const command = `${toolGateway(challenge.message)}python3 did-owner-key.py prove ~/did-keys ${state.registrationId}`;
       const signed = element("button", { type: "button" }, "Continue");
       signed.addEventListener("click", () => checkSignedElsewhere(signed, status));
       parts.push(
-        element("p", { class: "small act" }, "With ", element("a", { href: OWNER_KEY_GUIDE, target: "_blank", rel: "noopener" }, "the owner-key tool"), ", use your own key file:"),
+        element("p", { class: "small act" }, "With ", element("a", { href: OWNER_KEY_GUIDE, target: "_blank", rel: "noopener" }, "the owner-key tool"), " (~/did-keys is the folder of your key files: the tool finds the one that owns this DID-LLM):"),
         element("div", { class: "copyline act" }, element("code", {}, command), copyButton(command)),
         element(
           "div",

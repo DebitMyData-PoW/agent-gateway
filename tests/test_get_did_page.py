@@ -581,7 +581,7 @@ def test_step_3_helps_people_who_sign_with_a_tool() -> None:
     proof = script.split("async function startProof() {")[1].split("\n  }\n")[0]
     assert 'element("button", { type: "button" }, "Continue")' in proof
     assert '"Or sign it with other software and paste the signature"' in proof
-    assert "did-owner-key.py prove ~/did-keys/my-agent.key ${state.registrationId}" in proof
+    assert "did-owner-key.py prove ~/did-keys ${state.registrationId}" in proof
     # Off production, the tool's command names this gateway (DMD_GATEWAY_API=...).
     assert 'const PRODUCTION_API = "https://api.debitmydata.io";' in script
     check = script.split("async function checkSignedElsewhere(button, status) {")[1].split(

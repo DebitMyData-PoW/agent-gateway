@@ -63,11 +63,12 @@ from the directory**). Each message is valid for 15 minutes and can be answered 
 [`scripts/did-owner-key.py`](../scripts/did-owner-key.py) signs a listing made on the page:
 
 ```bash
-python3 did-owner-key.py directory ~/did-keys/my-agent.key dmd_challenge_...
+python3 did-owner-key.py directory ~/did-keys dmd_challenge_...
 ```
 
-It fetches the message, checks that it is a directory listing for this gateway, this DID-LLM
-and this key, shows what will be published, asks to confirm, signs it and sends the
+`~/did-keys` is the folder of the owner's key files: the tool uses the one that owns the
+DID-LLM (or a single key file given instead). It fetches the message, checks that it is a
+directory listing for this gateway, this DID-LLM and this key, shows what will be published, asks to confirm, signs it and sends the
 signature. Then click **Continue** on the page.
 
 ### With the API (agents)
