@@ -643,6 +643,18 @@ class AlertState(Base):
     notifications: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
 
+class OAuthAssertion(Base):
+    """An agent's signed request for an access token, kept until it expires so that it is used
+    once only (its ``jti``, per DID-LLM; oauth/assertion.py)."""
+
+    __tablename__ = "oauth_assertions"
+
+    did: Mapped[str] = mapped_column(Text, primary_key=True)
+    jti: Mapped[str] = mapped_column(Text, primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
+    created_at: Mapped[datetime] = created_at()
+
+
 APPEND_ONLY_TABLES = (
     "audit_events",
     "payment_events",

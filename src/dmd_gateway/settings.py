@@ -55,6 +55,14 @@ class Settings(BaseSettings):
     # page at its root, as an app people add to their home screen, e.g. id.debitmydata.io.
     # Empty: no app; the page is at /get-did as before. DIDs keep public_base_url's host.
     app_host: str = ""
+    # OAuth (oauth/, phase 1): the authorization server's host name, e.g. auth.debitmydata.io.
+    # Agents get access tokens there by signing with their DID-LLM's key. Empty: no OAuth.
+    auth_host: str = ""
+    # What signs the access tokens: an RSA key file (PEM, mode 600) in development and on
+    # staging. Production keeps it in the signer service instead (from 0.37.1).
+    oauth_key_path: Path | None = None
+    # How long an access token is valid.
+    oauth_token_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     # DIDs left out of the daily report's figures (comma-separated), such as the company's
     # own test DIDs. Their payments are still checked like every other.
     report_excluded_dids: str = ""
@@ -134,6 +142,7 @@ class Settings(BaseSettings):
     @field_validator(
         "mcp_url",
         "issuer_key_path",
+        "oauth_key_path",
         "issuer_signer_socket",
         "issuer_public_key",
         "monitor_fallback_state_path",
@@ -146,12 +155,14 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("app_host")
+    @field_validator("app_host", "auth_host")
     @classmethod
     def _host_name(cls, value: str) -> str:
         host = value.strip().lower()
         if host and not HOST_NAME.fullmatch(host):
-            raise ValueError("app_host must be a host name only, e.g. id.debitmydata.io")
+            raise ValueError(
+                "app_host and auth_host must be host names only, e.g. id.debitmydata.io"
+            )
         return host
 
     @field_validator("report_excluded_dids")
@@ -207,6 +218,16 @@ class Settings(BaseSettings):
             r"z6Mk[1-9A-HJ-NP-Za-km-z]{40,50}", self.issuer_public_key
         ):
             raise ValueError("issuer_public_key must be an Ed25519 Multikey (z6Mk...)")
+        if self.environment == "production" and self.oauth_key_path is not None:
+            raise ValueError(
+                "production must not keep the token signing key on the API host: the signer "
+                "service signs access tokens there"
+            )
+        if self.auth_host and self.auth_host in (
+            self.app_host,
+            urlsplit(self.public_base_url).hostname,
+        ):
+            raise ValueError("auth_host must be a host name of its own")
         if self.environment == "production" and self.staging_test_tools:
             raise ValueError("staging test tools must never be enabled in production")
         return self

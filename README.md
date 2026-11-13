@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.36.3`). The whole registration flow (quote,
+This is an early development release (`0.37.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -106,6 +106,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | One address for people, one for agents and developers (`api/hosts.py`): on the API's address (api.debitmydata.io), "Get a DID-LLM", the site's root and the policies lead to the app's (id.debitmydata.io), as the directory already did; on the app's address, the API docs (`/docs/advanced`, `/redoc`) lead to the API's. The menu's links therefore always land on the right address, and the installed app keeps people inside it. The API (`/v1/...`), `llms.txt`, the policies in Markdown and the MCP server answer at both, unmoved | done |
 | MCP clients, crawlers and registries find the Agentic Superhighway without being told its address (`api/server_card.py`): its MCP Server Card (the MCP extension SEP-2127) at `/agenticsuperhighway/server-card` gives its name, version, what it does and how to connect (no tools: the server lists them itself), the AI Catalog at `/.well-known/ai-catalog.json` points to it, and DebitMyData's discovery runbook gets its two files in its own format (`application/json`): `/.well-known/mcp/server-card.json`, with the tools the server lists, and `/.well-known/mcp`, a short manifest; both point to the standard card. `server.json` lists it in the official MCP Registry as `io.debitmydata/agenticsuperhighway` ([docs/production.md](docs/production.md#13-the-official-mcp-registry)); a test keeps it the same as the card | done (the listing needs the DNS record) |
 | No drop-down lists on the pages, so AI agents see every choice at once: "What is it for?" on Get a DID-LLM (in three groups, on an even grid) and the listing form's type are visible buttons, and the directory's types are links that keep the search words | done |
+| OAuth phase 1, the authorization server (`api/oauth.py`, `oauth/`): on its own address (`DMD_GW_AUTH_HOST`, auth.debitmydata.io) an agent signs a short request with its DID-LLM's own key and gets a 10-minute access token for the MCP server (OAuth 2.1 client credentials with `private_key_jwt`, EdDSA; RS256 tokens, RFC 9068); metadata at `/.well-known/oauth-authorization-server`, keys at `/.well-known/jwks.json`; each signed request is used once; suspended, revoked and wallet-owned DID-LLMs are refused; the owner-key tool's `token` command signs in ([docs/staging.md](docs/staging.md#9-oauth-phase-1-the-authorization-server)) | staging (production and the MCP server's token checks: 0.37.1) |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -321,6 +322,8 @@ src/dmd_gateway/
                              (dmd-gateway-monitor)
   identity/                  controller keys, did:web documents, issuer key, signed credentials
   signer/                    the production credential signer (dmd-gateway-signer) and its client
+  oauth/                     OAuth phase 1: the token-signing key (dmd-gateway-oauth-key), the
+                             agents' signed requests, access tokens
   runtime.py                 registry, adapters and price sources shared by API and worker
   settings.py                environment configuration
   observability.py           JSON logging, correlation IDs

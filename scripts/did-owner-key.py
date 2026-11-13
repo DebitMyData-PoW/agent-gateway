@@ -14,13 +14,21 @@
         DID-LLM, changing its listing or removing it): shows what you are signing, asks you to
         confirm, signs it with the owner key and sends the signature. Then click Continue.
 
+    python3 did-owner-key.py token  KEYS  did:web:...  [--show]
+        Signs in as the DID-LLM at DebitMyData's authorization server (OAuth): signs a short
+        request with the owner key and gets an access token for the Agentic Superhighway (MCP),
+        valid for a few minutes. --show prints the token itself: keep it private, whoever holds
+        it can act as the DID-LLM until it expires.
+
 KEYS is a key file, or a folder of key files (such as ~/did-keys): the tool then uses the one
 that owns the DID-LLM, and says so.
 
 The private key never leaves this machine: only the public key and signatures are sent.
 Keep KEYFILE (and a backup of it): it is the proof that the DID-LLM is yours.
 Set DMD_GATEWAY_API to use another gateway, e.g. https://staging-api.debitmydata.io
-(default: https://api.debitmydata.io). Needs Python 3.10+ and the "cryptography" package
+(default: https://api.debitmydata.io); the authorization server is then its auth. address
+(https://auth.debitmydata.io, https://staging-auth.debitmydata.io), or DMD_AUTH_SERVER if
+set. Needs Python 3.10+ and the "cryptography" package
 (Debian/Ubuntu: apt install python3-cryptography). See docs/owner-key.md.
 """
 
@@ -29,6 +37,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -43,6 +52,21 @@ CHALLENGE = re.compile(r"^dmd_challenge_[0-9A-HJKMNP-TV-Z]{26}$")
 LISTING = "DebitMyData directory listing"
 # Only https (or a gateway running on this machine, for testing).
 GATEWAY = re.compile(r"^(https://[^/\s]+|http://(localhost|127\.0\.0\.1)(:\d+)?)$")
+AGENT_DID = re.compile(r"^did:web:([A-Za-z0-9.%-]+):agents:([A-Za-z0-9_-]+)$")
+ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+
+def default_auth_server(api: str) -> str:
+    """The authorization server next to a gateway: api.X -> auth.X, staging-api.X ->
+    staging-auth.X. A gateway on this machine (testing) keeps its own address."""
+    scheme, _, host = api.partition("://")
+    first, dot, domain = host.partition(".")
+    if dot and first.endswith("api"):
+        return f"{scheme}://{first[: -len('api')]}auth.{domain}"
+    return api
+
+
+AUTH = os.environ.get("DMD_AUTH_SERVER", "").rstrip("/") or default_auth_server(API)
 
 
 def b58encode(data: bytes) -> str:
@@ -77,6 +101,53 @@ def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
             return error.code, {"error": {"message": error.reason}}
     except urllib.error.URLError as error:
         sys.exit(f"Could not reach {API}: {error.reason}")
+
+
+def fetch(url: str, form: dict | None = None) -> tuple[int, dict]:
+    """GET ``url``, or POST ``form`` to it as an OAuth form; the answer's status and JSON."""
+    if not GATEWAY.match(re.sub(r"^(https?://[^/]+).*$", r"\1", url)):
+        sys.exit(f"The authorization server must be an https:// address, not {url!r}")
+    request = urllib.request.Request(  # noqa: S310 (https only, checked above)
+        url,
+        data=urllib.parse.urlencode(form).encode("ascii") if form is not None else None,
+        method="POST" if form is not None else "GET",
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "dmd-did-owner-key",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 (https only)
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as error:
+        try:
+            return error.code, json.load(error)
+        except ValueError:
+            return error.code, {"error": str(error.code), "error_description": error.reason}
+    except urllib.error.URLError as error:
+        sys.exit(f"Could not reach {url}: {error.reason}")
+
+
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def signed_request(key: Ed25519PrivateKey, did: str, audience: str, now: int) -> str:
+    """The OAuth client assertion (RFC 7523): a JWT about the DID-LLM, signed with its key,
+    valid for one minute and used once (jti)."""
+    header = {"alg": "EdDSA", "typ": "JWT"}
+    claims = {
+        "iss": did,
+        "sub": did,
+        "aud": audience,
+        "iat": now,
+        "exp": now + 60,
+        "jti": b64url(os.urandom(16)),
+    }
+    parts = [b64url(json.dumps(part, separators=(",", ":")).encode()) for part in (header, claims)]
+    signing_input = ".".join(parts)
+    return f"{signing_input}.{b64url(key.sign(signing_input.encode('ascii')))}"
 
 
 def elsewhere(status: int) -> str:
@@ -226,6 +297,63 @@ def directory(path: str, challenge_id: str, confirm=input) -> None:
     print("Back on the page, click Continue.")
 
 
+def token(path: str, did: str, show: bool = False) -> None:
+    found = AGENT_DID.match(did)
+    if not found:
+        sys.exit("A DID-LLM looks like did:web:api.debitmydata.io:agents:... (its page says it).")
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    host = urllib.parse.unquote(found.group(1))
+    if urllib.parse.urlsplit(API).netloc != host:
+        sys.exit(
+            f"This DID-LLM is from {host}, not {API}. Say so first, for example:\n"
+            f"  DMD_GATEWAY_API=https://{host} python3 did-owner-key.py token ..."
+        )
+    status, document = call("GET", f"/agents/{found.group(2)}/did.json")
+    if status != 200:
+        sys.exit(f"No such DID-LLM (HTTP {status}): {problem(document)}")
+    keys = [
+        method.get("publicKeyMultibase")
+        for method in document.get("verificationMethod", [])
+        if method.get("type") == "Multikey"
+    ]
+    if not keys:
+        sys.exit(
+            "This DID-LLM is controlled by a wallet: wallets will sign in through the browser "
+            "(not open yet). Nothing was signed."
+        )
+    key = owner_key(path, f"ed25519:{keys[0]}", "DID-LLM")
+    status, server = fetch(f"{AUTH}/.well-known/oauth-authorization-server")
+    if status != 200:
+        sys.exit(f"The authorization server at {AUTH} is not open (HTTP {status}).")
+    endpoint = str(server.get("token_endpoint", ""))
+    if server.get("issuer") != AUTH or not endpoint.startswith(f"{AUTH}/"):
+        sys.exit(f"{AUTH} does not describe itself as expected: nothing was signed.")
+    status, discovery = call("GET", "/v1/discovery")
+    resource = discovery.get("mcp_url") if status == 200 else None
+    if not resource:
+        sys.exit(f"{API} does not give its MCP server's address (HTTP {status}).")
+    form = {
+        "grant_type": "client_credentials",
+        "client_assertion_type": ASSERTION_TYPE,
+        "client_assertion": signed_request(key, did, endpoint, int(time.time())),
+        "resource": resource,
+        "scope": "did:read",
+    }
+    status, answer = fetch(endpoint, form)
+    if status != 200 or "access_token" not in answer:
+        error = f"{answer.get('error', '')}: {answer.get('error_description', '')}".strip(": ")
+        sys.exit(f"Refused (HTTP {status}): {error or json.dumps(answer)}")
+    minutes = max(1, int(answer.get("expires_in", 0)) // 60)
+    print(f"Signed in as {did}.")
+    print(f"Access token for {resource} (scope: {answer.get('scope')}), valid {minutes} minutes.")
+    if show:
+        print("Keep it private: whoever holds it can act as this DID-LLM until it expires.")
+        print(answer["access_token"])
+    else:
+        print("Add --show to print the token itself.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "new":
         new(sys.argv[2])
@@ -233,5 +361,7 @@ if __name__ == "__main__":
         prove(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "directory":
         directory(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) in (4, 5) and sys.argv[1] == "token" and sys.argv[4:] in ([], ["--show"]):
+        token(sys.argv[2], sys.argv[3], show=sys.argv[4:] == ["--show"])
     else:
         sys.exit(__doc__)

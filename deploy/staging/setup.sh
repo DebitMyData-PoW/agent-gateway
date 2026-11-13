@@ -17,6 +17,8 @@ CONF_DIR=/etc/dmd-gateway
 ENV_FILE="$CONF_DIR/gateway.env"
 KEY_DIR="$CONF_DIR/keys"
 ISSUER_KEY="$KEY_DIR/issuer-key.pem"
+# Signs OAuth access tokens at the auth host (DMD_GW_AUTH_HOST): docs/staging.md, section 9.
+OAUTH_KEY="$KEY_DIR/oauth-key.pem"
 DMD_CONF_DIR=/etc/debitmydata
 DMD_CONF="$DMD_CONF_DIR/debitmydata.conf"
 DMD_DATA=/var/lib/debitmydata
@@ -98,6 +100,8 @@ add_setting DMD_GW_STAGING_TEST_TOOLS true  # test tools on the docs page (never
 add_setting DMD_GW_STAGING_PAYER_WALLET payer-test
 # DMD mainnet reference price, from the public explorer (this server's node is regtest).
 add_setting DMD_GW_DMD_PRICE_CHAIN_DATA_FROM explorer
+# OAuth phase 1: the key is used once DMD_GW_AUTH_HOST is set too (docs/staging.md, 9).
+add_setting DMD_GW_OAUTH_KEY_PATH "$OAUTH_KEY"
 chmod 600 "$ENV_FILE"
 
 # ------------------------------------------------------------------ DMD node
@@ -159,6 +163,9 @@ step "Installing the gateway into $APP_DIR/.venv"
 "$APP_DIR/.venv/bin/pip" install -q "$APP_DIR"
 if [ ! -s "$ISSUER_KEY" ]; then
     runuser -u gateway -- "$APP_DIR/.venv/bin/dmd-gateway-issuer-key" "$ISSUER_KEY" | grep -v Set
+fi
+if [ ! -s "$OAUTH_KEY" ]; then
+    runuser -u gateway -- "$APP_DIR/.venv/bin/dmd-gateway-oauth-key" "$OAUTH_KEY" >/dev/null
 fi
 
 step "Preparing the x402 rail: USDC on Base Sepolia (test USDC only)"
@@ -230,7 +237,13 @@ install -m 644 "$FILES/nginx-proxy.conf" /etc/nginx/snippets/dmd-gateway-proxy.c
 APP_HOST="$(env_value DMD_GW_APP_HOST | tr -d "'\" " | tr '[:upper:]' '[:lower:]')"
 [[ -z "$APP_HOST" || "$APP_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] ||
     fail "DMD_GW_APP_HOST must be a host name only, e.g. id.debitmydata.io"
+# The OAuth authorization server's host name (DMD_GW_AUTH_HOST, e.g. staging-auth.debitmydata.io):
+# docs/staging.md, section 9.
+AUTH_HOST="$(env_value DMD_GW_AUTH_HOST | tr -d "'\" " | tr '[:upper:]' '[:lower:]')"
+[[ -z "$AUTH_HOST" || "$AUTH_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] ||
+    fail "DMD_GW_AUTH_HOST must be a host name only, e.g. staging-auth.debitmydata.io"
 sed -e "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" -e "s#@APP_HOSTNAME@#${APP_HOST:+ $APP_HOST}#g" \
+    -e "s#@AUTH_HOSTNAME@#${AUTH_HOST:+ $AUTH_HOST}#g" \
     "$FILES/nginx-site.conf" >/etc/nginx/sites-available/dmd-gateway
 if [ ! -e /proc/net/if_inet6 ]; then  # no IPv6 on this server: listen on IPv4 only
     sed -i '/listen \[::\]/d' /etc/nginx/sites-available/dmd-gateway
@@ -252,6 +265,12 @@ if [ -n "$APP_HOST" ]; then
     curl -sfk --noproxy '*' --resolve "$APP_HOST:443:127.0.0.1" "https://$APP_HOST/manifest.webmanifest" \
         >/dev/null || fail "nginx does not serve the app at $APP_HOST: check DMD_GW_APP_HOST and the certificate"
     printf '\nGet a DID app: https://%s\n' "$APP_HOST"
+fi
+if [ -n "$AUTH_HOST" ]; then
+    curl -sfk --noproxy '*' --resolve "$AUTH_HOST:443:127.0.0.1" \
+        "https://$AUTH_HOST/.well-known/oauth-authorization-server" >/dev/null ||
+        fail "nginx does not serve the authorization server at $AUTH_HOST: check DMD_GW_AUTH_HOST and the certificate"
+    printf '\nOAuth authorization server: https://%s/.well-known/oauth-authorization-server\n' "$AUTH_HOST"
 fi
 printf '\nDone. Open https://%s/v1/discovery from your computer.\n' "$HOSTNAME_PUBLIC"
 printf '\nx402 test wallet (Base Sepolia): %s\n' "$TEST_WALLET"

@@ -52,14 +52,19 @@ def _certificate(directory: Path) -> tuple[Path, Path]:
 
 
 @pytest.mark.skipif(NGINX is None, reason="nginx is not installed")
-@pytest.mark.parametrize("app_host", ["", " id.staging.test"], ids=["api", "api-and-app"])
-def test_nginx_accepts_the_staging_site(tmp_path: Path, app_host: str) -> None:
+@pytest.mark.parametrize(
+    ("app_host", "auth_host"),
+    [("", ""), (" id.staging.test", ""), (" id.staging.test", " auth.staging.test")],
+    ids=["api", "api-and-app", "api-app-and-auth"],
+)
+def test_nginx_accepts_the_staging_site(tmp_path: Path, app_host: str, auth_host: str) -> None:
     cert, key = _certificate(tmp_path)
     (tmp_path / "logs").mkdir()
     shutil.copy(FILES / "nginx-proxy.conf", tmp_path / "dmd-gateway-proxy.conf")
     site = (
         SITE.replace("@HOSTNAME@", "staging.test")
         .replace("@APP_HOSTNAME@", app_host)
+        .replace("@AUTH_HOSTNAME@", auth_host)
         .replace("/etc/ssl/cloudflare/origin.pem", str(cert))
         .replace("/etc/ssl/cloudflare/origin.key", str(key))
         .replace("/etc/nginx/snippets/", f"{tmp_path}/")
@@ -240,6 +245,7 @@ def test_nginx_also_answers_for_the_app_host_when_one_is_set(script: Path, tmp_p
         )
         site = out.read_text(encoding="utf-8")
         assert server_name in site and "@APP_HOSTNAME@" not in site
+        assert "@AUTH_HOSTNAME@" not in site
     settings.write_text("DMD_GW_APP_HOST=https://id.example.test/\n", encoding="utf-8")
     refused = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
         [BASH, "-c", program, "_", str(settings), str(out), str(files)],
@@ -248,6 +254,57 @@ def test_nginx_also_answers_for_the_app_host_when_one_is_set(script: Path, tmp_p
         check=False,
     )
     assert refused.returncode == 1 and "must be a host name only" in refused.stderr
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+def test_staging_nginx_answers_for_the_auth_host_when_one_is_set(tmp_path: Path) -> None:
+    """The OAuth authorization server's host (DMD_GW_AUTH_HOST) joins staging's server_name."""
+    script = SETUP_SCRIPTS[0]
+    lines = script.read_text(encoding="utf-8").splitlines()
+    start = next(n for n, line in enumerate(lines) if line.startswith('APP_HOST="$(env_value'))
+    end = next(n for n in range(start, len(lines)) if "sites-available/dmd-gateway" in lines[n])
+    render = "\n".join(lines[start : end + 1]).replace(
+        "/etc/nginx/sites-available/dmd-gateway", '"$OUT"'
+    )
+    env_value = next(line for line in lines if line.startswith("env_value()"))
+    settings, out = tmp_path / "gateway.env", tmp_path / "site.conf"
+    program = "\n".join(
+        (
+            'ENV_FILE="$1"; OUT="$2"; FILES="$3"; HOSTNAME_PUBLIC=api.test',
+            'fail() { echo "$*" >&2; exit 1; }',
+            env_value,
+            render,
+        )
+    )
+    argv = [str(BASH), "-c", program, "_", str(settings), str(out), str(script.parent / "files")]
+    for setting, server_name in (
+        ("DMD_GW_AUTH_HOST=Auth.Example.test\n", "server_name api.test auth.example.test;"),
+        (
+            "DMD_GW_APP_HOST=id.example.test\nDMD_GW_AUTH_HOST=auth.example.test\n",
+            "server_name api.test id.example.test auth.example.test;",
+        ),
+    ):
+        settings.write_text("DMD_GW_ENVIRONMENT=staging\n" + setting, encoding="utf-8")
+        subprocess.run(argv, check=True)  # noqa: S603 (fixed arguments, test files only)
+        assert server_name in out.read_text(encoding="utf-8")
+    settings.write_text("DMD_GW_AUTH_HOST=https://auth.example.test\n", encoding="utf-8")
+    refused = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        argv, capture_output=True, text=True, check=False
+    )
+    assert refused.returncode == 1 and "DMD_GW_AUTH_HOST must be a host name" in refused.stderr
+
+
+def test_staging_setup_makes_the_token_signing_key() -> None:
+    """Staging creates its OAuth token-signing key once, readable by the gateway only, and sets
+    its path; production never keeps that key on the API server (the setting refuses it)."""
+    staging = SETUP_SCRIPTS[0].read_text(encoding="utf-8")
+    assert 'OAUTH_KEY="$KEY_DIR/oauth-key.pem"' in staging
+    assert 'add_setting DMD_GW_OAUTH_KEY_PATH "$OAUTH_KEY"' in staging
+    assert 'if [ ! -s "$OAUTH_KEY" ]; then' in staging
+    assert (
+        'runuser -u gateway -- "$APP_DIR/.venv/bin/dmd-gateway-oauth-key" "$OAUTH_KEY"' in staging
+    )
+    assert "OAUTH_KEY" not in SETUP_SCRIPTS[1].read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")

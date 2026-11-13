@@ -69,6 +69,7 @@ every staging page also has **Real site ↗**: the same page on the real site fo
 | --- | --- |
 | Settings and secrets (root only) | `/etc/dmd-gateway/gateway.env` |
 | Credential signing key | `/etc/dmd-gateway/keys/issuer-key.pem` |
+| OAuth token-signing key (section 9) | `/etc/dmd-gateway/keys/oauth-key.pem` |
 | DebitMyData node settings / data | `/etc/debitmydata/debitmydata.conf` / `/var/lib/debitmydata` |
 | Services | `debitmydata`, `dmd-gateway-api`, `dmd-gateway-worker`, `nginx`, `postgresql` |
 | Logs | `journalctl -u dmd-gateway-api -f` (same for the others) |
@@ -449,6 +450,72 @@ production ([production.md](production.md#9-suspending-reactivating-or-revoking-
 it here on a test DID first, then check that its `did.json` answers 410 and that the alert
 arrives.
 
+## 9. OAuth, phase 1: the authorization server
+
+Agents sign in to the Agentic Superhighway (the MCP server) with their DID-LLM: they sign a
+short request with the DID-LLM's own key and get an **access token**, valid for 10 minutes,
+for the MCP server. It is the standard OAuth 2.1 "client credentials" sign-in, with the
+signed request as the client's proof (`private_key_jwt`, RFC 7523), as MCP's authorization
+rules describe. No password, no account: the key that owns the DID-LLM is the login, and
+anyone can still register a DID-LLM without signing in.
+
+It answers on its own address, with three addresses only (every other address there answers
+404, and the API's address shows none of them):
+
+| Address | What |
+| --- | --- |
+| `/.well-known/oauth-authorization-server` | what the server offers (RFC 8414) |
+| `/.well-known/jwks.json` | the public key that signs the access tokens |
+| `/token` | the sign-in: a form with the signed request, answered with an access token |
+
+A signed request is accepted once only, for an active DID-LLM whose key still owns it:
+suspended or revoked DID-LLMs, and DID-LLMs owned by a wallet (they will sign in through the
+browser, phase 2), are refused. Each token issued is in the audit trail
+(`oauth.token_issued`, with the token's ID, never the token). The MCP server starts checking
+tokens in the next version (0.37.1); until then a token changes nothing there.
+
+`setup.sh` makes the token-signing key once (`/etc/dmd-gateway/keys/oauth-key.pem`, readable
+by the gateway only, never printed) and sets `DMD_GW_OAUTH_KEY_PATH`. The server opens when
+its address is set too:
+
+1. **Cloudflare, DNS:** add a record `staging-auth`, the same type and target as
+   `staging-api`, **Proxied** (orange cloud).
+2. **Certificate:** the origin certificate must cover the name. A certificate for
+   `*.debitmydata.io` already does; check:
+
+   ```bash
+   openssl x509 -in /etc/ssl/cloudflare/origin.pem -noout -ext subjectAltName
+   ```
+
+   If neither `staging-auth.debitmydata.io` nor `*.debitmydata.io` is listed, make a new
+   origin certificate in Cloudflare (SSL/TLS, Origin Server) for the names it has plus
+   `staging-auth.debitmydata.io`, and replace both files as at installation.
+3. **Setting**, then the update (section 5), which adds the name to nginx and checks that the
+   server answers there:
+
+   ```bash
+   echo "DMD_GW_AUTH_HOST=staging-auth.debitmydata.io" >> /etc/dmd-gateway/gateway.env
+   /opt/agent-gateway/deploy/staging/update.sh
+   ```
+
+4. **Check** from your computer:
+   <https://staging-auth.debitmydata.io/.well-known/oauth-authorization-server> shows the
+   issuer `https://staging-auth.debitmydata.io`, and `/.well-known/jwks.json` there one RSA
+   key. <https://staging-auth.debitmydata.io/v1/discovery> answers 404.
+5. **Sign in** with a DID-LLM made with your own key on staging's Get a DID-LLM page (not the
+   guided test's throwaway key), with the owner-key tool
+   ([owner-key.md](owner-key.md#sign-in-as-the-did-llm-oauth)):
+
+   ```bash
+   DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py token ~/did-keys did:web:staging-api.debitmydata.io:agents:...
+   ```
+
+   It prints `Signed in as did:web:...` and the token's address and lifetime.
+
+To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. Production comes
+with 0.37.1, where the signer service signs the tokens and the API server never holds the key
+(the gateway refuses a token key file in production).
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |
@@ -457,6 +524,7 @@ arrives.
 | USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
+| OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (0.37.1, `auth.debitmydata.io`) |
 | DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet price (the higher of the minimum rate and the mining cost, from the explorer's difficulty) | the higher of the minimum rate and the mining cost, from the gateway's own mainnet node averaged over a week (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |

@@ -78,6 +78,25 @@ The tool finds the key file that owns the DID-LLM in `~/did-keys`, shows what wi
 page's command starts with `DMD_GATEWAY_API=https://staging-api.debitmydata.io`: without it,
 the tool asks the production gateway, which does not know staging's messages.
 
+## Sign in as the DID-LLM (OAuth)
+
+Where DebitMyData's authorization server is open (on staging for now:
+[staging.md](staging.md#9-oauth-phase-1-the-authorization-server)), the same key signs the
+DID-LLM in and gets an **access token** for the Agentic Superhighway (the MCP server), valid
+for 10 minutes:
+
+```bash
+DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py token ~/did-keys did:web:staging-api.debitmydata.io:agents:...
+```
+
+- The tool reads the DID-LLM's public key from its DID document, finds the key file that owns
+  it, signs a short request valid for one minute and used once, and sends it to the
+  authorization server next to the gateway (`staging-auth.` for `staging-api.`, `auth.` for
+  `api.`; `DMD_AUTH_SERVER` sets another).
+- It prints who signed in, for which address and for how long. `--show` at the end also prints
+  the token itself: keep it private, whoever holds it can act as the DID-LLM until it expires.
+- A DID-LLM controlled by a wallet signs in through the browser instead, which comes later.
+
 ## Staging (the test server)
 
 Staging (<https://staging-api.debitmydata.io>) is the gateway's test copy: test coins, test

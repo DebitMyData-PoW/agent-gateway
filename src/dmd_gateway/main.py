@@ -31,6 +31,7 @@ from dmd_gateway.api import (
     health,
     identities,
     llms,
+    oauth,
     payments,
     policies,
     prices,
@@ -51,6 +52,7 @@ from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
+from dmd_gateway.oauth.keys import load_private_key
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
 from dmd_gateway.services.policy_pages import load_policy_pages
@@ -91,6 +93,14 @@ def create_app(
             public_key_multibase=settings.issuer_public_key,
         )
 
+    # OAuth phase 1 (api/oauth.py): what signs access tokens. Production: from 0.37.1, the
+    # signer service; until then, no OAuth there.
+    token_signer = (
+        oauth.LocalTokenSigner(load_private_key(settings.oauth_key_path))
+        if settings.auth_host and settings.oauth_key_path is not None
+        else None
+    )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         rails = {rail_id: registry.rail_state(rail_id) for rail_id in registry.rails}
@@ -119,6 +129,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.token_signer = token_signer
     app.state.environ = env
     app.state.staging_payer = None  # created on first use (staging test tools only)
     app.state.registry = registry
@@ -151,6 +162,7 @@ def create_app(
     if settings.staging_test_tools:
         app.add_middleware(FormBodyMiddleware)  # docs page forms; see api/form_bodies.py
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(oauth.AuthHostOnly, settings=settings)  # auth host: OAuth only
     app.include_router(health.router)
     app.include_router(discovery.router)
     app.include_router(prices.router)
@@ -166,6 +178,7 @@ def create_app(
     app.include_router(docs_pages.router)
     app.include_router(get_did_page.router)  # /get-did on every server
     app.include_router(llms.router)  # /llms.txt: how an agent registers by itself
+    app.include_router(oauth.router)  # the authorization server, at auth_host only
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     if settings.staging_test_tools:
         app.include_router(staging.router)

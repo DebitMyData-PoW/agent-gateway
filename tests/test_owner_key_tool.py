@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from dmd_gateway.identity.crypto import decode_signature, parse_controller_key
+from dmd_gateway.oauth.assertion import ASSERTION_TYPE, verify_assertion
 from dmd_gateway.services import directory
 from dmd_gateway.services.controller_proofs import challenge_message
 
@@ -306,3 +307,108 @@ def test_a_folder_without_the_owner_key_signs_nothing(
     assert not any(c[0] == "POST" for c in calls)
     with pytest.raises(SystemExit, match="No key file or folder"):
         tool.directory(str(tmp_path / "missing"), LISTING_CHALLENGE, confirm=lambda _: "yes")
+
+
+# --------------------------------------------------------------------------- signing in (OAuth)
+
+AGENT_DID = "did:web:api.debitmydata.io:agents:01M768SNM7P50G8GQYAYHWRCFH"
+AUTH = "https://auth.debitmydata.io"
+MCP = "https://api.debitmydata.io/agenticsuperhighway"
+
+
+@pytest.mark.parametrize(
+    ("api", "auth"),
+    [
+        ("https://api.debitmydata.io", "https://auth.debitmydata.io"),
+        ("https://staging-api.debitmydata.io", "https://staging-auth.debitmydata.io"),
+        ("http://localhost:8000", "http://localhost:8000"),
+    ],
+)
+def test_the_authorization_server_is_next_to_the_gateway(api: str, auth: str) -> None:
+    assert _tool().default_auth_server(api) == auth
+
+
+def _auth_server(
+    tool: ModuleType, controller: str | None, issuer: str = AUTH
+) -> list[tuple[str, Any]]:
+    """Stands in for the gateway (the DID document, discovery) and the authorization server."""
+    tool.API, tool.AUTH = "https://api.debitmydata.io", AUTH
+    seen: list[tuple[str, Any]] = []
+    methods = (
+        [{"type": "Multikey", "publicKeyMultibase": controller.removeprefix("ed25519:")}]
+        if controller
+        else [{"type": "BlockchainAccount", "blockchainAccountId": "eip155:8453:0xab"}]
+    )
+
+    def call(method: str, path: str, body: dict | None = None) -> tuple[int, dict[str, Any]]:
+        seen.append((path, body))
+        if path == "/v1/discovery":
+            return 200, {"mcp_url": MCP}
+        return 200, {"id": AGENT_DID, "verificationMethod": methods}
+
+    def fetch(url: str, form: dict | None = None) -> tuple[int, dict[str, Any]]:
+        seen.append((url, form))
+        if form is None:
+            return 200, {"issuer": issuer, "token_endpoint": f"{issuer}/token"}
+        return 200, {
+            "access_token": "eyJ.the-token.sig",
+            "token_type": "Bearer",
+            "expires_in": 600,
+            "scope": "did:read",
+        }
+
+    tool.call, tool.fetch = call, fetch
+    return seen
+
+
+def test_token_signs_in_with_the_owner_key(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    path, controller = _new_key(tool, tmp_path, capsys)
+    seen = _auth_server(tool, controller)
+    tool.token(str(path), AGENT_DID)
+    out = capsys.readouterr().out
+    assert f"Signed in as {AGENT_DID}." in out and "valid 10 minutes" in out
+    assert "the-token" not in out  # only with --show
+    assert seen[0][0] == "/agents/01M768SNM7P50G8GQYAYHWRCFH/did.json"
+    url, form = seen[-1]
+    assert url == f"{AUTH}/token"
+    assert form["grant_type"] == "client_credentials"
+    assert form["client_assertion_type"] == ASSERTION_TYPE
+    assert form["resource"] == MCP and form["scope"] == "did:read"
+    # The gateway's own check accepts what the tool signs.
+    checked = verify_assertion(
+        form["client_assertion"],
+        audience=[f"{AUTH}/token", AUTH],
+        controller_key=lambda did: controller,
+        now=datetime.now(UTC),
+    )
+    assert checked.did == AGENT_DID
+
+    tool.token(str(path), AGENT_DID, show=True)
+    assert "eyJ.the-token.sig" in capsys.readouterr().out
+
+
+def test_token_signs_nothing_when_something_is_off(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tool = _tool()
+    path, controller = _new_key(tool, tmp_path, capsys)
+    stranger = "ed25519:z6MkpCvDgxrfSmniB8DQeSdnzVAHAfrS1DQXHngrEzggvob8"
+    for owner, issuer, words in (
+        (stranger, AUTH, "not by this key"),
+        (None, AUTH, "controlled by a wallet"),
+        (controller, "https://auth.elsewhere.example", "does not describe itself"),
+    ):
+        seen = _auth_server(tool, owner, issuer=issuer)
+        with pytest.raises(SystemExit, match=words):
+            tool.token(str(path), AGENT_DID)
+        assert not any(form for _, form in seen if isinstance(form, dict) and "grant_type" in form)
+    _auth_server(tool, controller)
+    with pytest.raises(SystemExit, match="DMD_GATEWAY_API=https://staging-api.debitmydata.io"):
+        tool.token(
+            str(path), "did:web:staging-api.debitmydata.io:agents:01M768SNM7P50G8GQYAYHWRCFH"
+        )
+    with pytest.raises(SystemExit, match="looks like did:web"):
+        tool.token(str(path), "dmd_identity_01M768SNM7P50G8GQYAYHWRCFH")
