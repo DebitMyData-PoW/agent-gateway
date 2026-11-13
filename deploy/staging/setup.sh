@@ -32,6 +32,11 @@ env_value() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- ||
 # ------------------------------------------------------------------ checks
 step "Checking prerequisites"
 [ "$(id -u)" -eq 0 ] || fail "run as root"
+# Never on the production server: the steps below would add staging's test settings to its
+# settings file and a test key next to it.
+if [ -s "$ENV_FILE" ] && [ "$(env_value DMD_GW_ENVIRONMENT | tr -d "'\" ")" = "production" ]; then
+    fail "$ENV_FILE is production's settings file: this script is for the staging server only. Nothing was changed. To update production: deploy/production/update.sh"
+fi
 grep -q 'VERSION_ID="24.04"' /etc/os-release || fail "this script targets Ubuntu 24.04"
 for bin in debitmydatad debitmydata-cli; do
     [ -x "/usr/local/bin/$bin" ] || fail "/usr/local/bin/$bin is missing: copy your DMD Core binaries there first (chmod 755)"

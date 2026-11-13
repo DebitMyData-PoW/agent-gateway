@@ -230,7 +230,8 @@ Only with a version that already runs well on staging:
 ```
 
 It keeps every secret, key, wallet and setting, and refuses to run on a server whose
-settings are not production's.
+settings are not production's (it changes nothing there). Staging's `update.sh` likewise
+refuses to run here.
 
 **A new DebitMyData Core release** (staging first, then production). Check the SHA-256 of the
 new `debitmydatad` and `debitmydata-cli` against the release, then:

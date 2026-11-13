@@ -29,8 +29,10 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 from starlette.applications import Starlette
 from starlette.routing import Route
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dmd_gateway import __version__
+from dmd_gateway.api import superhighway_page
 from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
@@ -755,6 +757,21 @@ def transport_security(settings: Settings) -> TransportSecuritySettings:
     )
 
 
+class _BrowserPage:
+    """The MCP endpoint, except that a web browser opening its address gets a short page
+    saying what it is (``superhighway_page``). MCP clients get the endpoint, as before."""
+
+    def __init__(self, endpoint: ASGIApp, settings: Settings) -> None:
+        self.endpoint = endpoint
+        self.settings = settings
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if superhighway_page.wants_page(scope):
+            await superhighway_page.page(self.settings)(scope, receive, send)
+            return
+        await self.endpoint(scope, receive, send)
+
+
 def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
     """Serve the MCP endpoint from the gateway app. Run ``server.session_manager.run()``
     in the app's lifespan."""
@@ -765,10 +782,14 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
         json_response=True,
         transport_security=transport_security(settings),
     )
-    routes = list(mcp_app.routes)
-    # The same endpoint at its earlier addresses (brand.MCP_OLD_PATHS).
+    routes = []
     for route in mcp_app.routes:
         if isinstance(route, Route) and route.path == MCP_PATH:
-            routes += [Route(path, endpoint=route.endpoint) for path in MCP_OLD_PATHS]
+            # The endpoint, with its page for browsers, at its address and at its earlier
+            # ones (brand.MCP_OLD_PATHS).
+            endpoint = _BrowserPage(route.endpoint, settings)
+            routes += [Route(path, endpoint=endpoint) for path in (MCP_PATH, *MCP_OLD_PATHS)]
+        else:
+            routes.append(route)
     app.router.routes.extend(routes)
     return server

@@ -4,6 +4,13 @@
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
+ENV_FILE="${DMD_GW_ENV_FILE:-/etc/dmd-gateway/gateway.env}"
+# Only on the production server: its settings say DMD_GW_ENVIRONMENT=production.
+if [ -s "$ENV_FILE" ] && ! grep -qE "^DMD_GW_ENVIRONMENT=[\"']?production[\"']?[[:space:]]*$" "$ENV_FILE"; then
+    echo "ERROR: $ENV_FILE is not production's settings file: this is not the production server." >&2
+    echo "Nothing was changed. To update staging: $APP_DIR/deploy/staging/update.sh" >&2
+    exit 1
+fi
 # The monitor and the daily report pause during the update: between "git pull" (new settings
 # files) and the new code being installed, they would read new settings with old code and
 # send a false alert. They start again at the end, even if the update fails.

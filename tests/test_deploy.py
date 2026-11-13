@@ -111,6 +111,70 @@ def test_production_serves_mcp_at_both_addresses_with_its_limits() -> None:
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")
+@pytest.mark.parametrize(
+    ("script", "settings", "other"),
+    [
+        ("staging", "DMD_GW_ENVIRONMENT=production", "production"),
+        ("staging", "DMD_GW_ENVIRONMENT='production'", "production"),
+        ("production", "DMD_GW_ENVIRONMENT=staging", "staging"),
+        ("production", "DMD_GW_ENVIRONMENT=development", "staging"),
+    ],
+)
+def test_an_update_never_runs_on_the_other_server(
+    script: str, settings: str, other: str, tmp_path: Path
+) -> None:
+    """Staging's update on the production server would add staging's test settings to
+    production's settings file (and the other way round): each one stops before changing
+    anything, even before pausing the monitor."""
+    env_file = tmp_path / "gateway.env"
+    env_file.write_text(f"{settings}\nDMD_GW_LOG_LEVEL=INFO\n", encoding="utf-8")
+    calls = tmp_path / "calls"
+    systemctl = tmp_path / "systemctl"
+    systemctl.write_text(f'#!/bin/sh\necho "$@" >>"{calls}"\n', encoding="utf-8")
+    systemctl.chmod(0o755)
+    assert BASH is not None
+    result = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        [BASH, str(DEPLOY / script / "update.sh")],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "DMD_GW_ENV_FILE": str(env_file),
+            "SYSTEMCTL": str(systemctl),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "Nothing was changed" in result.stderr
+    assert f"deploy/{other}/update.sh" in result.stderr
+    assert not calls.exists()  # the monitor was not even paused
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+def test_staging_setup_refuses_production_settings(tmp_path: Path) -> None:
+    """The staging setup run by hand on the production server stops at its first check."""
+    lines = (DEPLOY / "staging" / "setup.sh").read_text(encoding="utf-8").splitlines()
+    start = next(n for n, line in enumerate(lines) if "Never on the production server" in line)
+    end = next(n for n in range(start, len(lines)) if lines[n] == "fi")
+    first_change = next(n for n, line in enumerate(lines) if line.startswith("chmod "))
+    assert end < first_change  # before anything on the server is changed
+    helpers = [line for line in lines if line.startswith(("fail()", "env_value()"))]
+    guard = "\n".join(lines[start : end + 1])
+    env_file = tmp_path / "gateway.env"
+    assert BASH is not None
+    for value, refused in (("production", True), ("'production'", True), ("staging", False)):
+        env_file.write_text(f"DMD_GW_ENVIRONMENT={value}\n", encoding="utf-8")
+        result = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+            [BASH, "-c", 'ENV_FILE="$1"\n' + "\n".join(helpers) + "\n" + guard, "_", str(env_file)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (result.returncode == 1) is refused, value
+        assert ("Nothing was changed" in result.stderr) is refused
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
 @pytest.mark.parametrize("script", SETUP_SCRIPTS, ids=["staging", "production"])
 def test_a_new_setting_never_lands_on_the_end_of_the_last_line(
     script: Path, tmp_path: Path

@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.35.0`). The whole registration flow (quote,
+This is an early development release (`0.35.1`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -101,6 +101,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | The owner-key tool takes the folder of key files (`~/did-keys`) and signs with the one that owns the DID-LLM, or says that none does (listing the keys it found) and signs nothing; the pages' commands give the folder | done |
 | "Get a DID-LLM", step 1, "My agent's public key": how to make a key with the owner-key tool (the `new` command and the guide; on staging, a test key of its own and the guide's staging part) | done |
 | The MCP server moves to `/agenticsuperhighway`, its name in DebitMyData's plans: the pages, `llms.txt`, discovery (`mcp_url`) and the API docs show the new address; `/mcp`, its first address, is still served with the same rate limits, so agents and listings that know it keep working. `llms.txt` points agents to Agentic Spaces for their own social pages and communities | done |
+| A browser opening the MCP server's address (`/agenticsuperhighway`, or `/mcp`) gets a short page saying what it is: the address to give an MCP client, `llms.txt`, the REST API and "Get a DID-LLM" (before: an empty event stream, a blank page). MCP clients get exactly what they got before; the page is never cached (`no-store`, `Vary: Accept`) | done |
+| Each server's `update.sh` refuses to run on the other server (by its settings' `DMD_GW_ENVIRONMENT`) before changing anything, and staging's `setup.sh` refuses production's settings: staging's test settings and test key can never land on production | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

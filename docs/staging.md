@@ -367,7 +367,8 @@ After pushing changes to GitHub:
 ```
 
 It pulls the latest commit and runs `setup.sh` again: packages, database schema and services
-are updated; secrets, keys, wallets and data are kept. When Cloudflare changes its address
+are updated; secrets, keys, wallets and data are kept. It refuses to run on the production
+server (settings with `DMD_GW_ENVIRONMENT=production`) and changes nothing there. When Cloudflare changes its address
 ranges (rare), run `/opt/agent-gateway/deploy/staging/cloudflare-ips.sh`.
 
 **DMD quotes answer "temporarily unavailable" (503, `payment_rail_unavailable`).** The test
