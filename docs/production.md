@@ -403,7 +403,66 @@ The app's identity is its address: once people have installed it, the host must 
 To try it on staging first, do the same there with another name, for example
 `id-staging.debitmydata.io`.
 
-## 13. Go-live checklist
+## 13. The official MCP Registry
+
+MCP clients and crawlers can find the Agentic Superhighway by themselves: its **Server Card**
+(the MCP extension SEP-2127), at `https://api.debitmydata.io/agenticsuperhighway/server-card`,
+gives its name, version, what it does and how to connect, and the site's **AI Catalog**,
+`https://api.debitmydata.io/.well-known/ai-catalog.json`, points to it. Both come with every
+update; check them after one:
+
+```bash
+curl -s https://api.debitmydata.io/agenticsuperhighway/server-card
+curl -s https://api.debitmydata.io/.well-known/ai-catalog.json
+```
+
+The **official MCP Registry** (registry.modelcontextprotocol.io), where MCP clients and
+directories look for servers, lists it from `server.json` at the repository root, under the
+name `io.debitmydata/agenticsuperhighway`. A test keeps that file the same as the card, and
+its version is the gateway's. The Registry only accepts the name from whoever can prove they
+control debitmydata.io: with a DNS record that holds a public key, whose private key stays on
+the computer you publish from (like the SSH signing key, it never leaves it).
+
+**Once**, on the computer with your copy of the repository:
+
+1. Install the publisher, the Registry's own tool:
+
+   ```bash
+   curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher && sudo mv mcp-publisher /usr/local/bin/
+   mcp-publisher --help | head -3
+   ```
+
+2. Make the key, and print the DNS record's value (the public key only):
+
+   ```bash
+   mkdir -p ~/.mcp-registry && chmod 700 ~/.mcp-registry
+   openssl genpkey -algorithm Ed25519 -out ~/.mcp-registry/key.pem && chmod 600 ~/.mcp-registry/key.pem
+   echo "v=MCPv1; k=ed25519; p=$(openssl pkey -in ~/.mcp-registry/key.pem -pubout -outform DER | tail -c 32 | base64)"
+   ```
+
+3. **Cloudflare, DNS, debitmydata.io:** add a record of type **TXT**, name `@` (debitmydata.io
+   itself: the Registry does not look at a subdomain), content the line printed above
+   (`v=MCPv1; k=ed25519; p=...`). It changes nothing else: a domain can have several TXT
+   records. Check after a minute: `dig +short TXT debitmydata.io` shows it.
+
+**To publish** (the first time, and after an update when the listing should show the new
+version; a version can be published only once):
+
+```bash
+cd /root/agent-gateway
+mcp-publisher login dns --domain debitmydata.io --private-key "$(openssl pkey -in ~/.mcp-registry/key.pem -noout -text | grep -A3 'priv:' | tail -n +2 | tr -d ' :\n')"
+mcp-publisher publish
+curl -s "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.debitmydata/agenticsuperhighway"
+```
+
+The last command shows the listing. The login lasts a while; when `publish` says it has
+expired, log in again.
+
+Optional: debitmydata.io's own site can point to the card too, with the same AI Catalog at
+`https://debitmydata.io/.well-known/ai-catalog.json` (the website's team), so that crawlers
+that start from the company's domain find it.
+
+## 14. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set
@@ -414,4 +473,5 @@ To try it on staging first, do the same there with another name, for example
 - [ ] The temporary `/policies` redirect to staging is removed in Cloudflare
 - [ ] The Agentic Spaces site points agents to `https://api.debitmydata.io`
 - [ ] The Get a DID app answers at `https://id.debitmydata.io` (step 12)
+- [ ] The Agentic Superhighway is listed in the official MCP Registry (step 13)
 - [ ] Preska is told it is live

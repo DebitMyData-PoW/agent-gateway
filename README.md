@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.35.2`). The whole registration flow (quote,
+This is an early development release (`0.36.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -104,6 +104,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | A browser opening the MCP server's address (`/agenticsuperhighway`, or `/mcp`) gets a short page saying what it is: the address to give an MCP client, `llms.txt`, the REST API and "Get a DID-LLM" (before: an empty event stream, a blank page). MCP clients get exactly what they got before; the page is never cached (`no-store`, `Vary: Accept`) | done |
 | Each server's `update.sh` refuses to run on the other server (by its settings' `DMD_GW_ENVIRONMENT`) before changing anything, and staging's `setup.sh` refuses production's settings: staging's test settings and test key can never land on production | done |
 | One address for people, one for agents and developers (`api/hosts.py`): on the API's address (api.debitmydata.io), "Get a DID-LLM", the site's root and the policies lead to the app's (id.debitmydata.io), as the directory already did; on the app's address, the API docs (`/docs/advanced`, `/redoc`) lead to the API's. The menu's links therefore always land on the right address, and the installed app keeps people inside it. The API (`/v1/...`), `llms.txt`, the policies in Markdown and the MCP server answer at both, unmoved | done |
+| MCP clients, crawlers and registries find the Agentic Superhighway without being told its address (`api/server_card.py`): its MCP Server Card (the MCP extension SEP-2127) at `/agenticsuperhighway/server-card` gives its name, version, what it does and how to connect (no tools: the server lists them itself), the AI Catalog at `/.well-known/ai-catalog.json` points to it, and `/.well-known/mcp/server-card.json`, an earlier draft's address, serves the same card. `server.json` lists it in the official MCP Registry as `io.debitmydata/agenticsuperhighway` ([docs/production.md](docs/production.md#13-the-official-mcp-registry)); a test keeps it the same as the card | done (the listing needs the DNS record) |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -200,7 +201,9 @@ its first address, still works): `dmd_discover`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase`, `dmd_marketplace_provider_requirements`,
 `dmd_search_directory` and `dmd_list_in_directory`. Each
-tool calls the REST API above in-process, so both give the same results and error codes.
+tool calls the REST API above in-process, so both give the same results and error codes. Its
+Server Card, `/agenticsuperhighway/server-card` (listed in `/.well-known/ai-catalog.json`),
+tells MCP clients and registries what it is and how to connect.
 
 **Inference donations (agents).** `POST /v1/donations/inference` with
 `{"amount_usd": "5.00"}` (from 0.50 to 1,000.00 USD; optionally `donor_name` and
@@ -307,6 +310,7 @@ config/payment_routes.yaml   payment rails, services, commercial price (no secre
 config/payment_routes.regtest.yaml   the same, on test networks (DebitMyData regtest, Base Sepolia)
 deploy/staging/              staging server setup (nginx, systemd services, Cloudflare-only firewall)
 deploy/production/           production server setup, signer and backup units, nightly backup
+server.json                  the MCP server's listing in the official MCP Registry
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory

@@ -14,6 +14,7 @@ from fastapi.responses import PlainTextResponse
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import mcp_url, page_url
+from dmd_gateway.api.server_card import card_url
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
 from dmd_gateway.services.directory import pages_base
@@ -75,6 +76,7 @@ def llms_txt(request: Request) -> str:
 {staging}
 - Gateway (REST API): {base}
 - MCP server, the Agentic Superhighway (streamable HTTP): {mcp_url(settings)}
+- Its MCP Server Card (what it is, how to connect): {card_url(settings)}
 - Gateway version: {__version__}
 
 DebitMyData never asks for a private key, a seed phrase or access to a wallet. Pay only the

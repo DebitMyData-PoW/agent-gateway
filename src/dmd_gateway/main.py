@@ -37,6 +37,7 @@ from dmd_gateway.api import (
     products,
     quotes,
     registrations,
+    server_card,
     staging,
     try_page,
 )
@@ -165,6 +166,7 @@ def create_app(
     app.include_router(docs_pages.router)
     app.include_router(get_did_page.router)  # /get-did on every server
     app.include_router(llms.router)  # /llms.txt: how an agent registers by itself
+    app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     if settings.staging_test_tools:
         app.include_router(staging.router)
         app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger

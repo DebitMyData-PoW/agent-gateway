@@ -1,0 +1,34 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.debitmydata/agenticsuperhighway",
+  "title": "DebitMyData Agentic Superhighway",
+  "description": "Get a DID-LLM, DebitMyData's verifiable identity for AI agents, and pay for it by yourself.",
+  "version": "0.36.0",
+  "websiteUrl": "https://id.debitmydata.io/",
+  "repository": {
+    "url": "https://github.com/DebitMyData-PoW/agent-gateway",
+    "source": "github"
+  },
+  "icons": [
+    {
+      "src": "https://api.debitmydata.io/favicon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "64x64"
+      ]
+    },
+    {
+      "src": "https://id.debitmydata.io/app/icon-512.png?v=3",
+      "mimeType": "image/png",
+      "sizes": [
+        "512x512"
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://api.debitmydata.io/agenticsuperhighway"
+    }
+  ]
+}
