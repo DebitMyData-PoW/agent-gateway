@@ -408,12 +408,18 @@ To try it on staging first, do the same there with another name, for example
 MCP clients and crawlers can find the Agentic Superhighway by themselves: its **Server Card**
 (the MCP extension SEP-2127), at `https://api.debitmydata.io/agenticsuperhighway/server-card`,
 gives its name, version, what it does and how to connect, and the site's **AI Catalog**,
-`https://api.debitmydata.io/.well-known/ai-catalog.json`, points to it. Both come with every
-update; check them after one:
+`https://api.debitmydata.io/.well-known/ai-catalog.json`, points to it. DebitMyData's
+discovery runbook (the "AgenticSuperhighway Discovery & Publishing SOP") gets its two files in
+its own format, written for earlier drafts of MCP discovery: `/.well-known/mcp/server-card.json`
+(with the tools the server lists) and `/.well-known/mcp`. All come with every update; check
+them after one (the last three lines are the runbook's Day 1 checks):
 
 ```bash
 curl -s https://api.debitmydata.io/agenticsuperhighway/server-card
 curl -s https://api.debitmydata.io/.well-known/ai-catalog.json
+curl -sf https://api.debitmydata.io/.well-known/mcp/server-card.json | jq '.mcp_version'
+curl -sf https://api.debitmydata.io/.well-known/mcp | jq '.endpoints[0].url'
+curl -sI https://api.debitmydata.io/.well-known/mcp/server-card.json | grep -i "content-type: application/json"
 ```
 
 The **official MCP Registry** (registry.modelcontextprotocol.io), where MCP clients and

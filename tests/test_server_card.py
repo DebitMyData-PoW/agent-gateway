@@ -1,14 +1,16 @@
-"""The Agentic Superhighway's Server Card, the AI Catalog that points to it, and server.json
-(its listing in the official MCP Registry): MCP clients and crawlers find the server by
-themselves, and the listing says the same as the card."""
+"""The Agentic Superhighway's Server Card, the AI Catalog that points to it, the discovery
+runbook's two files and server.json (its listing in the official MCP Registry): MCP clients
+and crawlers find the server by themselves, and the listing says the same as the card."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 
 import pytest
 from fastapi.testclient import TestClient
+from mcp_types.version import LATEST_PROTOCOL_VERSION
 from sqlalchemy import create_engine
 
 from dmd_gateway import __version__
@@ -25,8 +27,11 @@ from dmd_gateway.settings import Settings
 from tests.conftest import REPO_ROOT, UNREACHABLE_DB
 
 CARD = "/agenticsuperhighway/server-card"
-CARD_PATHS = [CARD, "/mcp/server-card", "/.well-known/mcp/server-card.json"]
+CARD_PATHS = [CARD, "/mcp/server-card"]
 CATALOG = "/.well-known/ai-catalog.json"
+RUNBOOK_CARD = "/.well-known/mcp/server-card.json"
+RUNBOOK_MANIFEST = "/.well-known/mcp"
+MCP = "http://localhost:8000/agenticsuperhighway"
 NAME = re.compile(r"^[a-zA-Z0-9.-]+/[a-zA-Z0-9._-]+$")  # the card's and the Registry's rule
 
 
@@ -93,6 +98,40 @@ def test_the_ai_catalog_points_to_the_card(client: TestClient) -> None:
     assert client.options(CATALOG).status_code == 204
 
 
+def test_the_runbooks_day_1_checks_pass(client: TestClient) -> None:
+    """The runbook's Monday gate: the card's mcp_version, the manifest's first endpoint, and
+    application/json (asked with HEAD, as `curl -sI` does)."""
+    card = client.get(RUNBOOK_CARD)
+    assert card.status_code == 200
+    assert card.json()["mcp_version"] == LATEST_PROTOCOL_VERSION
+    manifest = client.get(RUNBOOK_MANIFEST)
+    assert manifest.status_code == 200
+    assert manifest.json()["endpoints"][0]["url"] == MCP
+    for path in (RUNBOOK_CARD, RUNBOOK_MANIFEST):
+        head = client.head(path)
+        assert head.status_code == 200, path
+        assert head.headers["content-type"] == "application/json", path
+        assert head.content == b""
+        headers = client.get(path).headers
+        assert headers["cache-control"] == "public, max-age=300"
+        assert headers["x-content-type-options"] == "nosniff"
+        assert headers["access-control-allow-origin"] == "*"
+        assert client.options(path).status_code == 204
+
+
+def test_the_runbooks_card_lists_the_tools_the_server_lists(client: TestClient) -> None:
+    card = client.get(RUNBOOK_CARD).json()
+    assert card["server_info"]["version"] == __version__
+    assert card["server_card"] == f"http://localhost:8000{CARD}"  # the standard card
+    (endpoint,) = card["endpoints"]
+    assert endpoint["url"] == MCP and endpoint["transport"] == "streamable-http"
+    assert endpoint["authentication"] == []  # agents need no account
+    live = asyncio.run(client.app.state.mcp.list_tools())
+    assert [tool["name"] for tool in card["tools"]] == [tool.name for tool in live]
+    assert "dmd_create_did_payment_quote" in {tool["name"] for tool in card["tools"]}
+    assert all(tool["description"] for tool in card["tools"])
+
+
 def test_the_mcp_server_itself_is_unchanged(client: TestClient) -> None:
     # The card's address is beside the MCP server's, not in its place.
     response = client.get(
@@ -112,7 +151,7 @@ def test_the_app_address_serves_them_too(settings: Settings) -> None:
         settings.model_copy(update={"app_host": "id.debitmydata.io"}), environ={}, engine=engine
     )
     with TestClient(app, follow_redirects=False) as client:
-        for path in (CARD, CATALOG):
+        for path in (CARD, CATALOG, RUNBOOK_CARD, RUNBOOK_MANIFEST):
             assert client.get(path, headers={"Host": "id.debitmydata.io"}).status_code == 200
 
 
