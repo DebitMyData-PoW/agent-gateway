@@ -40,6 +40,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
 from dmd_gateway.api import brand
+from dmd_gateway.api.hosts import to_api
 
 router = APIRouter(include_in_schema=False)
 
@@ -220,7 +221,9 @@ def swagger_ui(request: Request) -> HTMLResponse:
 
 
 @router.get("/redoc")
-def redoc(request: Request) -> HTMLResponse:
+def redoc(request: Request) -> Response:
+    if moved := to_api(request):  # for developers: at the API's address (hosts.py)
+        return moved
     title = escape(f"{request.app.title} - API reference")
     html = (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"

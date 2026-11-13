@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from dmd_gateway.api import brand
+from dmd_gateway.api.hosts import to_app
 from dmd_gateway.errors import ApiError
 from dmd_gateway.services.policy_pages import PolicyPage
 
@@ -97,7 +98,9 @@ def _version_line(page: PolicyPage) -> str:
 
 
 @router.get("/policies", include_in_schema=False)
-def policy_index(request: Request) -> HTMLResponse:
+def policy_index(request: Request) -> Response:
+    if moved := to_app(request):  # people read them at the app's address (hosts.py)
+        return moved
     items = "".join(
         f'<li><a href="{page.path}"><strong>{escape(page.title)}</strong></a>'
         f"<br>{escape(page.summary)}{_version_line(page)}</li>"
@@ -128,6 +131,10 @@ def policy_page(name: str, request: Request) -> Response:
             media_type="text/markdown; charset=utf-8",
             headers={"Cache-Control": CACHE, "X-Content-Type-Options": "nosniff"},
         )
+    # The page for people: at the app's address (hosts.py). The Markdown above, for agents,
+    # answers wherever it is asked.
+    if moved := to_app(request):
+        return moved
     # The text's own title is the page's heading, so the version line goes after it.
     heading, _, rest = page.html.partition("</h1>")
     body = f"{_notices(request, page)}{heading}</h1>{_version_line(page)}{rest}"

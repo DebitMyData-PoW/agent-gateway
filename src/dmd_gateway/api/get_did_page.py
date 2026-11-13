@@ -38,6 +38,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand, docs_pages
+from dmd_gateway.api.hosts import is_app, to_api, to_app
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT
 from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.settings import Settings
@@ -524,12 +525,6 @@ def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: b
     )
 
 
-def is_app(request: Request) -> bool:
-    """Whether the request came to the app's host (nginx passes the visitor's Host)."""
-    host = request.app.state.settings.app_host
-    return bool(host) and request.headers.get("host", "").strip().lower() == host
-
-
 def page_url(settings: Settings) -> str:
     """The Get a DID-LLM page's public address: the app's root, or /get-did on the gateway."""
     if settings.app_host:
@@ -553,6 +548,8 @@ def _render(request: Request, app: bool) -> HTMLResponse:
 def _page(request: Request) -> Response:
     if is_app(request):  # one address for the app: its root
         return RedirectResponse(APP_ROOT, status_code=307)
+    if moved := to_app(request, APP_ROOT):  # at the API's address: the app (hosts.py)
+        return moved
     return _render(request, app=False)
 
 
@@ -563,6 +560,8 @@ def _root(request: Request) -> Response:
         return _render(request, app=True)
     if request.app.state.settings.staging_test_tools:
         return RedirectResponse(brand.GUIDED_PATH, status_code=307)
+    if moved := to_app(request, APP_ROOT):  # at the API's address: the app (hosts.py)
+        return moved
     return RedirectResponse(PAGE_PATH, status_code=307)
 
 
@@ -667,7 +666,12 @@ def font(name: str) -> Response:
     )
 
 
-production_router.add_api_route(ADVANCED_PATH, docs_pages.swagger_ui, methods=["GET"])
+def _advanced(request: Request) -> Response:
+    # The API docs are for developers: at the app's address they lead to the API's (hosts.py).
+    return to_api(request) or docs_pages.swagger_ui(request)
+
+
+production_router.add_api_route(ADVANCED_PATH, _advanced, methods=["GET"])
 
 
 def _to_page() -> RedirectResponse:

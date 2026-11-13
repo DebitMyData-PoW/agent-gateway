@@ -341,7 +341,10 @@ The "Get a DID" page is also an app people add to their phone's home screen and 
 screen: on its own address, `https://id.debitmydata.io`, the same gateway serves the page at
 the root, with the app's name, icons and a small service worker that keeps the page for opening
 without a network (it never touches the API calls). DIDs keep `api.debitmydata.io` in their
-name, and `/get-did` stays as it is. People install it:
+name. Once the app's address is set, the pages for people (Get a DID-LLM, the directory, the
+policies) have that one address: at `api.debitmydata.io` they lead there (`/get-did` to the
+app's root), and the API docs lead the other way, to `api.debitmydata.io`. The API,
+`llms.txt`, the policies in Markdown and the MCP server answer at both. People install it:
 
 - **iPhone (Safari):** Share, then **Add to Home Screen**;
 - **Android (Chrome):** the **Install app** prompt, or the menu, then **Install app**.
