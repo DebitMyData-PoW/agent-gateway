@@ -134,6 +134,15 @@ PARTICIPANTS = (
     ("organization", "An organization"),
     ("approved_digital_entity", "Another approved digital entity"),
 )
+# How the page groups them, in this order (each one once).
+PARTICIPANT_GROUPS = (
+    (
+        "AI agents and bots",
+        ("ai_agent", "autonomous_agent", "bot", "agenticbot", "claw", "digital_twin"),
+    ),
+    ("People and organizations", ("human", "organization")),
+    ("Something else", ("approved_digital_entity",)),
+)
 
 
 # What DMD is and how to get some: opened from the "?" under the DMD payment option.
@@ -374,11 +383,19 @@ def _new_key_help(staging: bool) -> str:
 
 
 def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
-    # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once.
+    # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once,
+    # in groups, on an even grid. The first one is picked.
+    labels = dict(PARTICIPANTS)
+    first = PARTICIPANT_GROUPS[0][1][0]
     participants = "".join(
-        f"<label class=pill><input type=radio name=kind value={value}"
-        f"{' checked' if index == 0 else ''}>{label}</label>"
-        for index, (value, label) in enumerate(PARTICIPANTS)
+        f'<p class=pill-group>{title}</p><div class="pills grid">'
+        + "".join(
+            f"<label class=pill><input type=radio name=kind value={value}"
+            f"{' checked' if value == first else ''}>{labels[value]}</label>"
+            for value in values
+        )
+        + "</div>"
+        for title, values in PARTICIPANT_GROUPS
     )
     test_card = (
         ", or by card with Stripe's test card <strong>4242 4242 4242 4242</strong> (any future "
@@ -436,7 +453,7 @@ recovery phrase, and never sends money. {where_you_pay}</p>
 <label class=field for=name>Name<small>Shown in the DID-LLM document, e.g. the agent's name.</small>
 <input type=text id=name maxlength=100 autocomplete=off
 placeholder="e.g. My research agent"></label>
-<fieldset id=kind><legend>What is it for?</legend><div class=pills>{participants}</div></fieldset>
+<fieldset id=kind><legend>What is it for?</legend>{participants}</fieldset>
 <fieldset>
 <legend>Who owns it</legend>
 <p class=small>Every DID-LLM needs an owner: a wallet or an agent's key. The owner proves it once

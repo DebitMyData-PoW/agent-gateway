@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.36.2`). The whole registration flow (quote,
+This is an early development release (`0.36.3`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -105,7 +105,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Each server's `update.sh` refuses to run on the other server (by its settings' `DMD_GW_ENVIRONMENT`) before changing anything, and staging's `setup.sh` refuses production's settings: staging's test settings and test key can never land on production | done |
 | One address for people, one for agents and developers (`api/hosts.py`): on the API's address (api.debitmydata.io), "Get a DID-LLM", the site's root and the policies lead to the app's (id.debitmydata.io), as the directory already did; on the app's address, the API docs (`/docs/advanced`, `/redoc`) lead to the API's. The menu's links therefore always land on the right address, and the installed app keeps people inside it. The API (`/v1/...`), `llms.txt`, the policies in Markdown and the MCP server answer at both, unmoved | done |
 | MCP clients, crawlers and registries find the Agentic Superhighway without being told its address (`api/server_card.py`): its MCP Server Card (the MCP extension SEP-2127) at `/agenticsuperhighway/server-card` gives its name, version, what it does and how to connect (no tools: the server lists them itself), the AI Catalog at `/.well-known/ai-catalog.json` points to it, and DebitMyData's discovery runbook gets its two files in its own format (`application/json`): `/.well-known/mcp/server-card.json`, with the tools the server lists, and `/.well-known/mcp`, a short manifest; both point to the standard card. `server.json` lists it in the official MCP Registry as `io.debitmydata/agenticsuperhighway` ([docs/production.md](docs/production.md#13-the-official-mcp-registry)); a test keeps it the same as the card | done (the listing needs the DNS record) |
-| No drop-down lists on the pages, so AI agents see every choice at once: "What is it for?" on Get a DID-LLM and the listing form's type are visible buttons, and the directory's types are links that keep the search words | done |
+| No drop-down lists on the pages, so AI agents see every choice at once: "What is it for?" on Get a DID-LLM (in three groups, on an even grid) and the listing form's type are visible buttons, and the directory's types are links that keep the search words | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

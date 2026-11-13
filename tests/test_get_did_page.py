@@ -90,9 +90,12 @@ def test_every_choice_is_a_visible_button_not_a_drop_down_list() -> None:
     """AI agents see every choice at once (and people too)."""
     html = get_did_page._body(staging=False)
     assert "<select" not in html
-    for index, (value, _) in enumerate(get_did_page.PARTICIPANTS):
-        checked = " checked" if index == 0 else ""
+    grouped = [value for _, values in get_did_page.PARTICIPANT_GROUPS for value in values]
+    assert sorted(grouped) == sorted(value for value, _ in get_did_page.PARTICIPANTS)  # each once
+    for value in grouped:
+        checked = " checked" if value == "ai_agent" else ""
         assert f"<input type=radio name=kind value={value}{checked}>" in html
+    assert html.count("<p class=pill-group>") == len(get_did_page.PARTICIPANT_GROUPS)
 
 
 def test_the_page_never_asks_for_a_private_key_and_never_pays() -> None:

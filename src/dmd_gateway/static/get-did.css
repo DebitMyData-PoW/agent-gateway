@@ -65,6 +65,10 @@ cursor:pointer;font-weight:400;color:var(--text);background:var(--card);text-dec
 .pill:hover{border-color:var(--red)}
 .pill:has(input:checked),.pill[aria-current]{border:2px solid var(--red);padding:6px 13px;background:var(--pick);font-weight:600}
 .pill input{accent-color:var(--red);margin:0}
+.pills.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+.pills.grid .pill{border-radius:12px}
+@media (min-width:760px){.pills.grid .pill:only-child{grid-column:span 2}}
+.pill-group{margin:14px 0 0;font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .tag{display:inline-block;background:var(--pink);color:var(--red-brand);border-radius:999px;font-size:.78rem;
 font-weight:700;padding:0 8px;margin-left:6px;vertical-align:middle}
 .sub{margin:6px 0 12px 26px}
