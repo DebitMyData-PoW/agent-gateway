@@ -374,8 +374,11 @@ def _new_key_help(staging: bool) -> str:
 
 
 def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
+    # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once.
     participants = "".join(
-        f"<option value={value}>{label}</option>" for value, label in PARTICIPANTS
+        f"<label class=pill><input type=radio name=kind value={value}"
+        f"{' checked' if index == 0 else ''}>{label}</label>"
+        for index, (value, label) in enumerate(PARTICIPANTS)
     )
     test_card = (
         ", or by card with Stripe's test card <strong>4242 4242 4242 4242</strong> (any future "
@@ -433,7 +436,7 @@ recovery phrase, and never sends money. {where_you_pay}</p>
 <label class=field for=name>Name<small>Shown in the DID-LLM document, e.g. the agent's name.</small>
 <input type=text id=name maxlength=100 autocomplete=off
 placeholder="e.g. My research agent"></label>
-<label class=field for=kind>What is it for?<select id=kind>{participants}</select></label>
+<fieldset id=kind><legend>What is it for?</legend><div class=pills>{participants}</div></fieldset>
 <fieldset>
 <legend>Who owns it</legend>
 <p class=small>Every DID-LLM needs an owner: a wallet or an agent's key. The owner proves it once

@@ -26,7 +26,7 @@
 
   const form = $("#details");
   const nameInput = $("#name");
-  const kindSelect = $("#kind");
+  const kindChoice = () => $("#kind input[name=kind]:checked").value;
   const walletBox = $("#wallet-box");
   const walletAddress = $("#wallet-address");
   const walletLabel = $("#wallet-address-label");
@@ -406,7 +406,7 @@
     if (!name) return { error: "Give the DID-LLM a name." };
     const option = form.querySelector("input[name=option]:checked");
     if (!option) return { error: "Choose how to pay." };
-    const request = { display_name: name, participant_type: kindSelect.value, preferred_payment_option: option.value };
+    const request = { display_name: name, participant_type: kindChoice(), preferred_payment_option: option.value };
     let controller;
     if (controllerChoice() === "wallet") {
       const address = (wallet ? wallet.address : walletAddress.value).trim();

@@ -86,6 +86,15 @@ def test_the_font_is_served_here(client: TestClient) -> None:
     assert client.get("/fonts/..%2fget-did.js").status_code == 404
 
 
+def test_every_choice_is_a_visible_button_not_a_drop_down_list() -> None:
+    """AI agents see every choice at once (and people too)."""
+    html = get_did_page._body(staging=False)
+    assert "<select" not in html
+    for index, (value, _) in enumerate(get_did_page.PARTICIPANTS):
+        checked = " checked" if index == 0 else ""
+        assert f"<input type=radio name=kind value={value}{checked}>" in html
+
+
 def test_the_page_never_asks_for_a_private_key_and_never_pays() -> None:
     script = get_did_page._SCRIPT
     for never in (

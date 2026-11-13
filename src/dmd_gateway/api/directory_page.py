@@ -49,6 +49,17 @@ OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/do
 TYPES = (("", "All types"), *((key, label) for key, label in directory.ENTITY_LABELS.items()))
 
 
+def _query(text: str, entity_type: str) -> str:
+    """The directory page's query string for these search words and this type ("": none)."""
+    query = urlencode({key: value for key, value in (("q", text), ("type", entity_type)) if value})
+    return f"?{_e(query)}" if query else ""
+
+
+def _kept_type(entity_type: str | None) -> str:
+    # A new search keeps the type shown; the type links under the form change it.
+    return f"<input type=hidden name=type value={entity_type}>" if entity_type else ""
+
+
 def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
@@ -189,8 +200,10 @@ def directory_page(
             cards = "".join(_card(base, identity, listing) for identity, listing in page.entries)
     except ApiError:  # a cursor that is not one of ours: the first page
         return directory_page(request, q=q, type=type, cursor=None)
-    options = "".join(
-        f'<option value="{key}"{" selected" if key == (entity_type or "") else ""}>{label}</option>'
+    # Links, not a drop-down list: one click shows a type, and AI agents see them all.
+    types = "".join(
+        f'<a class=pill href="{PAGE_PATH}{_query(text, key)}"'
+        f"{' aria-current=page' if key == (entity_type or '') else ''}>{label}</a>"
         for key, label in TYPES
     )
     searching = bool(text or entity_type)
@@ -227,8 +240,8 @@ def directory_page(
         f'<form class=search method=get action="{PAGE_PATH}" role=search>'
         "<label for=q>Search<input type=text id=q name=q maxlength=80 "
         f'value="{_e(text)}" placeholder="Name, specialty, country…"></label>'
-        f"<label for=type>Type<select id=type name=type>{options}</select></label>"
-        "<button type=submit>Search</button></form>"
+        f"{_kept_type(entity_type)}<button type=submit>Search</button></form>"
+        f'<nav class="pills types" aria-label="Type">{types}</nav>'
         f"{found}{cards_html}{more}{FINE_PRINT}"
     )
     return HTMLResponse(_page(request, "DID-LLM directory", body), headers=_headers(None))
@@ -238,8 +251,10 @@ def directory_page(
 def list_page(request: Request) -> Response:
     if moved := to_app(request):  # the app's address (hosts.py); /v1/directory stays
         return moved
+    # Visible buttons, not a drop-down list: AI agents (and people) see every type at once.
     options = "".join(
-        f"<option value={key}>{label}</option>" for key, label in directory.ENTITY_LABELS.items()
+        f"<label class=pill><input type=radio name=entity_type value={key} required>{label}</label>"
+        for key, label in directory.ENTITY_LABELS.items()
     )
     words = directory.DESCRIPTION_WORDS
     body = f"""
@@ -271,8 +286,7 @@ placeholder="did:web:api.debitmydata.io:agents:…"></label>
 <form id=profile novalidate hidden>
 <p class=small>Everything here is public, next to the DID-LLM's name. Plain text only: no links,
 no e-mail addresses.</p>
-<label class=field for=entity_type>Type<select id=entity_type required>
-<option value="" selected disabled>Choose a type</option>{options}</select></label>
+<fieldset id=entity_type><legend>Type</legend><div class=pills>{options}</div></fieldset>
 <label class=field for=specialty>Specialty / capabilities<small>What it does, in a few words.
 </small><input type=text id=specialty maxlength=120 placeholder="e.g. Customer support"></label>
 <label class=field for=description>Description <span class=count id=words></span>

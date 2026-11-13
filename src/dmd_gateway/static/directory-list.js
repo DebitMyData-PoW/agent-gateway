@@ -176,7 +176,7 @@
 
   function openProfile() {
     profileForm.hidden = false;
-    for (const name of fields) $(`#${name}`).value = (listed && listed[name]) || "";
+    for (const name of fields) setField(name, (listed && listed[name]) || "");
     countWords();
     const both = identity.controller_wallet && identity.controller_public_key;
     signerBox.hidden = !both;
@@ -188,7 +188,7 @@
     removeButton.hidden = !listed;
     profileError.hidden = true;
     show(2);
-    requestAnimationFrame(() => $("#entity_type").focus({ preventScroll: true }));
+    requestAnimationFrame(() => $("#entity_type input").focus({ preventScroll: true }));
   }
 
   function signer() {
@@ -203,17 +203,31 @@
     return count;
   }
 
+  // The type is a group of buttons (radio buttons named after it); the others are text fields.
+  function fieldValue(name) {
+    const group = [...profileForm.querySelectorAll(`input[type=radio][name=${name}]`)];
+    if (!group.length) return $(`#${name}`).value;
+    const picked = group.find((button) => button.checked);
+    return picked ? picked.value : "";
+  }
+
+  function setField(name, value) {
+    const group = [...profileForm.querySelectorAll(`input[type=radio][name=${name}]`)];
+    if (!group.length) $(`#${name}`).value = value;
+    for (const button of group) button.checked = button.value === value;
+  }
+
   function refuse(text, field) {
     profileError.textContent = text;
     profileError.hidden = false;
-    const input = field && $(`#${field}`);
+    const input = field && ($(`#${field} input`) || $(`#${field}`));
     if (input) input.focus();
   }
 
   function profile() {
     const values = {};
     for (const name of fields) {
-      const value = $(`#${name}`).value.trim();
+      const value = fieldValue(name).trim();
       values[name] = value || null;
     }
     return values;

@@ -508,6 +508,17 @@ def test_the_directory_pages(client: TestClient) -> None:  # noqa: F811
     # Off production, the tool's command names this gateway (DMD_GATEWAY_API=...).
     assert 'const PRODUCTION_API = "https://api.debitmydata.io";' in listing_page.text
 
+    # No drop-down list: AI agents see every choice. The types are links that keep the search
+    # words (and a new search keeps the type); the listing form's types are buttons.
+    assert "<select" not in found.text and "<select" not in listing_page.text
+    robot = '<a class=pill href="/directory?q=renewable&amp;type=robot" aria-current=page>Robot</a>'
+    assert robot in found.text
+    assert '<a class=pill href="/directory?q=renewable">All types</a>' in found.text
+    assert "<input type=hidden name=type value=robot>" in found.text
+    assert '<a class=pill href="/directory" aria-current=page>All types</a>' in page.text
+    for key in ("avatar", "robot", "sentient"):
+        assert f"<input type=radio name=entity_type value={key} required>" in listing_page.text
+
 
 def test_the_get_did_page_offers_the_directory(client: TestClient) -> None:  # noqa: F811
     page = client.get("/get-did").text

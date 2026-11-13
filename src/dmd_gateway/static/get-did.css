@@ -59,6 +59,12 @@ background:var(--card)}
 .choice input{accent-color:var(--red);margin-right:8px}
 .choice small{display:block;color:var(--muted);margin-left:26px}
 .choice.unavailable{opacity:.6;cursor:not-allowed}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 0}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:7px 14px;
+cursor:pointer;font-weight:400;color:var(--text);background:var(--card);text-decoration:none}
+.pill:hover{border-color:var(--red)}
+.pill:has(input:checked),.pill[aria-current]{border:2px solid var(--red);padding:6px 13px;background:var(--pick);font-weight:600}
+.pill input{accent-color:var(--red);margin:0}
 .tag{display:inline-block;background:var(--pink);color:var(--red-brand);border-radius:999px;font-size:.78rem;
 font-weight:700;padding:0 8px;margin-left:6px;vertical-align:middle}
 .sub{margin:6px 0 12px 26px}
