@@ -88,15 +88,26 @@ def test_nginx_accepts_the_staging_site(tmp_path: Path, app_host: str) -> None:
 def test_every_location_is_rate_limited() -> None:
     locations = SITE.split("location ")[1:]
     proxied = [block for block in locations if "dmd-gateway-proxy.conf" in block]
-    assert len(proxied) == 3  # the API, MCP and the staging test tools
+    # the API, MCP (at /agenticsuperhighway and at /mcp, its first address) and the staging
+    # test tools
+    assert len(proxied) == 4
     for block in proxied:
         assert "limit_req zone=" in block
+    mcp = [block for block in proxied if block.startswith(("/agenticsuperhighway ", "/mcp "))]
+    assert len(mcp) == 2 and all("zone=dmd_mcp burst=" in block for block in mcp)
     assert "zone=dmd_writes burst=" in SITE
     assert "zone=dmd_test_tools burst=" in SITE
     assert "limit_conn dmd_connections" in SITE
     # Refusals are JSON, like every other error of the gateway.
     assert "error_page 429 = @rate_limited;" in SITE
     assert '"code":"rate_limited"' in SITE
+
+
+def test_production_serves_mcp_at_both_addresses_with_its_limits() -> None:
+    site = (DEPLOY / "production" / "files" / "nginx-site.conf").read_text(encoding="utf-8")
+    blocks = site.split("location ")[1:]
+    mcp = [block for block in blocks if block.startswith(("/agenticsuperhighway ", "/mcp "))]
+    assert len(mcp) == 2 and all("zone=dmd_mcp burst=" in block for block in mcp)
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")

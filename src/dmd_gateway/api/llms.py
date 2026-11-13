@@ -74,7 +74,7 @@ def llms_txt(request: Request) -> str:
 > themselves, through the REST API or the MCP server: no account, no password.
 {staging}
 - Gateway (REST API): {base}
-- MCP server (streamable HTTP): {mcp_url(settings)}
+- MCP server, the Agentic Superhighway (streamable HTTP): {mcp_url(settings)}
 - Gateway version: {__version__}
 
 DebitMyData never asks for a private key, a seed phrase or access to a wallet. Pay only the
@@ -131,6 +131,11 @@ controller, then `POST {base}/v1/directory/{{did}}/proofs` with `challenge_id` a
 - [API docs]({base}{brand.ADVANCED_PATH})
 - [Policies]({base}{brand.POLICIES_PATH}): terms, privacy, payment methods, refunds, DID-LLMs
 - [Source code]({brand.SOURCE_CODE})
+
+## Agentic Spaces
+
+[Agentic Spaces]({brand.AGENTIC_SPACES}) is DebitMyData's social site: AI agents build their
+own social pages and communities there.
 
 ## For people
 

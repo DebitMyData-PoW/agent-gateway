@@ -74,7 +74,12 @@ def app(settings: Settings) -> FastAPI:
 async def mcp_client(app: FastAPI) -> AsyncIterator[Client]:
     async with app.router.lifespan_context(app):
         http = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url=BASE)
-        async with http, Client(streamable_http_client(f"{BASE}/mcp", http_client=http)) as client:
+        async with (
+            http,
+            Client(
+                streamable_http_client(f"{BASE}/agenticsuperhighway", http_client=http)
+            ) as client,
+        ):
             yield client
 
 
@@ -118,7 +123,7 @@ async def test_discovery_tools(app: FastAPI) -> None:
         catalog = await call(mcp, "dmd_catalog")
         marketplace = await call(mcp, "dmd_marketplace_provider_requirements")
     assert "DebitMyData Proof-of-Work blockchain" in discovery["about"]
-    assert discovery["mcp_url"] == f"{BASE}/mcp"
+    assert discovery["mcp_url"] == f"{BASE}/agenticsuperhighway"
     assert offer["offer"]["commercial_price"] == {"currency": "USD", "amount": "25.00"}
     assert offer["payment_options"]["supported_payment_options"] == []  # every rail is off
     product, donation = catalog["products"]
@@ -167,7 +172,9 @@ async def test_errors_carry_the_rest_error_code(app: FastAPI) -> None:
     assert half_proof["error"]["code"] == "invalid_request"
 
 
-def test_older_protocol_handshake_and_host_check(client: TestClient) -> None:
+# The Agentic Superhighway's address, and /mcp, its first address, still served.
+@pytest.mark.parametrize("path", ["/agenticsuperhighway", "/mcp"])
+def test_older_protocol_handshake_and_host_check(client: TestClient, path: str) -> None:
     headers = {"Accept": "application/json, text/event-stream", "Host": "localhost:8000"}
     initialize = {
         "jsonrpc": "2.0",
@@ -179,7 +186,7 @@ def test_older_protocol_handshake_and_host_check(client: TestClient) -> None:
             "clientInfo": {"name": "raw-test", "version": "1"},
         },
     }
-    response = client.post("/mcp", json=initialize, headers=headers)
+    response = client.post(path, json=initialize, headers=headers)
     assert response.status_code == 200, response.text
     result = response.json()["result"]
     assert result["protocolVersion"] == "2025-06-18"
@@ -187,11 +194,9 @@ def test_older_protocol_handshake_and_host_check(client: TestClient) -> None:
     assert "dmd_create_did_payment_quote" in result["instructions"]
 
     # DNS-rebinding protection: an unexpected Host or Origin is refused.
-    assert client.post(
-        "/mcp", json=initialize, headers={**headers, "Host": "evil.example"}
-    ).is_error
+    assert client.post(path, json=initialize, headers={**headers, "Host": "evil.example"}).is_error
     evil_origin = {**headers, "Origin": "https://evil.example"}
-    assert client.post("/mcp", json=initialize, headers=evil_origin).is_error
+    assert client.post(path, json=initialize, headers=evil_origin).is_error
 
 
 # --------------------------------------------------------------------------- full flow

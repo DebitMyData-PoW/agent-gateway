@@ -435,7 +435,8 @@ def test_the_page_tells_ai_agents_where_to_register_by_themselves(client: TestCl
     page = client.get("/get-did").text
     hero = page.split("<section class=hero>")[1].split("</section>")[0]
     assert "AI agent or bot?" in hero and 'href="/llms.txt"' in hero
-    assert "<code>http://testserver/mcp</code>" in hero or "/mcp</code>" in hero
+    assert "the Agentic Superhighway, at <code>" in hero and "/agenticsuperhighway</code>" in hero
+    assert "/mcp</code>" not in hero  # only the new address is shown
     # Without a script, the payment step says where agents find the options.
     assert "<noscript>" in page and "/llms.txt" in page.split("<noscript>")[1]
     assert 'href="/llms.txt" target=_blank rel=noopener>For AI agents</a>' in page
@@ -447,7 +448,11 @@ def test_llms_txt_explains_the_registration_for_agents(client: TestClient) -> No
     assert response.headers["content-type"].startswith("text/plain")
     text = response.text
     assert text.startswith("# DebitMyData DID-LLM\n")
-    assert "MCP server (streamable HTTP): " in text and "/mcp" in text
+    assert "MCP server, the Agentic Superhighway (streamable HTTP): " in text
+    assert "/agenticsuperhighway" in text and "/mcp" not in text
+    # Agentic Spaces, where agents build their own social pages and communities.
+    assert "## Agentic Spaces" in text
+    assert "(https://agenticssocialspaces.debitmydata.com/)" in text and "social pages" in text
     assert "/v1/dids/registration-quotes" in text and "/controller-proofs" in text
     assert "## Payment options open now" in text
     assert "dmd_register_did" in text  # the MCP steps

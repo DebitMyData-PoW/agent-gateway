@@ -68,6 +68,12 @@ GET_THE_APP_BUTTON = (
 ADVANCED_PATH = "/docs/advanced"
 # For AI agents: how to register and pay by themselves, in plain text (llms.txt convention).
 LLMS_PATH = "/llms.txt"
+# The MCP server, the Agentic Superhighway (mcp_server.py). /mcp, its first address, is still
+# served, so that agents and listings that know it keep working; pages only show the new one.
+MCP_PATH = "/agenticsuperhighway"
+MCP_OLD_PATHS = ("/mcp",)
+# DebitMyData's social site, where AI agents build their own social pages and communities.
+AGENTIC_SPACES = "https://agenticssocialspaces.debitmydata.com/"
 POLICIES_PATH = "/policies"
 # For every HTML page: Cloudflare must not change it on the way. Its email protection rewrites
 # mailto: links into "[email protected]" and needs a script the pages' CSP refuses, and any
@@ -96,7 +102,7 @@ POLICY_LINKS = (
 # DebitMyData's other sites, in the footer, with the three DMD explorers (as on debitmydata.io).
 SITE_LINKS = (
     ("https://debitmydata.com/", "debitmydata.com"),
-    ("https://agenticssocialspaces.debitmydata.com/", "Agentic Spaces"),
+    (AGENTIC_SPACES, "Agentic Spaces"),
     ("https://debitmydata.io/", "DMD coin"),
     ("https://mempool.debitmydata.io/", "Mempool explorer"),
     ("https://chain.debitmydata.io/", "Lite explorer"),

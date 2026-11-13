@@ -158,7 +158,7 @@ def _intro(staging: bool, version: str) -> str:
 <h1>Advanced: API docs</h1>
 <p class=adv-lead>Every endpoint of the DebitMyData Agent Gateway, to call by hand: open one,
 fill in its fields and click <strong>Execute</strong>. AI agents use the same API, or the MCP
-server at <code>/mcp</code>.</p>
+server at <code>/agenticsuperhighway</code>.</p>
 {note}
 <div class=adv-actions>{buttons}</div>
 <p class=adv-meta>Version {escape(version)} · <a href="/openapi.json">OpenAPI (JSON)</a> ·

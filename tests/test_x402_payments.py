@@ -635,7 +635,12 @@ def test_reorg_reopens_the_payment_until_it_is_mined_again(
 async def mcp_client(app: FastAPI) -> AsyncIterator[Client]:
     async with app.router.lifespan_context(app):
         http = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url=BASE)
-        async with http, Client(streamable_http_client(f"{BASE}/mcp", http_client=http)) as client:
+        async with (
+            http,
+            Client(
+                streamable_http_client(f"{BASE}/agenticsuperhighway", http_client=http)
+            ) as client,
+        ):
             yield client
 
 

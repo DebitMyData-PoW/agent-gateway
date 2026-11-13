@@ -168,7 +168,7 @@ that is `/docs/advanced`, and `/docs` is a guided test page).
 
 ## 5. The same registration through MCP
 
-The gateway also serves the directive's MCP tools at `http://localhost:8000/mcp`
+The gateway also serves the directive's MCP tools at `http://localhost:8000/agenticsuperhighway`
 (Streamable HTTP), so any MCP-capable agent can do all of the above without custom code.
 `scripts/demo_agent.py` can act as that MCP client. Same terminal as section 4:
 

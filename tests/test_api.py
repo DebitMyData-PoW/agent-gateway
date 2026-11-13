@@ -28,7 +28,7 @@ def test_discovery_may_be_cached_for_a_minute(client: TestClient) -> None:
 def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     body = client.get("/v1/discovery").json()
     assert body["service"] == "DebitMyData Agent Gateway"
-    assert body["mcp_url"] == "http://localhost:8000/mcp"  # served by the gateway itself
+    assert body["mcp_url"] == "http://localhost:8000/agenticsuperhighway"  # the gateway itself
     (offer,) = body["offers"]
     assert offer["id"] == "did_registration"
     assert offer["commercial_price"] == {"currency": "USD", "amount": "25.00"}

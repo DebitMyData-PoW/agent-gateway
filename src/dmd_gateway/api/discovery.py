@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from dmd_gateway import __version__
+from dmd_gateway.api.brand import MCP_PATH
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.services.policy_pages import policy_links
 
@@ -187,7 +188,7 @@ def discovery(request: Request, response: Response) -> Discovery:
         version=__version__,
         offers=offers,
         donations=donations,
-        mcp_url=settings.mcp_url or f"{base}/mcp",
+        mcp_url=settings.mcp_url or f"{base}{MCP_PATH}",
         credential_issuer=(
             CredentialIssuer(
                 did=request.app.state.issuance.issuer.did,

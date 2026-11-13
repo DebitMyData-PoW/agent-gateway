@@ -380,7 +380,8 @@ Challenges and proofs work the same for both:
 
 ## MCP server
 
-The gateway serves the directive's MCP tools at `/mcp` with the official MCP Python SDK,
+The gateway serves the directive's MCP tools at `/agenticsuperhighway` (the Agentic
+Superhighway; `/mcp`, its first address, is still served) with the official MCP Python SDK,
 over Streamable HTTP in stateless mode with JSON responses, so any instance can answer any
 request. Discovery advertises the endpoint (`mcp_url`, which can be overridden when agents
 reach it through another public address).

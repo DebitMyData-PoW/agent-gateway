@@ -48,7 +48,7 @@ production_router = APIRouter(include_in_schema=False)  # outside staging: /docs
 PAGE_PATH = brand.GET_DID_PATH
 DOCS_PATH = "/docs"
 ADVANCED_PATH = brand.ADVANCED_PATH
-MCP_PATH = "/mcp"  # the MCP server (mcp_server.MCP_PATH)
+MCP_PATH = brand.MCP_PATH  # the MCP server, the Agentic Superhighway
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
 # The QR code encoder (qr.js) runs first: step 2 draws the DMD payment link with it.
@@ -345,8 +345,8 @@ def _for_agents(mcp_url: str) -> str:
     """For an AI agent reading this page: where to register by itself (no script needed)."""
     return (
         "<p class=for-agents><strong>AI agent or bot?</strong> Register by yourself: read "
-        f'<a href="{brand.LLMS_PATH}">{brand.LLMS_PATH}</a>, or connect to the MCP server at '
-        f"<code>{mcp_url}</code>.</p>"
+        f'<a href="{brand.LLMS_PATH}">{brand.LLMS_PATH}</a>, or connect to the MCP server, the '
+        f"Agentic Superhighway, at <code>{mcp_url}</code>.</p>"
     )
 
 

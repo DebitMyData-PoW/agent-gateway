@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.34.4`). The whole registration flow (quote,
+This is an early development release (`0.35.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -61,7 +61,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Payment worker (`dmd-gateway-worker`) and payment status (`GET /v1/payments/{id}`) | done |
 | Controller proof: one-time challenges signed with the agent's Ed25519 key and/or its EVM wallet (ordinary wallets, and smart wallets through ERC-1271 and ERC-6492) | done |
 | DID-LLM issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
-| MCP server at `/mcp` with the directive's tools (Streamable HTTP), payer transaction references | done |
+| MCP server, the Agentic Superhighway, at `/agenticsuperhighway` with the directive's tools (Streamable HTTP), payer transaction references | done |
 | Staging server behind Cloudflare; the whole flow can be tried from its docs page, a guided test page on staging (advanced: Swagger UI step by step at `/docs/advanced`; staging-only test tools) | done |
 | x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
 | Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
@@ -100,6 +100,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Signing with a key, on "Get a DID-LLM" (step 3) and the directory's listing page: the owner-key tool's command (with the registration or message ID, and `DMD_GATEWAY_API` off production) and a full-size **Continue** are the main way; pasting a signature made with other software is folded below | done |
 | The owner-key tool takes the folder of key files (`~/did-keys`) and signs with the one that owns the DID-LLM, or says that none does (listing the keys it found) and signs nothing; the pages' commands give the folder | done |
 | "Get a DID-LLM", step 1, "My agent's public key": how to make a key with the owner-key tool (the `new` command and the guide; on staging, a test key of its own and the guide's staging part) | done |
+| The MCP server moves to `/agenticsuperhighway`, its name in DebitMyData's plans: the pages, `llms.txt`, discovery (`mcp_url`) and the API docs show the new address; `/mcp`, its first address, is still served with the same rate limits, so agents and listings that know it keep working. `llms.txt` points agents to Agentic Spaces for their own social pages and communities | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -189,7 +190,8 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 | Read the terms, privacy, payment, refund, DID-LLM and security policies | `/policies`, `GET /v1/policies` |
 | Optional: list the DID-LLM in the directory (signed by its owner), or read the directory | `POST /v1/directory/{did}/challenges`, `POST /v1/directory/{did}/proofs`, `GET /v1/directory` |
 
-The same steps are available as MCP tools at `/mcp` (Streamable HTTP): `dmd_discover`,
+The same steps are available as MCP tools at `/agenticsuperhighway` (Streamable HTTP; `/mcp`,
+its first address, still works): `dmd_discover`,
 `dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,
 `dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
@@ -305,7 +307,7 @@ deploy/production/           production server setup, signer and backup units, n
 migrations/                  Alembic migrations (hand-reviewed)
 src/dmd_gateway/
   main.py                    application factory
-  mcp_server.py              MCP tools at /mcp, calling the REST API in-process
+  mcp_server.py              MCP tools at /agenticsuperhighway, calling the REST API in-process
   worker.py                  payment worker (dmd-gateway-worker), also refreshes the DMD price
   monitoring/                health checks, email/Discord alerts, daily reconciliation report
                              (dmd-gateway-monitor)

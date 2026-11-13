@@ -121,16 +121,16 @@ place; the application logic comes with the related phase.
 
 ## Phase 6 – MCP server
 
-- [x] MCP server at `/mcp` (official MCP SDK, Streamable HTTP, stateless, DNS-rebinding protection)
+- [x] MCP server at `/agenticsuperhighway`, the Agentic Superhighway (official MCP SDK, Streamable HTTP, stateless, DNS-rebinding protection); `/mcp`, its first address, still served
 - [x] All twelve directive tools: `dmd_discover`, `dmd_get_did_registration_offer`,
   `dmd_list_supported_payment_options`, `dmd_create_did_payment_quote`,
   `dmd_submit_payment_reference`, `dmd_get_payment_status`, `dmd_prove_wallet_control`,
   `dmd_register_did`, `dmd_catalog`, `dmd_get_purchase_quote`, `dmd_purchase`,
   `dmd_marketplace_provider_requirements`, plus `dmd_get_registration_status`; all call the REST API in-process
-- [x] Public MCP address on staging: `https://staging-api.debitmydata.io/mcp`
-- [x] Public MCP address in production: `https://api.debitmydata.io/mcp`
+- [x] Public MCP address on staging: `https://staging-api.debitmydata.io/agenticsuperhighway`
+- [x] Public MCP address in production: `https://api.debitmydata.io/agenticsuperhighway`
 - [ ] Marketplace provider requirements: publish them, then return them from the tool
-- [ ] Integration with the Agentic Superhighway MCP, if its owners share it
+- [x] The gateway's MCP server is the Agentic Superhighway (`/agenticsuperhighway`, Nov 2026)
 
 ## Phase 7 – x402 / USDC on Base
 

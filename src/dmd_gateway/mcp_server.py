@@ -1,4 +1,5 @@
-"""MCP server (Phase 6): the directive's agent tools, served at ``/mcp``.
+"""MCP server (Phase 6): the directive's agent tools, served at ``/agenticsuperhighway`` (the
+Agentic Superhighway; ``/mcp``, its first address, still works).
 
 Agents that speak the Model Context Protocol can discover DebitMyData, get a quote, follow
 their payment, prove control of their key and receive their DID-LLM without custom code.
@@ -27,14 +28,15 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 from starlette.applications import Starlette
+from starlette.routing import Route
 
 from dmd_gateway import __version__
+from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
 from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
 from dmd_gateway.settings import Settings
 
-MCP_PATH = "/mcp"
 _INTERNAL_BASE = "http://gateway.internal"
 
 INSTRUCTIONS = """\
@@ -763,5 +765,10 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
         json_response=True,
         transport_security=transport_security(settings),
     )
-    app.router.routes.extend(mcp_app.routes)
+    routes = list(mcp_app.routes)
+    # The same endpoint at its earlier addresses (brand.MCP_OLD_PATHS).
+    for route in mcp_app.routes:
+        if isinstance(route, Route) and route.path == MCP_PATH:
+            routes += [Route(path, endpoint=route.endpoint) for path in MCP_OLD_PATHS]
+    app.router.routes.extend(routes)
     return server

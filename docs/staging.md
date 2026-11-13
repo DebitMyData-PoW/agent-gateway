@@ -347,15 +347,16 @@ The DID document URL printed above opens in any browser, as does the issuer key 
 <https://staging-api.debitmydata.io/.well-known/did.json>.
 
 Through MCP, the same as section 5 of [regtest-demo.md](regtest-demo.md) with
-`--url $GW/mcp` added to each `demo_agent.py mcp-...` command and `dmd-cli` instead of
+`--url $GW/agenticsuperhighway` added to each `demo_agent.py mcp-...` command and `dmd-cli` instead of
 `debitmydata-cli`, for example:
 
 ```bash
-$PY scripts/demo_agent.py mcp-tools --url $GW/mcp
-$PY scripts/demo_agent.py mcp-call dmd_get_did_registration_offer --url $GW/mcp | jq .offer.commercial_price
+$PY scripts/demo_agent.py mcp-tools --url $GW/agenticsuperhighway
+$PY scripts/demo_agent.py mcp-call dmd_get_did_registration_offer --url $GW/agenticsuperhighway | jq .offer.commercial_price
 ```
 
-Any MCP client can connect to `https://staging-api.debitmydata.io/mcp` (Streamable HTTP).
+Any MCP client can connect to `https://staging-api.debitmydata.io/agenticsuperhighway`
+(Streamable HTTP; `/mcp`, its first address, still works).
 
 ## 5. Updating
 
@@ -390,7 +391,7 @@ below the limits.
 | --- | --- | --- |
 | Reading (`GET`) | 20 a second, after a first burst of 60 | |
 | Writing: quotes, challenges, proofs, registrations | 60 a minute, after a first burst of 30 | 50 a second; up to 100 more wait their turn |
-| MCP (`/mcp`, every tool call) | 5 a second, after a first burst of 30 | 100 a second |
+| MCP (`/agenticsuperhighway` and `/mcp`, every tool call) | 5 a second, after a first burst of 30 | 100 a second |
 | Staging test tools (`/v1/staging/...`) | 10 a minute, after a first burst of 10 | counted with the writes |
 | Open connections | 30 | |
 

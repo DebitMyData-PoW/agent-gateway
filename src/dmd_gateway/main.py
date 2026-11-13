@@ -181,8 +181,9 @@ DESCRIPTION = (
     "Public integration surface for agents: discovery, payment options, quotes, payment "
     "verification, controller proofs and DebitMyData DID-LLM issuance with signed credentials. "
     "Payment options appear only once their payment rail is enabled. AI agents can use the "
-    "same steps through the MCP server at /mcp. Terms, privacy, payment, refund, DID-LLM and "
-    "security policies: [/policies](/policies). DMD is the ticker of the DebitMyData coin, "
+    "same steps through the MCP server, the Agentic Superhighway, at /agenticsuperhighway. "
+    "Terms, privacy, payment, refund, DID-LLM and security policies: [/policies](/policies). "
+    "DMD is the ticker of the DebitMyData coin, "
     "the native coin of the DebitMyData Proof-of-Work chain (addresses start with dm1); it "
     "is unrelated to other tokens that use the same ticker."
 )
@@ -571,8 +572,9 @@ def _add_how_to_guide(app: FastAPI) -> None:
             f"staging page]({STAGING_GUIDED_PAGE}): it runs every step for you.",
             "",
             "On this server every step is real: quotes, payments and DID-LLMs. AI agents usually "
-            "do these steps themselves, through this API or the MCP server at `/mcp`. Paying "
-            "and signing happen outside this page, in the agent's own wallet and tools. "
+            "do these steps themselves, through this API or the MCP server at "
+            "`/agenticsuperhighway`. Paying and signing happen outside this page, in the "
+            "agent's own wallet and tools. "
             "**Never paste a private key or a wallet's recovery phrase into this page: the "
             "gateway never asks for one.**",
             "",

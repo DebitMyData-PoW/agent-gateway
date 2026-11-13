@@ -34,7 +34,7 @@ from dmd_gateway.identity.crypto import ED25519_PUB_MULTICODEC, encode_signature
 from dmd_gateway.identity.crypto import verify_proof as check_proof
 from dmd_gateway.identity.issuer import write_new_key
 
-MCP_URL = "http://localhost:8000/mcp"
+MCP_URL = "http://localhost:8000/agenticsuperhighway"
 
 
 def _load(path: Path) -> Ed25519PrivateKey:
