@@ -31,6 +31,7 @@ from dmd_gateway.api import (
     health,
     identities,
     llms,
+    mcp_auth,
     oauth,
     payments,
     policies,
@@ -93,8 +94,8 @@ def create_app(
             public_key_multibase=settings.issuer_public_key,
         )
 
-    # OAuth phase 1 (api/oauth.py): what signs access tokens. Production: from 0.37.1, the
-    # signer service; until then, no OAuth there.
+    # OAuth phase 1 (api/oauth.py): what signs access tokens. Production: later, the signer
+    # service; until then, no OAuth there.
     token_signer = (
         oauth.LocalTokenSigner(load_private_key(settings.oauth_key_path))
         if settings.auth_host and settings.oauth_key_path is not None
@@ -179,6 +180,7 @@ def create_app(
     app.include_router(get_did_page.router)  # /get-did on every server
     app.include_router(llms.router)  # /llms.txt: how an agent registers by itself
     app.include_router(oauth.router)  # the authorization server, at auth_host only
+    app.include_router(mcp_auth.router)  # the MCP server as an OAuth protected resource
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     if settings.staging_test_tools:
         app.include_router(staging.router)

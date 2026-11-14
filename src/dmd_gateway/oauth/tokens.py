@@ -8,12 +8,13 @@
     jti        random
 
 A token is only accepted by the resource it was issued for (``aud``); the MCP server checks
-every claim on every request (0.37.1).
+every claim on every request (api/mcp_auth.py).
 """
 
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -32,7 +33,13 @@ DEFAULT_SCOPES = ("did:read",)
 
 
 class TokenRejected(Exception):
-    pass
+    """Not an acceptable access token. ``expired`` tells an expired token (the agent signs in
+    again) from any other failure."""
+
+    def __init__(self, reason: str, *, expired: bool = False) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.expired = expired
 
 
 @dataclass(frozen=True)
@@ -71,15 +78,31 @@ def issue_token(
     return IssuedToken(access_token=token, expires_in=ttl_seconds, scope=scope, jti=jti)
 
 
+def _signing_key(header: dict[str, Any], keys: Sequence[RSAPublicKey]) -> RSAPublicKey:
+    """The key named by the token's ``kid`` (several during a key change)."""
+    kid = header.get("kid")
+    for key in keys:
+        if (kid is None and len(keys) == 1) or public_jwk(key)["kid"] == kid:
+            return key
+    raise TokenRejected("signed by an unknown key")
+
+
 def verify_token(
-    token: str, key: RSAPublicKey, *, issuer: str, audiences: list[str], now: datetime
+    token: str,
+    keys: RSAPublicKey | Sequence[RSAPublicKey],
+    *,
+    issuer: str,
+    audiences: list[str],
+    now: datetime,
 ) -> dict[str, Any]:
-    """The token's claims, if it was signed by this server's key for one of ``audiences`` and
-    has not expired; otherwise ``TokenRejected``."""
+    """The token's claims, if one of ``keys`` signed it for one of ``audiences`` and it has not
+    expired; otherwise ``TokenRejected``."""
+    known = (keys,) if isinstance(keys, RSAPublicKey) else tuple(keys)
     try:
         header = jwt.get_unverified_header(token)
         if header.get("alg") != "RS256" or header.get("typ") != TOKEN_TYPE:
             raise TokenRejected("not an access token of this server")
+        key = _signing_key(header, known)
         claims: dict[str, Any] = jwt.decode(
             token,
             key,
@@ -95,8 +118,12 @@ def verify_token(
     except jwt.PyJWTError as exc:
         raise TokenRejected(str(exc)) from exc
     moment = int(now.timestamp())
-    if not isinstance(claims["exp"], int) or claims["exp"] < moment - CLOCK_SKEW_SECONDS:
-        raise TokenRejected("the token has expired")
-    if not isinstance(claims["iat"], int) or claims["iat"] > moment + CLOCK_SKEW_SECONDS:
+    if not isinstance(claims["exp"], int) or not isinstance(claims["iat"], int):
+        raise TokenRejected("exp and iat must be whole numbers of seconds")
+    if claims["exp"] < moment - CLOCK_SKEW_SECONDS:
+        raise TokenRejected("the token has expired", expired=True)
+    if claims["iat"] > moment + CLOCK_SKEW_SECONDS:
         raise TokenRejected("the token was issued in the future")
+    if not isinstance(claims["sub"], str) or not isinstance(claims["scope"], str):
+        raise TokenRejected("sub and scope must be strings")
     return claims

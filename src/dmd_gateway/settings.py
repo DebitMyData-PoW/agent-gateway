@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Agents get access tokens there by signing with their DID-LLM's key. Empty: no OAuth.
     auth_host: str = ""
     # What signs the access tokens: an RSA key file (PEM, mode 600) in development and on
-    # staging. Production keeps it in the signer service instead (from 0.37.1).
+    # staging. Production will keep it in the signer service instead.
     oauth_key_path: Path | None = None
     # How long an access token is valid.
     oauth_token_ttl_seconds: int = Field(default=600, ge=60, le=3600)

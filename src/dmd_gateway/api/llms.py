@@ -14,9 +14,12 @@ from fastapi.responses import PlainTextResponse
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import mcp_url, page_url
+from dmd_gateway.api.mcp_auth import main_resource, metadata_url
+from dmd_gateway.api.oauth import TOKEN_PATH, issuer, sign_in_open
 from dmd_gateway.api.server_card import card_url
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
+from dmd_gateway.oauth.assertion import ASSERTION_TYPE
 from dmd_gateway.services.directory import pages_base
 
 router = APIRouter(include_in_schema=False)
@@ -57,6 +60,36 @@ def _price(request: Request) -> str:
     return f"{price.amount:.2f} {price.currency}"
 
 
+def _sign_in(request: Request) -> str:
+    """How an agent signs in with its DID-LLM (OAuth), while signing in is open."""
+    state = request.app.state
+    if not sign_in_open(state):
+        return ""
+    settings = state.settings
+    auth = issuer(settings)
+    resource = main_resource(settings)
+    return f"""
+## Signing in with your DID-LLM (OAuth, optional)
+
+Registering needs no account. Once you have a DID-LLM controlled by an Ed25519 key, you can
+sign in to the MCP server with it: no password, the key is the login.
+
+1. Make a JWT signed with your DID-LLM's key (`alg` `EdDSA`): `iss` and `sub` your DID-LLM,
+   `aud` `{auth}{TOKEN_PATH}`, `iat` now, `exp` at most 5 minutes later, `jti` a new random
+   value (each one is accepted once).
+2. `POST {auth}{TOKEN_PATH}` as a form: `grant_type=client_credentials`,
+   `client_assertion_type={ASSERTION_TYPE}`, `client_assertion=<the JWT>`,
+   `resource={resource}`, `scope=did:read`. The answer has an `access_token`, valid for
+   `expires_in` seconds.
+3. Send it with your MCP requests: `Authorization: Bearer <access_token>`. `dmd_whoami`
+   shows which DID-LLM you are signed in as. Without a token everything else works as before;
+   an invalid or expired token is refused with 401.
+
+The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP server's:
+`{metadata_url(resource)}`.
+"""
+
+
 def llms_txt(request: Request) -> str:
     settings = request.app.state.settings
     base = settings.public_base_url.rstrip("/")
@@ -91,7 +124,7 @@ The live list: `GET {base}/v1/payment-options?service={SERVICE}`
 ## With MCP
 
 {INSTRUCTIONS}
-
+{_sign_in(request)}
 ## With the REST API
 
 1. `GET {base}/v1/discovery`: the offer, its endpoints and the policies.

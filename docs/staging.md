@@ -471,8 +471,19 @@ It answers on its own address, with three addresses only (every other address th
 A signed request is accepted once only, for an active DID-LLM whose key still owns it:
 suspended or revoked DID-LLMs, and DID-LLMs owned by a wallet (they will sign in through the
 browser, phase 2), are refused. Each token issued is in the audit trail
-(`oauth.token_issued`, with the token's ID, never the token). The MCP server starts checking
-tokens in the next version (0.37.1); until then a token changes nothing there.
+(`oauth.token_issued`, with the token's ID, never the token).
+
+The MCP server accepts the tokens (`api/mcp_auth.py`), as an OAuth protected resource: its
+metadata, at
+<https://staging-api.debitmydata.io/.well-known/oauth-protected-resource/agenticsuperhighway>
+(and `.../mcp` for its first address), names this authorization server. Signing in stays
+optional: without a token every tool works as before (a DID-LLM is the login, so getting one
+cannot need a token). A request with a token has every claim checked: the signature by this
+server's key, the issuer, the audience (the MCP server's address), the expiry, and the DID-LLM
+still active. Any failure is refused with 401 and a `WWW-Authenticate` header pointing to the
+metadata, without saying what was expected. The tool `dmd_whoami` answers which DID-LLM the
+request is signed in as. The runbook's files (`/.well-known/mcp` and its `server-card.json`)
+then list `"authentication": ["oauth2.1"]`, and `llms.txt` explains the sign-in to agents.
 
 `setup.sh` makes the token-signing key once (`/etc/dmd-gateway/keys/oauth-key.pem`, readable
 by the gateway only, never printed) and sets `DMD_GW_OAUTH_KEY_PATH`. The server opens when
@@ -502,18 +513,19 @@ its address is set too:
    <https://staging-auth.debitmydata.io/.well-known/oauth-authorization-server> shows the
    issuer `https://staging-auth.debitmydata.io`, and `/.well-known/jwks.json` there one RSA
    key. <https://staging-auth.debitmydata.io/v1/discovery> answers 404.
-5. **Sign in** with a DID-LLM made with your own key on staging's Get a DID-LLM page (not the
-   guided test's throwaway key), with the owner-key tool
+5. **Sign in, end to end,** with a DID-LLM made with your own key on staging's Get a DID-LLM
+   page (not the guided test's throwaway key), with the owner-key tool
    ([owner-key.md](owner-key.md#sign-in-as-the-did-llm-oauth)):
 
    ```bash
-   DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py token ~/did-keys did:web:staging-api.debitmydata.io:agents:...
+   DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:...
    ```
 
-   It prints `Signed in as did:web:...` and the token's address and lifetime.
+   It signs in, then asks the MCP server who it is signed in as, and prints
+   `The Agentic Superhighway says: signed in as did:web:...` with the DID-LLM's status.
 
 To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. Production comes
-with 0.37.1, where the signer service signs the tokens and the API server never holds the key
+later: there the signer service will sign the tokens, so the API server never holds the key
 (the gateway refuses a token key file in production).
 
 ## How staging differs from production
@@ -524,7 +536,7 @@ with 0.37.1, where the signer service signs the tokens and the API server never 
 | USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
-| OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (0.37.1, `auth.debitmydata.io`) |
+| OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (to come, `auth.debitmydata.io`) |
 | DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet price (the higher of the minimum rate and the mining cost, from the explorer's difficulty) | the higher of the minimum rate and the mining cost, from the gateway's own mainnet node averaged over a week (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |

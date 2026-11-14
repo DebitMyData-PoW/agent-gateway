@@ -20,6 +20,10 @@
         valid for a few minutes. --show prints the token itself: keep it private, whoever holds
         it can act as the DID-LLM until it expires.
 
+    python3 did-owner-key.py whoami  KEYS  did:web:...
+        Signs in as above, then asks the Agentic Superhighway who it is signed in as: checks
+        the whole sign-in from start to end. The token is never printed.
+
 KEYS is a key file, or a folder of key files (such as ~/did-keys): the tool then uses the one
 that owns the DID-LLM, and says so.
 
@@ -297,7 +301,9 @@ def directory(path: str, challenge_id: str, confirm=input) -> None:
     print("Back on the page, click Continue.")
 
 
-def token(path: str, did: str, show: bool = False) -> None:
+def sign_in(path: str, did: str) -> tuple[str, dict]:
+    """Signs in as the DID-LLM: the MCP server's address and the authorization server's answer
+    (its access_token, expires_in and scope)."""
     found = AGENT_DID.match(did)
     if not found:
         sys.exit("A DID-LLM looks like did:web:api.debitmydata.io:agents:... (its page says it).")
@@ -344,6 +350,44 @@ def token(path: str, did: str, show: bool = False) -> None:
     if status != 200 or "access_token" not in answer:
         error = f"{answer.get('error', '')}: {answer.get('error_description', '')}".strip(": ")
         sys.exit(f"Refused (HTTP {status}): {error or json.dumps(answer)}")
+    return resource, answer
+
+
+def mcp_call(url: str, access_token: str, tool: str) -> tuple[int, dict]:
+    """Calls one MCP tool (JSON-RPC over streamable HTTP) with the access token."""
+    if not GATEWAY.match(re.sub(r"^(https?://[^/]+).*$", r"\1", url)):
+        sys.exit(f"The MCP server must be an https:// address, not {url!r}")
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": tool, "arguments": {}},
+    }
+    request = urllib.request.Request(  # noqa: S310 (https only, checked above)
+        url,
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "Authorization": f"Bearer {access_token}",
+            "User-Agent": "dmd-did-owner-key",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 (https only)
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as error:
+        try:
+            return error.code, json.load(error)
+        except ValueError:
+            return error.code, {"error_description": error.headers.get("WWW-Authenticate", "")}
+    except urllib.error.URLError as error:
+        sys.exit(f"Could not reach {url}: {error.reason}")
+
+
+def token(path: str, did: str, show: bool = False) -> None:
+    resource, answer = sign_in(path, did)
     minutes = max(1, int(answer.get("expires_in", 0)) // 60)
     print(f"Signed in as {did}.")
     print(f"Access token for {resource} (scope: {answer.get('scope')}), valid {minutes} minutes.")
@@ -352,6 +396,27 @@ def token(path: str, did: str, show: bool = False) -> None:
         print(answer["access_token"])
     else:
         print("Add --show to print the token itself.")
+
+
+def whoami(path: str, did: str) -> None:
+    """Signs in, then asks the MCP server who it is signed in as: the whole sign-in, checked."""
+    resource, answer = sign_in(path, did)
+    print(f"Signed in as {did}; asking {resource} who that is...")
+    status, reply = mcp_call(resource, answer["access_token"], "dmd_whoami")
+    if status != 200:
+        reason = reply.get("error_description") or problem(reply)
+        sys.exit(f"The MCP server refused the token (HTTP {status}): {reason}")
+    result = reply.get("result") or {}
+    content = result.get("structuredContent")
+    if result.get("isError") or not isinstance(content, dict):
+        text = (result.get("content") or [{}])[0].get("text") or json.dumps(reply)
+        sys.exit(f"The MCP server answered with an error: {text}")
+    identity = content.get("identity") or {}
+    if content.get("signed_in_as") != did:
+        sys.exit(f"The MCP server says this is {content.get('signed_in_as')}, not {did}.")
+    print(f"The Agentic Superhighway says: signed in as {did}")
+    print(f"  status: {identity.get('status')}, name: {identity.get('display_name')}")
+    print(f"  scope: {content.get('scope')}, token valid until {content.get('token_expires_at')}")
 
 
 if __name__ == "__main__":
@@ -363,5 +428,7 @@ if __name__ == "__main__":
         directory(sys.argv[2], sys.argv[3])
     elif len(sys.argv) in (4, 5) and sys.argv[1] == "token" and sys.argv[4:] in ([], ["--show"]):
         token(sys.argv[2], sys.argv[3], show=sys.argv[4:] == ["--show"])
+    elif len(sys.argv) == 4 and sys.argv[1] == "whoami":
+        whoami(sys.argv[2], sys.argv[3])
     else:
         sys.exit(__doc__)

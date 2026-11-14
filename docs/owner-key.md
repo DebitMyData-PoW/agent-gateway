@@ -95,6 +95,13 @@ DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py toke
   `api.`; `DMD_AUTH_SERVER` sets another).
 - It prints who signed in, for which address and for how long. `--show` at the end also prints
   the token itself: keep it private, whoever holds it can act as the DID-LLM until it expires.
+- `whoami` instead of `token` signs in, then asks the Agentic Superhighway who it is signed in
+  as: the whole sign-in, checked from start to end (the token is never printed):
+
+  ```bash
+  DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:...
+  ```
+
 - A DID-LLM controlled by a wallet signs in through the browser instead, which comes later.
 
 ## Staging (the test server)

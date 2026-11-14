@@ -17,6 +17,7 @@ names to block DNS-rebinding attacks.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
@@ -32,8 +33,9 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dmd_gateway import __version__
-from dmd_gateway.api import superhighway_page
+from dmd_gateway.api import mcp_auth, superhighway_page
 from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
+from dmd_gateway.api.oauth import issuer, sign_in_open
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
 from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
@@ -186,7 +188,9 @@ def _meta_payment(ctx: Context) -> dict[str, Any] | None:
     return payment if isinstance(payment, dict) else None
 
 
-def build_mcp_server(app: FastAPI) -> MCPServer:
+def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
+    """The MCP server and its tools. ``sign_in``: agents can sign in with an access token
+    (api/mcp_auth.py), which adds the tools for signed-in agents."""
     api = GatewayApi(app)
     server: MCPServer = MCPServer(
         name="debitmydata-agent-gateway",
@@ -720,6 +724,56 @@ def build_mcp_server(app: FastAPI) -> MCPServer:
         purchase is returned as it is. Before settlement it fails with next_action."""
         return await api.call("POST", f"/v1/products/purchases/{purchase_id}/complete")
 
+    if sign_in:
+        settings: Settings = app.state.settings
+
+        @server.tool(title="Who am I (signed in)", annotations=READ_ONLY)
+        async def dmd_whoami() -> dict[str, Any]:
+            """The DID-LLM this request is signed in as, with its record and entitlements. Sign
+            in first: get an access token from DebitMyData's authorization server (OAuth client
+            credentials, authenticated with a JWT signed by your DID-LLM's key, see llms.txt)
+            and send it as "Authorization: Bearer <token>" with your MCP requests."""
+            token = mcp_auth.signed_in()
+            if token is None:
+                resource = mcp_auth.main_resource(settings)
+                raise ToolError(
+                    json.dumps(
+                        {
+                            "error": {
+                                "code": "sign_in_required",
+                                "message": (
+                                    "Not signed in. Get an access token for this MCP server "
+                                    "from the authorization server, signed with your "
+                                    "DID-LLM's key, and send it as Authorization: Bearer."
+                                ),
+                                "authorization_server": issuer(settings),
+                                "resource": resource,
+                                "resource_metadata": mcp_auth.metadata_url(resource),
+                            }
+                        }
+                    )
+                )
+            if "did:read" not in token.scopes:
+                raise ToolError(
+                    json.dumps(
+                        {
+                            "error": {
+                                "code": "insufficient_scope",
+                                "message": "This needs an access token with the did:read scope.",
+                                "scope": "did:read",
+                            }
+                        }
+                    )
+                )
+            identity_id = (token.claims or {})["identity_id"]
+            return {
+                "signed_in_as": token.subject,
+                "scope": " ".join(token.scopes),
+                "token_expires_at": datetime.fromtimestamp(token.expires_at or 0, UTC).isoformat(),
+                "identity": await api.call("GET", f"/v1/dids/{identity_id}"),
+                "entitlements": await api.call("GET", f"/v1/entitlements/{identity_id}"),
+            }
+
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)
     async def dmd_marketplace_provider_requirements() -> dict[str, Any]:
         """What an agent needs in order to sell through DebitMyData."""
@@ -775,7 +829,7 @@ class _BrowserPage:
 def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
     """Serve the MCP endpoint from the gateway app. Run ``server.session_manager.run()``
     in the app's lifespan."""
-    server = build_mcp_server(app)
+    server = build_mcp_server(app, sign_in=sign_in_open(app.state))
     mcp_app: Starlette = server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         stateless_http=True,
@@ -787,7 +841,8 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
         if isinstance(route, Route) and route.path == MCP_PATH:
             # The endpoint, with its page for browsers, at its address and at its earlier
             # ones (brand.MCP_OLD_PATHS).
-            endpoint = _BrowserPage(route.endpoint, settings)
+            # Signed in when the request carries a valid access token (api/mcp_auth.py).
+            endpoint = mcp_auth.BearerTokens(_BrowserPage(route.endpoint, settings), settings)
             routes += [Route(path, endpoint=endpoint) for path in (MCP_PATH, *MCP_OLD_PATHS)]
         else:
             routes.append(route)

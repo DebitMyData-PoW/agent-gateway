@@ -105,6 +105,11 @@ def metadata(settings: Settings) -> dict[str, Any]:
     }
 
 
+def sign_in_open(state: Any) -> bool:
+    """Whether agents can sign in: the auth host is set and a key signs access tokens."""
+    return bool(state.settings.auth_host) and state.token_signer is not None
+
+
 def _on_auth_host(request: Request) -> bool:
     settings: Settings = request.app.state.settings
     host = request.headers.get("host", "").strip().lower()
@@ -112,7 +117,7 @@ def _on_auth_host(request: Request) -> bool:
 
 
 def _enabled(request: Request) -> bool:
-    return _on_auth_host(request) and request.app.state.token_signer is not None
+    return _on_auth_host(request) and sign_in_open(request.app.state)
 
 
 def _not_found() -> JSONResponse:

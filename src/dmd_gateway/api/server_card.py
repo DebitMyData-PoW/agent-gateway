@@ -41,6 +41,7 @@ from mcp_types.version import (
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import ICON_VERSION, mcp_url, page_url
+from dmd_gateway.api.oauth import sign_in_open
 from dmd_gateway.settings import Settings
 
 router = APIRouter(include_in_schema=False)
@@ -153,30 +154,33 @@ def ai_catalog(settings: Settings) -> dict[str, Any]:
     }
 
 
-def _endpoint(settings: Settings) -> dict[str, Any]:
-    # No authentication: agents pay for each DID-LLM and prove control of their own key.
+def _endpoint(settings: Settings, sign_in: bool) -> dict[str, Any]:
+    # Registering needs no authentication (agents pay for each DID-LLM and prove control of
+    # their own key). Once agents can sign in, OAuth 2.1 is offered, never required.
     return {
         "url": mcp_url(settings),
         "transport": "streamable-http",
         "protocol_versions": PROTOCOL_VERSIONS,
-        "authentication": [],
+        "authentication": ["oauth2.1"] if sign_in else [],
     }
 
 
-def runbook_manifest(settings: Settings) -> dict[str, Any]:
+def runbook_manifest(settings: Settings, *, sign_in: bool = False) -> dict[str, Any]:
     """``/.well-known/mcp``: the runbook's short manifest."""
     identity = _identity(settings)
     return {
         "mcp_version": LATEST_PROTOCOL_VERSION,
         "server_name": identity["title"],
         "server_version": __version__,
-        "endpoints": [_endpoint(settings)],
+        "endpoints": [_endpoint(settings, sign_in)],
         "server_card": card_url(settings),
         "documentation": f"{settings.public_base_url.rstrip('/')}{brand.LLMS_PATH}",
     }
 
 
-def runbook_card(settings: Settings, tools: list[dict[str, Any]]) -> dict[str, Any]:
+def runbook_card(
+    settings: Settings, tools: list[dict[str, Any]], *, sign_in: bool = False
+) -> dict[str, Any]:
     """``/.well-known/mcp/server-card.json``: the card in the runbook's format, with the tools
     the MCP server lists (``tools``: name, title and description of each)."""
     identity = _identity(settings)
@@ -187,7 +191,7 @@ def runbook_card(settings: Settings, tools: list[dict[str, Any]]) -> dict[str, A
             "version": __version__,
             "description": identity["description"],
         },
-        "endpoints": [_endpoint(settings)],
+        "endpoints": [_endpoint(settings, sign_in)],
         "homepage": identity["websiteUrl"],
         "documentation": f"{settings.public_base_url.rstrip('/')}{brand.LLMS_PATH}",
         "server_card": card_url(settings),
@@ -236,13 +240,16 @@ def catalog(request: Request) -> Response:
 
 async def runbook_card_file(request: Request) -> Response:
     settings = request.app.state.settings
-    document = runbook_card(settings, await _tools(request))
+    document = runbook_card(
+        settings, await _tools(request), sign_in=sign_in_open(request.app.state)
+    )
     return _document(request, document, JSON_TYPE, WELL_KNOWN_CACHE)
 
 
 def runbook_manifest_file(request: Request) -> Response:
     settings = request.app.state.settings
-    return _document(request, runbook_manifest(settings), JSON_TYPE, WELL_KNOWN_CACHE)
+    document = runbook_manifest(settings, sign_in=sign_in_open(request.app.state))
+    return _document(request, document, JSON_TYPE, WELL_KNOWN_CACHE)
 
 
 CARD_PATHS = tuple(f"{path}{CARD_SUFFIX}" for path in (brand.MCP_PATH, *brand.MCP_OLD_PATHS))
