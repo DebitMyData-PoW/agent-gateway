@@ -484,6 +484,20 @@ role, which may read the DID-LLMs for this), uses each one once, and signs token
 MCP server. So even a compromised API server cannot make a token for a DID-LLM that did not
 just sign in itself, nor for another service.
 
+People can also sign in to **apps** (MCP clients such as ChatGPT or Claude) with their
+DID-LLM, in the browser; how it works:
+[staging.md, section 10](staging.md#10-oauth-phase-2-people-sign-in-to-apps). Here too the
+signer checks each sign-in itself: the message the person signed (for this sign-in server,
+this DID-LLM, that app's site, that scope and this MCP server, still valid, used once) and the
+signature, with the DID-LLM's current owner key or ordinary wallet. Only then does it give a
+**grant** for the sign-in, valid 30 days, which the API keeps (never the app); every access
+token for that app is signed against it, for the same app, MCP server and scope. So a
+compromised API cannot get tokens for a DID-LLM whose owner did not sign in to that app, and a
+sign-in lasts 30 days at most (then the app asks the person to sign in again). The signer has
+no network, so it cannot ask a smart wallet's chain: **smart wallets cannot sign in to apps in
+production yet** (the page says so, and offers the owner key when the DID-LLM has one);
+ordinary wallets and keys can.
+
 The update (step 8) makes the key once and sets everything up, **with sign-in closed**. It
 opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
 
@@ -522,7 +536,8 @@ opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
 
 4. **Check** from your computer:
    - `https://auth.debitmydata.io/.well-known/oauth-authorization-server`: the issuer
-     `https://auth.debitmydata.io`; `/.well-known/jwks.json` there: one RSA key;
+     `https://auth.debitmydata.io` and `"authorization_endpoint":
+     "https://auth.debitmydata.io/authorize"`; `/.well-known/jwks.json` there: one RSA key;
    - `https://api.debitmydata.io/readyz`: `"token_signer": "ok"`;
    - `https://api.debitmydata.io/.well-known/oauth-protected-resource/agenticsuperhighway`
      names the sign-in server, and `https://api.debitmydata.io/.well-known/mcp` lists
@@ -535,12 +550,19 @@ opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
    ```
 
    It prints `The Agentic Superhighway says: signed in as did:web:...`.
+6. **An app, end to end:** in Claude (a custom connector) or ChatGPT (developer mode), add
+   the MCP server `https://api.debitmydata.io/agenticsuperhighway`, ask it to run
+   `dmd_whoami`, sign in on the page it opens with your DID-LLM (wallet or key), and run it
+   again: it answers with your DID-LLM. If the app cannot reach the server or sign in, look at
+   Cloudflare's Security Events for `api` and `auth`: the apps' own servers (Anthropic's
+   `160.79.104.0/21`, OpenAI's) must get through, as agents do.
 
-Each token is in the audit trail (`oauth.token_issued`), and the signer logs each one it signs
-or refuses (`journalctl -u dmd-gateway-signer`). To close sign-in again, remove the
-`DMD_GW_AUTH_HOST` line and run the update: tokens already given stop working at once.
-**Never copy the token key** off the server or into a chat; a new key (delete it and run the
-update) only means agents sign in again.
+Each token is in the audit trail (`oauth.token_issued`), each person's sign-in too
+(`oauth.sign_in_approved`, `oauth.sign_in_rejected`), and the signer logs each token and grant
+it signs or refuses (`journalctl -u dmd-gateway-signer`). To close sign-in again, remove the
+`DMD_GW_AUTH_HOST` line and run the update: tokens already given stop working at once, for
+agents and apps. **Never copy the token key** off the server or into a chat; a new key (delete
+it and run the update) only means agents and people sign in again.
 
 ## 15. Go-live checklist
 

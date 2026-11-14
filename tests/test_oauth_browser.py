@@ -4,7 +4,8 @@
 Covers: the apps' Client ID Metadata Documents and how they are fetched; the authorization
 request and every refusal; signing in with the DID-LLM's key (and with the owner-key tool) or
 its wallet; the code exchange with PKCE; refresh tokens (rotation, replay); revocation; apps
-that sign their token requests; and that it stays closed where the signer service signs.
+that sign their token requests. In production, through the signer service:
+test_sign_in_grants.py.
 """
 
 from __future__ import annotations
@@ -603,23 +604,6 @@ def test_the_sign_in_server_shows_only_its_own_addresses(gateway: TestClient) ->
     params = {"client_id": APP, "redirect_uri": CALLBACK, "code_challenge": challenge_value}
     assert gateway.get("/authorize", params=params, follow_redirects=False).status_code == 404
     assert gateway.post("/revoke", data={"token": "x", "client_id": APP}).status_code == 404
-
-
-@needs_db
-def test_browser_sign_in_stays_closed_where_the_signer_signs(gateway: TestClient) -> None:
-    class SignerService:  # stands in for RemoteTokenSigner: not this process's key
-        def __init__(self, key: Any) -> None:
-            self.public_keys = (key.public_key(),)
-
-    gateway.app.state.token_signer = SignerService(APP_KEY)  # type: ignore[attr-defined]
-    meta = at_auth(gateway, "GET", "/.well-known/oauth-authorization-server").json()
-    assert "authorization_endpoint" not in meta
-    assert meta["grant_types_supported"] == ["client_credentials"]
-    _, challenge_value = pkce()
-    assert authorize(gateway, challenge_value).status_code == 404
-    assert "authorization code flow" not in gateway.get("/llms.txt").text
-    refused = token(gateway, grant_type="authorization_code", code="x", redirect_uri=CALLBACK)
-    assert refused.json()["error"] == "unsupported_grant_type"
 
 
 @needs_db

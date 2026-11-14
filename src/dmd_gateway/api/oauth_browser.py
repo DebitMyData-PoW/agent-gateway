@@ -257,7 +257,11 @@ class Signature(BaseModel):
 
 
 def _json_error(exc: ApiError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content=error_body(exc.code, exc.message))
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_body(exc.code, exc.message),
+        headers=exc.headers,
+    )
 
 
 def _call(request: Request, work: Any) -> Response:
@@ -313,7 +317,13 @@ def sign_in_signature(request: Request, sign_in_id: str, body: Signature) -> Res
         with transaction(state.session_factory) as session:
             sign_in = flow.find(session, sign_in_id, now, lock=True)
             verified = flow.approve(
-                session, sign_in, body.signature, wallets=state.wallet_verifier, now=now
+                session,
+                sign_in,
+                body.signature,
+                wallets=state.wallet_verifier,
+                signer=state.token_signer,
+                issuer=issuer(state.settings),
+                now=now,
             )
             left = flow.MAX_ATTEMPTS - sign_in.attempts
         if not verified:

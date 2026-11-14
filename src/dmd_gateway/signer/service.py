@@ -1,5 +1,5 @@
-"""dmd-gateway-signer: signs DID credentials, receipts and OAuth access tokens for the gateway
-(ID-15).
+"""dmd-gateway-signer: signs DID credentials, receipts, OAuth access tokens and sign-in grants
+for the gateway (ID-15).
 
 Runs as its own system user, with no network access, and listens on a Unix socket that only
 the gateway's user can open. Settings come from the environment (``/etc/dmd-signer/signer.env``
@@ -12,7 +12,8 @@ in production):
     DMD_SIGNER_ISSUER_DID      the issuer's DID, e.g. did:web:api.debitmydata.io
     DMD_SIGNER_OAUTH_KEY_PATH  optional: the OAuth token-signing key (RSA PEM, signer only)
     DMD_SIGNER_OAUTH_ISSUER    optional: the authorization server, e.g. https://auth.debitmydata.io;
-                               with the key, the signer signs access tokens (signer/tokens.py)
+                               with the key, the signer signs access tokens and the grants of
+                               people's sign-ins to apps (signer/tokens.py)
 
 Every signature and every refusal is logged (journalctl -u dmd-gateway-signer).
 """
@@ -66,7 +67,9 @@ class Signer:
                 described["token_key"] = self.tokens.public_jwk
             return described
         if op == "token":
-            return self._token(request)
+            return self._token(request, "token")
+        if op == "sign_in":
+            return self._token(request, "sign_in")
         if op != "sign":
             return {"ok": False, "error": "unknown operation"}
         document, created = request.get("document"), request.get("created")
@@ -91,20 +94,23 @@ class Signer:
         log.info("signed", extra={"event": facts})
         return {"ok": True, "document": signed}
 
-    def _token(self, request: Mapping[str, Any]) -> dict[str, Any]:
+    def _token(self, request: Mapping[str, Any], op: str) -> dict[str, Any]:
+        """An access token (``token``) or a sign-in grant (``sign_in``)."""
         if self.tokens is None:
             # A setup problem, not a refusal: the API answers 503 and its readiness fails.
             return {"ok": False, "error": "this signer has no token key (DMD_SIGNER_OAUTH_*)"}
+        work = self.tokens.issue if op == "token" else self.tokens.sign_in
+        what = "token" if op == "token" else "sign-in grant"
         try:
             with self.sessions() as session, session.begin():
-                answer, facts = self.tokens.issue(session, request, datetime.now(UTC))
+                answer, facts = work(session, request, datetime.now(UTC))
         except TokenRefused as exc:
-            log.warning("token refused", extra={"event": {"reason": str(exc)}})
+            log.warning(f"{what} refused", extra={"event": {"reason": str(exc)}})
             return {"ok": False, "error": f"refused: {exc}"}
         except SQLAlchemyError as exc:
             log.error("database unavailable", extra={"event": {"error": type(exc).__name__}})
             return {"ok": False, "error": "the signer cannot check the database"}
-        log.info("token signed", extra={"event": facts})
+        log.info(f"{what} signed", extra={"event": facts})
         return answer
 
 

@@ -134,8 +134,8 @@ def database_lookup(session: Session) -> KeyLookup:
             return AssertionRejected(f"this DID-LLM is {identity.status}")
         if not identity.controller_public_key:
             return AssertionRejected(
-                "this DID-LLM is controlled by a wallet: wallets sign in through the browser, "
-                "which is not open yet"
+                "this DID-LLM is controlled by a wallet: it signs in to apps in the browser, "
+                "with its wallet (the authorization code flow), not with a signed request"
             )
         return identity.controller_public_key
 

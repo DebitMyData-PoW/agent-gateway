@@ -533,9 +533,9 @@ token key file there): [production.md, step 14](production.md#14-oauth-sign-in-a
 With the sign-in server of section 9 open, people can also sign in to **apps** (MCP clients
 such as ChatGPT or Claude, or an agent's own app) with their DID-LLM, in the browser: the
 standard OAuth authorization code flow with PKCE that MCP clients use. Nothing to set up:
-it opens with section 9, here where the gateway signs the tokens itself (staging). Production
-keeps it closed until the signer service checks browser sign-ins too (the signer would
-otherwise sign tokens for sign-ins it did not see).
+it opens with section 9. In production it opens with sign-in too
+([production.md, step 14](production.md#14-oauth-sign-in-authdebitmydataio)), where the signer
+service checks each person's signature itself before it signs anything for the app.
 
 How it goes:
 
@@ -548,11 +548,15 @@ How it goes:
 2. The page asks for the DID-LLM, then shows one message to sign, with the DID-LLM's
    **wallet** (a **Sign with …** button for browser wallets, or a pasted signature) or its
    **key** (the owner-key tool's `sign-in` command, which shows the message and asks first).
-   Five wrong signatures end the sign-in. The page never asks for a private key.
+   Five wrong signatures end the sign-in. The page never asks for a private key. Here a smart
+   wallet can sign in too (the gateway asks its chain); production's signer has no network,
+   so there only keys and ordinary wallets can, for now.
 3. The person goes back to the app with a code, valid one minute, usable once; the app trades
-   it for an access token (10 minutes) and a **refresh token** (30 days). Each refresh token
-   is used once; a copied one used again ends the whole sign-in. Suspending the DID-LLM
-   ends it too. The app can end it itself (`/revoke`).
+   it for an access token (10 minutes) and a **refresh token**. Each refresh token is used
+   once; a copied one used again ends the whole sign-in. A sign-in lasts **30 days** from the
+   person's signature (the token signer's grant for it, kept by the gateway): then the app
+   asks the person to sign in again. Suspending the DID-LLM ends it too. The app can end it
+   itself (`/revoke`).
 4. With the token, the app's MCP requests are the person's: `dmd_whoami` answers who. Called
    without one, `dmd_whoami` is answered with HTTP 401 and a `WWW-Authenticate` challenge
    (`scope="did:read"`) before the MCP server runs: what makes apps such as Claude show their
@@ -581,6 +585,7 @@ servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
 | OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (`auth.debitmydata.io`) |
+| Signing in to apps with a smart wallet | yes (the gateway asks the wallet's chain) | not yet (the signer has no network): keys and ordinary wallets |
 | DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet price (the higher of the minimum rate and the mining cost, from the explorer's difficulty) | the higher of the minimum rate and the mining cost, from the gateway's own mainnet node averaged over a week (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |

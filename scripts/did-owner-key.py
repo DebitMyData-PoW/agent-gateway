@@ -362,8 +362,8 @@ def sign_in(path: str, did: str) -> tuple[str, dict]:
     ]
     if not keys:
         sys.exit(
-            "This DID-LLM is controlled by a wallet: wallets will sign in through the browser "
-            "(not open yet). Nothing was signed."
+            "This DID-LLM is controlled by a wallet: it signs in to apps in the browser, with "
+            "its wallet, not with this command. Nothing was signed."
         )
     key = owner_key(path, f"ed25519:{keys[0]}", "DID-LLM")
     status, server = fetch(f"{AUTH}/.well-known/oauth-authorization-server")

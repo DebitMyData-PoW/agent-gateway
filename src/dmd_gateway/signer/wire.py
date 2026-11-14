@@ -8,6 +8,13 @@ Requests:
     {"op": "token", "assertion": "<the agent's signed request>", "resource": "https://...",
      "scope": "did:read", "ttl_seconds": 600}
         -> {"ok": true, "access_token": "...", "expires_in": 600, "scope": "did:read"}
+    {"op": "sign_in", "message": "DebitMyData sign-in\n...", "signature": "...",
+     "did": "did:web:...", "controller_type": "ed25519" or "eip155",
+     "client_id": "https://<the app>/...", "scope": "did:read", "resource": "https://..."}
+        -> {"ok": true, "grant": "<a sign-in grant, kept by the API>"}
+    {"op": "token", "grant": "...", "client_id": "https://<the app>/...",
+     "resource": "https://...", "scope": "did:read", "ttl_seconds": 600}
+        -> {"ok": true, "access_token": "...", "expires_in": 600, "scope": "did:read"}
     (describe also gives "token_key", the token key's public JWK, when the signer has one)
 Any refusal or failure:
         -> {"ok": false, "error": "a short reason"}

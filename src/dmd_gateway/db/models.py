@@ -684,6 +684,9 @@ class OAuthSignIn(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
     approved_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    # The token signer's grant for this sign-in, once it checked the owner's signature
+    # (oauth/grants.py); it goes with the code, then with each refresh token.
+    sign_in_grant: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 
@@ -705,6 +708,7 @@ class OAuthCode(Base):
     resource: Mapped[str] = mapped_column(Text, nullable=False)
     # The refresh tokens the code was exchanged for: all revoked if the code is replayed.
     family_id: Mapped[str | None] = mapped_column(Text)
+    sign_in_grant: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
     used_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
@@ -725,6 +729,7 @@ class OAuthRefreshToken(Base):
     did: Mapped[str] = mapped_column(Text, nullable=False)
     scope: Mapped[str] = mapped_column(Text, nullable=False)
     resource: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_in_grant: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
     used_at: Mapped[datetime | None] = mapped_column(Timestamp)
     revoked_at: Mapped[datetime | None] = mapped_column(Timestamp)

@@ -10,6 +10,10 @@ sign in to apps (MCP clients) with their DID-LLM in the browser (api/oauth_brows
                                                    and for apps (phase 2) the authorization
                                                    code (PKCE) and refresh token grants
 
+Tokens are signed by this process's key (development, staging) or, in production, by the
+signer service, which checks every request itself first (signer/tokens.py), including the
+signature of each person signing in to an app.
+
 They answer at the auth host only, and only while a token-signing key is set. Every other
 address at the auth host answers 404 (``AuthHostOnly``), so the authorization server shows
 nothing else, and the API's addresses show none of this.
@@ -23,7 +27,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import parse_qsl
 
 import anyio
@@ -40,6 +44,7 @@ from dmd_gateway.api.get_did_page import mcp_url
 from dmd_gateway.db.models import AgentIdentity, OAuthAssertion
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import error_body
+from dmd_gateway.oauth import grants
 from dmd_gateway.oauth.assertion import (
     ASSERTION_TYPE,
     Assertion,
@@ -48,6 +53,7 @@ from dmd_gateway.oauth.assertion import (
     verify_assertion,
 )
 from dmd_gateway.oauth.clients import Client, ClientRejected, verify_client_assertion
+from dmd_gateway.oauth.grants import Grant, GrantRefused
 from dmd_gateway.oauth.keys import jwk_set
 from dmd_gateway.oauth.tokens import (
     DEFAULT_SCOPES,
@@ -86,7 +92,12 @@ MAX_FORM_FIELDS = 16
 
 @dataclass(frozen=True)
 class LocalTokenSigner:
-    """Signs access tokens with a key held by this process (development and staging)."""
+    """Signs access tokens with a key held by this process (development and staging). The API
+    checked the request itself, so this checks only what the signer service would check on top
+    (the message's and grant's terms); smart wallets, which the API checks on their chain, can
+    sign in."""
+
+    smart_wallets: ClassVar[bool] = True
 
     key: RSAPrivateKey
 
@@ -94,8 +105,59 @@ class LocalTokenSigner:
     def public_keys(self) -> tuple[RSAPublicKey, ...]:
         return (self.key.public_key(),)
 
-    def issue(self, assertion: str, **claims: Any) -> IssuedToken:
-        # The API checked the agent's signed request itself; this key is its own.
+    def sign_in(
+        self,
+        *,
+        message: str,
+        signature: str,
+        did: str,
+        controller_type: str,
+        client_id: str,
+        scope: str,
+        resource: str,
+        issuer: str,
+        now: datetime,
+    ) -> Grant:
+        try:
+            checked = grants.check_sign_in(
+                message,
+                did=did,
+                client_id=client_id,
+                scope=scope,
+                resource=resource,
+                issuer=issuer,
+                resources=(resource,),
+                now=now,
+            )
+        except GrantRefused as exc:
+            raise SignerRefused(f"refused: {exc}") from exc
+        return grants.issue_grant(
+            self.key,
+            issuer=issuer,
+            did=did,
+            client_id=client_id,
+            scope=scope,
+            resource=resource,
+            nonce=checked.nonce,
+            now=now,
+        )
+
+    def issue(self, assertion: str, *, grant: str | None = None, **claims: Any) -> IssuedToken:
+        # The API checked the agent's signed request, or the app's code or refresh token,
+        # itself; this key is its own. Under a grant, its terms still hold.
+        if grant is not None:
+            try:
+                granted = grants.verify_grant(
+                    grant, self.public_keys, issuer=claims["issuer"], now=claims["now"]
+                )
+                grants.check_use(
+                    granted,
+                    client_id=claims["client_id"],
+                    resource=claims["audience"],
+                    scopes=claims["scopes"],
+                )
+            except GrantRefused as exc:
+                raise SignerRefused(f"refused: {exc}") from exc
         return issue_token(self.key, **claims)
 
 
@@ -159,10 +221,9 @@ def sign_in_open(state: Any) -> bool:
 
 
 def browser_sign_in_open(state: Any) -> bool:
-    """People can sign in to apps in the browser (phase 2): where this process signs the
-    tokens. With the signer service (production), not yet: the signer has to check browser
-    sign-ins itself first."""
-    return sign_in_open(state) and isinstance(state.token_signer, LocalTokenSigner)
+    """People can sign in to apps in the browser (phase 2): with agents' sign-in. In
+    production the signer service checks each person's signature before it gives a grant."""
+    return sign_in_open(state)
 
 
 def _on_auth_host(request: Request) -> bool:
@@ -391,7 +452,31 @@ async def _app_grant(state: Any, grant: str, fields: dict[str, str]) -> Response
     return await anyio.to_thread.run_sync(_app_tokens, state, grant, fields, client, keys)
 
 
+class _SignerDown(Exception):
+    """The signer could not sign: nothing the request did is kept (the code or refresh token
+    stays usable), and the app is told to try again."""
+
+
 def _app_tokens(
+    state: Any,
+    grant: str,
+    fields: dict[str, str],
+    client: Client,
+    keys: dict[str, Any] | None,
+) -> Response:
+    try:
+        return _app_tokens_once(state, grant, fields, client, keys)
+    except _SignerDown as exc:
+        log.error("access token for an app not signed: %s", exc)
+        return _oauth_error(
+            503,
+            "temporarily_unavailable",
+            "signing in is unavailable for a moment: try again in a minute",
+            retry_after=60,
+        )
+
+
+def _app_tokens_once(
     state: Any,
     grant: str,
     fields: dict[str, str],
@@ -435,7 +520,7 @@ def _app_tokens(
                 )
                 assert code.family_id is not None
                 family, identity_id, did = code.family_id, code.identity_id, code.did
-                scope, resource = code.scope, code.resource
+                scope, resource, granted = code.scope, code.resource, code.sign_in_grant
             else:
                 used, scope = browser.use_refresh_token(
                     session,
@@ -446,20 +531,35 @@ def _app_tokens(
                     now=now,
                 )
                 family, identity_id, did = used.family_id, used.identity_id, used.did
-                resource = used.resource
+                resource, granted = used.resource, used.sign_in_grant
         except browser.TokenError as exc:
             # Returning commits what a refused request changed (a revoked family).
             return _oauth_error(exc.status, exc.error, exc.description)
-        issued: IssuedToken = state.token_signer.issue(
-            "",
-            issuer=iss,
-            did=did,
-            audience=resource,
-            scopes=tuple(scope.split()),
-            ttl_seconds=settings.oauth_token_ttl_seconds,
-            now=now,
-            client_id=client.client_id,
-        )
+        if granted is None:  # a sign-in from before grants (staging, 0.38.0)
+            return _oauth_error(400, "invalid_grant", "this sign-in has ended: sign in again")
+        try:
+            sign_in_grant = grants.verify_grant(
+                granted, state.token_signer.public_keys, issuer=iss, now=now
+            )
+        except GrantRefused as exc:
+            return _oauth_error(400, "invalid_grant", f"{exc}: sign in again")
+        try:
+            issued: IssuedToken = state.token_signer.issue(
+                "",
+                issuer=iss,
+                did=did,
+                audience=resource,
+                scopes=tuple(scope.split()),
+                ttl_seconds=settings.oauth_token_ttl_seconds,
+                now=now,
+                client_id=client.client_id,
+                grant=granted,
+            )
+        except SignerRefused as exc:
+            log.warning("access token for an app refused by the signer: %s", exc)
+            return _oauth_error(400, "invalid_grant", "the sign-in was refused: sign in again")
+        except SignerUnavailable as exc:
+            raise _SignerDown(str(exc)) from exc
         refresh = browser.new_refresh_token(
             session,
             family_id=family,
@@ -468,6 +568,7 @@ def _app_tokens(
             did=did,
             scope=scope,
             resource=resource,
+            grant=sign_in_grant,
             now=now,
         )
         audit.record_audit_event(

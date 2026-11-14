@@ -10,6 +10,13 @@ the DID-LLM's own wallet or key, as when it was issued.
     refresh      a refresh token for new tokens: used once, replay revokes the whole family
     revoke       the app (or the person, through it) ends the sign-in
 
+Once the signature is right, the token signer gives a grant for the sign-in (oauth/grants.py;
+in production the signer service checks the signature itself first): every access token for
+the app is signed against it, so a sign-in lasts 30 days at most, then the person signs in
+again. The signer service has no network, so it cannot ask a smart wallet's chain: in
+production, smart wallets cannot sign in to apps yet (the DID-LLM's key or an ordinary wallet
+can).
+
 Codes and refresh tokens are kept as SHA-256 hashes only. A suspended or revoked DID-LLM can
 neither sign in nor refresh.
 """
@@ -18,11 +25,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import Session
@@ -32,26 +40,53 @@ from dmd_gateway.db.models import AgentIdentity, OAuthCode, OAuthRefreshToken, O
 from dmd_gateway.domain.ids import new_id
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import xml_datetime
-from dmd_gateway.identity.wallets import WalletVerifier
+from dmd_gateway.identity.wallets import EOA, WalletVerifier
+from dmd_gateway.oauth import grants
 from dmd_gateway.oauth.clients import Client
-from dmd_gateway.oauth.tokens import SCOPES
+from dmd_gateway.oauth.grants import Grant, scope_words
 from dmd_gateway.services.controller_proofs import (
     ED25519,
     EIP155,
+    PROOF_METHOD,
     SignatureCheck,
     check_signature,
 )
 from dmd_gateway.services.directory import controllers
 from dmd_gateway.services.identity_status import public_identity
+from dmd_gateway.signer.client import SignerRefused, SignerUnavailable
+
+log = logging.getLogger(__name__)
 
 SIGN_IN = "dmd_signin"
-SIGN_IN_MINUTES = 15
+SIGN_IN_MINUTES = grants.SIGN_IN_MINUTES
 CODE_SECONDS = 60
 REFRESH_DAYS = 30
 MAX_ATTEMPTS = 5
 VERIFIER = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
 CHALLENGE = re.compile(r"[A-Za-z0-9_-]{43}")
 CONTROLLER_LABELS = {EIP155: "wallet", ED25519: "key"}
+# Signatures the token signer can check with no network: a key, or an ordinary wallet.
+OFFLINE_METHODS = frozenset({PROOF_METHOD, EOA})
+
+
+class SignInSigner(Protocol):
+    """The token signer, as the sign-in sees it (api/oauth.py, signer/client.py)."""
+
+    smart_wallets: bool  # whether it accepts smart-wallet sign-ins the API checked
+
+    def sign_in(
+        self,
+        *,
+        message: str,
+        signature: str,
+        did: str,
+        controller_type: str,
+        client_id: str,
+        scope: str,
+        resource: str,
+        issuer: str,
+        now: datetime,
+    ) -> Grant: ...
 
 
 class TokenError(Exception):
@@ -83,10 +118,6 @@ def pkce_matches(verifier: str, challenge: str) -> bool:
         return False
     computed = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest())
     return secrets.compare_digest(computed.rstrip(b"=").decode("ascii"), challenge)
-
-
-def scope_words(scope: str) -> str:
-    return "; ".join(SCOPES.get(name, name) for name in scope.split())
 
 
 # --------------------------------------------------------------------------- the browser part
@@ -142,18 +173,15 @@ def _open(sign_in: OAuthSignIn) -> None:
 
 
 def message(sign_in: OAuthSignIn, did: str, issuer: str, nonce: str, now: datetime) -> str:
-    return "\n".join(
-        [
-            "DebitMyData sign-in",
-            f"Sign in to: {sign_in.client_name}",
-            f"DID-LLM: {did}",
-            f"Allows: {scope_words(sign_in.scope)}",
-            f"For: {sign_in.resource}",
-            f"Sign-in server: {issuer}",
-            f"Nonce: {nonce}",
-            f"Issued: {xml_datetime(now)}",
-            f"Expires: {xml_datetime(sign_in.expires_at)}",
-        ]
+    return grants.sign_in_message(
+        app=sign_in.client_name,
+        did=did,
+        scope=sign_in.scope,
+        resource=sign_in.resource,
+        issuer=issuer,
+        nonce=nonce,
+        issued=now,
+        expires=sign_in.expires_at,
     )
 
 
@@ -195,9 +223,12 @@ def approve(
     signature: str,
     *,
     wallets: WalletVerifier | None,
+    signer: SignInSigner,
+    issuer: str,
     now: datetime,
 ) -> bool:
-    """Check the owner's signature of the message; five tries."""
+    """Check the owner's signature of the message (five tries), then get the token signer's
+    grant for the sign-in."""
     _open(sign_in)
     if sign_in.message is None or sign_in.identity_id is None:
         raise ApiError(409, "no_message", "Name the DID-LLM first, then sign its message.")
@@ -223,7 +254,17 @@ def approve(
             raise  # a malformed signature, or the wallet's network unreachable: not an answer
         # Not this wallet's own signature, and no way to ask a smart wallet here: a wrong try.
         check = SignatureCheck(False, "smart_wallet_unchecked", signature, "the owner wallet")
+    if check.verified and check.method not in OFFLINE_METHODS and not signer.smart_wallets:
+        # Right, but the token signer cannot check it: not a wrong try, a wallet to change.
+        raise ApiError(
+            422,
+            "smart_wallet_not_supported",
+            "This wallet is a smart wallet, which cannot sign in to apps yet. If this DID-LLM "
+            "also has an owner key, choose Use the owner key instead.",
+        )
     sign_in.attempts += 1
+    if check.verified:
+        check = _grant(sign_in, identity, signature, check, signer=signer, issuer=issuer, now=now)
     if check.verified:
         sign_in.status = "approved"
         sign_in.approved_at = now
@@ -237,6 +278,47 @@ def approve(
         data={"sign_in_id": sign_in.id, "client_id": sign_in.client_id, "method": check.method},
     )
     return check.verified
+
+
+def _grant(
+    sign_in: OAuthSignIn,
+    identity: AgentIdentity,
+    signature: str,
+    check: SignatureCheck,
+    *,
+    signer: SignInSigner,
+    issuer: str,
+    now: datetime,
+) -> SignatureCheck:
+    """The token signer's grant for a sign-in whose signature is right; refused, it counts as
+    a wrong try. Unreachable, nothing changes (HTTP 503: the person tries again)."""
+    assert sign_in.message is not None and sign_in.controller_type is not None
+    try:
+        grant = signer.sign_in(
+            message=sign_in.message,
+            signature=signature,
+            did=identity.public_identifier,
+            controller_type=sign_in.controller_type,
+            client_id=sign_in.client_id,
+            scope=sign_in.scope,
+            resource=sign_in.resource,
+            issuer=issuer,
+            now=now,
+        )
+    except SignerRefused as exc:
+        log.warning("sign-in refused by the token signer: %s", exc)
+        return SignatureCheck(False, "signer_refused", check.signature, check.what)
+    except SignerUnavailable as exc:
+        log.error("sign-in grant not signed: %s", exc)
+        raise ApiError(
+            503,
+            "sign_in_unavailable",
+            "Signing in is unavailable for a moment: try again in a minute with the same "
+            "signature.",
+            headers={"Retry-After": "30"},
+        ) from exc
+    sign_in.sign_in_grant = grant.token
+    return check
 
 
 def finish(session: Session, sign_in: OAuthSignIn, now: datetime) -> str:
@@ -257,6 +339,7 @@ def finish(session: Session, sign_in: OAuthSignIn, now: datetime) -> str:
             did=identity.public_identifier,
             scope=sign_in.scope,
             resource=sign_in.resource,
+            sign_in_grant=sign_in.sign_in_grant,
             expires_at=now + timedelta(seconds=CODE_SECONDS),
             created_at=now,
         )
@@ -332,8 +415,10 @@ def new_refresh_token(
     did: str,
     scope: str,
     resource: str,
+    grant: Grant,
     now: datetime,
 ) -> str:
+    """A new refresh token under the sign-in's grant, never valid longer than the grant."""
     token = secrets.token_urlsafe(32)
     session.add(
         OAuthRefreshToken(
@@ -344,7 +429,8 @@ def new_refresh_token(
             did=did,
             scope=scope,
             resource=resource,
-            expires_at=now + timedelta(days=REFRESH_DAYS),
+            sign_in_grant=grant.token,
+            expires_at=min(now + timedelta(days=REFRESH_DAYS), grant.expires_at),
             created_at=now,
         )
     )
