@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy.exc import SQLAlchemyError
 
 from dmd_gateway.db.session import build_engine, session_factory, transaction
+from dmd_gateway.handshake import Report, check
 from dmd_gateway.monitoring.alerts import (
     AlertDispatcher,
     DeliveryFailed,
@@ -71,6 +72,15 @@ def _test(settings: Settings, dispatcher: AlertDispatcher) -> int:
     return 0 if delivered else 1
 
 
+def _handshake(settings: Settings, client: httpx.Client) -> Callable[[], Report]:
+    """The daily discovery check: through the public address (Cloudflare), as agents reach
+    the gateway; in production with the MCP Registry's listing."""
+    production = settings.environment == "production"
+    return lambda: check(
+        settings.public_base_url, http=client, registry_http=client if production else None
+    )
+
+
 def run(
     command: str,
     settings: Settings,
@@ -100,6 +110,8 @@ def run(
         )
         return 1
     ctx = MonitorContext(settings, environ, runtime, client)
+    if command == "report":
+        ctx.handshake = _handshake(settings, client)
     engine = build_engine(settings)
     try:
         with transaction(session_factory(engine)) as session:

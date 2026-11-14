@@ -131,6 +131,9 @@ place; the application logic comes with the related phase.
 - [x] Public MCP address in production: `https://api.debitmydata.io/agenticsuperhighway`
 - [ ] Marketplace provider requirements: publish them, then return them from the tool
 - [x] The gateway's MCP server is the Agentic Superhighway (`/agenticsuperhighway`, Nov 2026)
+- [x] The discovery runbook's Day 5 handshake check (`dmd-gateway-handshake`): run by every
+  update (which fails if a check fails) and by the daily report through Cloudflare, with the
+  MCP Registry's listing in production (0.39.0)
 
 ## Phase 7 – x402 / USDC on Base
 

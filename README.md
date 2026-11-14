@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.38.1`). The whole registration flow (quote,
+This is an early development release (`0.39.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -108,6 +108,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | No drop-down lists on the pages, so AI agents see every choice at once: "What is it for?" on Get a DID-LLM (in three groups, on an even grid) and the listing form's type are visible buttons, and the directory's types are links that keep the search words | done |
 | OAuth phase 1, the authorization server (`api/oauth.py`, `oauth/`): on its own address (`DMD_GW_AUTH_HOST`, auth.debitmydata.io) an agent signs a short request with its DID-LLM's own key and gets a 10-minute access token for the MCP server (OAuth 2.1 client credentials with `private_key_jwt`, EdDSA; RS256 tokens, RFC 9068); metadata at `/.well-known/oauth-authorization-server`, keys at `/.well-known/jwks.json`; each signed request is used once; suspended, revoked and wallet-owned DID-LLMs are refused. The MCP server accepts the tokens as an OAuth protected resource (`api/mcp_auth.py`, RFC 9728 metadata at `/.well-known/oauth-protected-resource/agenticsuperhighway`): optional, every claim checked on every request, 401 with `WWW-Authenticate` when a token fails; `dmd_whoami` answers who is signed in; the runbook's files list `oauth2.1`. The owner-key tool's `token` and `whoami` commands sign in ([docs/staging.md](docs/staging.md#9-oauth-phase-1-the-authorization-server)) | staging; production ready, closed until `DMD_GW_AUTH_HOST` is set: there the signer service signs the tokens and the API holds only the public key ([docs/production.md](docs/production.md#14-oauth-sign-in-authdebitmydataio)) |
 | OAuth phase 2, people sign in to apps (MCP clients such as ChatGPT or Claude) with their DID-LLM in the browser (`api/oauth_browser.py`, `services/oauth_sign_in.py`, `oauth/clients.py`): authorization code with PKCE (S256), apps known by their Client ID Metadata Document (fetched carefully, no registration), one message signed with the DID-LLM's wallet or key (the owner-key tool's `sign-in`), `iss` in every answer (RFC 9207), refresh tokens used once (a replay ends the sign-in), `/revoke`, apps that sign their token requests (`private_key_jwt`); `dmd_whoami` called without a token is answered with HTTP 401 and the challenge, so apps offer the sign-in; a sign-in lasts 30 days from the person's signature (a grant from the token signer, `oauth/grants.py`) ([docs/staging.md](docs/staging.md#10-oauth-phase-2-people-sign-in-to-apps)) | staging; production ready, closed until `DMD_GW_AUTH_HOST` is set: there the signer service checks each person's signature itself before it gives the grant, so smart wallets cannot sign in to apps yet ([docs/production.md](docs/production.md#14-oauth-sign-in-authdebitmydataio)) |
+| The discovery runbook's Day 5 handshake check (`dmd-gateway-handshake`, `handshake.py`): an automated client does what any agent does to find and use the Agentic Superhighway, unsupervised: the well-known files (200, `application/json`, the runbook's fields), the Server Card and AI Catalog, `llms.txt`, `initialize`, `tools/list` (every tool and parameter described, JSON Schema), the JSON-RPC errors (-32700, -32601, -32602), the sign-in negotiation when it is open (401 challenge, protected resource and authorization server metadata, keys, a wrong token refused), the same tools and version in every file and, with `--registry`, the official MCP Registry's listing; every update runs it on the server and fails if a check fails, and the daily report runs it through Cloudflare, with the Registry in production ([docs/staging.md](docs/staging.md#11-the-handshake-check-the-runbooks-day-5)) | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -323,6 +324,7 @@ src/dmd_gateway/
                              (dmd-gateway-monitor)
   identity/                  controller keys, did:web documents, issuer key, signed credentials
   signer/                    the production credential signer (dmd-gateway-signer) and its client
+  handshake.py               the discovery runbook's Day 5 check (dmd-gateway-handshake)
   oauth/                     OAuth: the token-signing key (dmd-gateway-oauth-key), the agents'
                              signed requests, access tokens, the apps (Client ID Metadata
                              Documents), sign-in grants

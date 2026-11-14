@@ -335,6 +335,10 @@ if [ -n "$AUTH_HOST" ]; then
         fail "nginx does not serve the sign-in server at $AUTH_HOST: check DMD_GW_AUTH_HOST and the certificate"
     printf '\nOAuth sign-in: https://%s/.well-known/oauth-authorization-server\n' "$AUTH_HOST"
 fi
+
+step "Checking what agents see (the discovery runbook's Day 5 handshake)"
+"$VENV/bin/dmd-gateway-handshake" --local "https://$HOSTNAME_PUBLIC" ||
+    fail "agents may not find or use the gateway as they should: see the FAIL lines above (docs/production.md, step 8)"
 printf '\nDone. Production gateway: https://%s\n' "$HOSTNAME_PUBLIC"
 printf 'DebitMyData node: %s (wait for 100%% before switching DMD payments on).\n' "$SYNC"
 printf 'Issuer key (public, published at /.well-known/did.json): %s\n' "$PUBLIC_KEY"

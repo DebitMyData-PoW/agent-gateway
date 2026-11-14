@@ -112,6 +112,7 @@ moment. `systemctl start dmd-gateway-report.service` sends a daily report right 
 | The gateway's configuration cannot be loaded | critical | The gateway would refuse to start with it. |
 | The nightly backup has not succeeded | warning | Production only: no backup in the last 26 hours. `systemctl status dmd-gateway-backup`, `journalctl -u dmd-gateway-backup` ([production.md](production.md#4-backups)). |
 | The monitor could not run its … check | warning | That check failed by itself; the alerts it raised before stay open. |
+| Agents may not find or use the gateway | warning | From the daily report: the discovery handshake (below) failed through the public address. The alert names the failed checks; `/opt/agent-gateway/.venv/bin/dmd-gateway-handshake https://<the gateway's host>` shows them all. If it passes with `--local` but not without, Cloudflare stops agents: look at its Security Events. |
 
 ## 4. The daily report
 
@@ -136,6 +137,12 @@ Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
   credited; every DID and receipt backed by a settled payment), and every payment settled in
   the last 30 days checked again on its chain. Any difference is also sent as a critical
   alert.
+- **Discovery**: the discovery runbook's Day 5 handshake (`dmd-gateway-handshake`) through
+  the public address, as agents reach it through Cloudflare: the well-known files, the MCP
+  handshake, the sign-in negotiation when it is open, and in production the official MCP
+  Registry's listing (the runbook's recurring check: the Registry is in preview and may be
+  reset; a listing that shows an older version is a reminder to publish, not a failure).
+  What fails is sent as a warning too.
 - **Open alerts**.
 
 ## 5. When the whole server is down

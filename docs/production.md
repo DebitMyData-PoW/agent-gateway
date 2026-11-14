@@ -231,7 +231,17 @@ Only with a version that already runs well on staging:
 
 It keeps every secret, key, wallet and setting, and refuses to run on a server whose
 settings are not production's (it changes nothing there). Staging's `update.sh` likewise
-refuses to run here.
+refuses to run here. It ends with the discovery runbook's **handshake check**, through this
+server's nginx: what any agent does to find and use the Agentic Superhighway, from the
+well-known files to `tools/list` ([staging.md, section 11](staging.md#11-the-handshake-check-the-runbooks-day-5)).
+If a check fails, the update says so (`FAIL` lines, then an error): fix it before announcing
+anything. The daily report runs the same check through Cloudflare, with the MCP Registry's
+listing ([monitoring.md](monitoring.md#4-the-daily-report)). To run it yourself, as agents
+see the server:
+
+```bash
+/opt/agent-gateway/.venv/bin/dmd-gateway-handshake --registry https://api.debitmydata.io
+```
 
 **A new DebitMyData Core release** (staging first, then production). Check the SHA-256 of the
 new `debitmydatad` and `debitmydata-cli` against the release, then:
@@ -576,5 +586,6 @@ it and run the update) only means agents and people sign in again.
 - [ ] The Agentic Spaces site points agents to `https://api.debitmydata.io`
 - [ ] The Get a DID app answers at `https://id.debitmydata.io` (step 12)
 - [ ] The Agentic Superhighway is listed in the official MCP Registry (step 13)
+- [ ] The handshake check passes through Cloudflare, with the Registry (step 8)
 - [ ] Sign-in answers at `https://auth.debitmydata.io` (step 14), once Preska says
 - [ ] Preska is told it is live

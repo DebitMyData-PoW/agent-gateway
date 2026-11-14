@@ -950,6 +950,10 @@ def test_report_command_sends_the_report(engine: Engine) -> None:
     assert message.report and "Daily report 2026-10-27" in message.subject
     assert "RECEIVING DESTINATIONS IN USE" in message.body
     assert "OPEN ALERTS" in message.body
+    # The discovery check ran too, through the public address (unanswered here: HTTP 404).
+    assert "DISCOVERY (what an agent sees" in message.body
+    assert "FAIL: discovery: /.well-known/mcp: HTTP 404" in message.body
+    assert any("Agents may not find" in sent.body for sent in notifier.messages[:-1])
 
     notifier.fail = True
     assert run("report", settings, environ, dispatcher(notifier), http=http, now=NOW) == 1

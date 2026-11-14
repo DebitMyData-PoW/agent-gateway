@@ -346,3 +346,15 @@ def test_the_staging_test_chain_never_looks_out_of_date(tmp_path: Path) -> None:
     assert lines[lines.index("[regtest]") + 1] == "maxtipage=315360000"
     wallets = (DEPLOY / "staging" / "regtest-wallets.sh").read_text(encoding="utf-8")
     assert "initialblockdownload" in wallets and "generatetoaddress 1" in wallets
+
+
+@pytest.mark.parametrize("script", SETUP_SCRIPTS)
+def test_every_update_ends_with_the_handshake_check(script: Path) -> None:
+    """The discovery runbook's Day 5 gate: an update whose gateway agents cannot find or use
+    fails, after nginx answers and before it says it is done."""
+    setup = script.read_text(encoding="utf-8")
+    command = '/bin/dmd-gateway-handshake" --local "https://$HOSTNAME_PUBLIC" ||'
+    assert command in setup
+    assert setup.index('step "Checking the gateway through nginx"') < setup.index(command)
+    assert setup.index(command) < setup.index("printf '\\nDone.")
+    assert 'fail "agents may not find or use the gateway' in setup

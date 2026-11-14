@@ -92,6 +92,8 @@ class MonitorContext:
     runtime: Runtime
     http: httpx.Client
     dmd_rpc: Callable[[], Any] | None = None  # returns a client with .call(method, params)
+    # The daily report's discovery check (dmd_gateway.handshake), when it runs one.
+    handshake: Callable[[], Any] | None = None
 
     def rpc(self) -> Any:
         return self.dmd_rpc() if self.dmd_rpc else DmdRpcClient.from_environ(self.environ)

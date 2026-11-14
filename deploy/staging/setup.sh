@@ -272,6 +272,10 @@ if [ -n "$AUTH_HOST" ]; then
         fail "nginx does not serve the authorization server at $AUTH_HOST: check DMD_GW_AUTH_HOST and the certificate"
     printf '\nOAuth authorization server: https://%s/.well-known/oauth-authorization-server\n' "$AUTH_HOST"
 fi
+
+step "Checking what agents see (the discovery runbook's Day 5 handshake)"
+"$APP_DIR/.venv/bin/dmd-gateway-handshake" --local "https://$HOSTNAME_PUBLIC" ||
+    fail "agents may not find or use the gateway as they should: see the FAIL lines above (docs/staging.md, section 11)"
 printf '\nDone. Open https://%s/v1/discovery from your computer.\n' "$HOSTNAME_PUBLIC"
 printf '\nx402 test wallet (Base Sepolia): %s\n' "$TEST_WALLET"
 printf 'Give it at least 25 test USDC at https://faucet.circle.com (network: Base Sepolia).\n'

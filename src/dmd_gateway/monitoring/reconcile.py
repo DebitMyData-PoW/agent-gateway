@@ -11,6 +11,11 @@ Once a day it answers three questions, by email and Discord:
    is checked on its chain again, read-only, with the same adapters the worker uses. A
    payment no longer found with its confirmations is a critical alert.
 
+It also runs the discovery runbook's Day 5 handshake (dmd_gateway.handshake) through the
+public address, as agents reach it, and in production checks the official MCP Registry's
+listing (the runbook's recurring check: the Registry is in preview and may be reset). What
+fails is a warning.
+
 The report holds counts, amounts and identifiers only: no names, keys or secrets. The DIDs
 in DMD_GW_REPORT_EXCLUDED_DIDS (the company's own test DIDs) are left out of the figures,
 with their quotes, products and payments; the reconciliation still checks their payments.
@@ -39,6 +44,8 @@ from dmd_gateway.db.models import (
     RegistrationIntent,
 )
 from dmd_gateway.domain.money import format_base_units
+from dmd_gateway.handshake import FAIL, WARN
+from dmd_gateway.handshake import Report as Handshake
 from dmd_gateway.monitoring.alerts import Finding, Message, Severity
 from dmd_gateway.monitoring.checks import MonitorContext, receiving_destinations
 from dmd_gateway.services.settlement import expected_payment
@@ -208,6 +215,11 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
     report.findings += _chain_checks(ctx, session, now, report.day, add)
     add("")
 
+    if ctx.handshake is not None:
+        add("DISCOVERY (what an agent sees: the runbook's Day 5 handshake)")
+        report.findings += _discovery(ctx.handshake, report.day, add)
+        add("")
+
     open_alerts = session.scalars(
         select(AlertState)
         .where(AlertState.resolved_at.is_(None), AlertState.kind == "condition")
@@ -226,6 +238,31 @@ def build_report(ctx: MonitorContext, session: Session, now: datetime) -> Report
         add(f"{finding.severity.value.upper()}: {finding.title}")
         add(finding.detail)
     return report
+
+
+def _discovery(run: Callable[[], Handshake], day: str, add: Callable[[str], None]) -> list[Finding]:
+    try:
+        result = run()
+    except Exception as exc:  # noqa: BLE001 - the report goes out anyway
+        add(f"- could not run: {type(exc).__name__}")
+        return []
+    add(f"- {result.url}: {result.summary()}")
+    for item in result.results:
+        if item.status in (FAIL, WARN):
+            add(f"- {item.status.upper()}: {item.step}: {item.detail}")
+    if not result.failed:
+        return []
+    failed = "; ".join(f"{item.step}: {item.detail}" for item in result.failed[:5])
+    return [
+        Finding(
+            f"discovery.handshake.{day}",
+            W,
+            f"Agents may not find or use the gateway: {len(result.failed)} handshake check(s) "
+            "failed",
+            f"{failed}. To see them all: dmd-gateway-handshake {result.url}",
+            kind="event",
+        )
+    ]
 
 
 def _settled_since(

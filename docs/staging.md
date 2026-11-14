@@ -576,6 +576,43 @@ again: it answers with your DID-LLM. If the app says it cannot reach the server 
 look at Cloudflare's Security Events for `staging-api` and `staging-auth`: the apps' own
 servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do.
 
+## 11. The handshake check (the runbook's Day 5)
+
+The discovery runbook ends with a check that an automated client completes, unsupervised,
+what any agent does to find and use the Agentic Superhighway. The gateway has it:
+`dmd-gateway-handshake` (`src/dmd_gateway/handshake.py`).
+
+1. **Discovery:** `/.well-known/mcp` and `/.well-known/mcp/server-card.json` answer 200 in
+   `application/json` with the runbook's fields; the Server Card and the AI Catalog point to
+   the same MCP address; `llms.txt` gives it.
+2. **The MCP handshake:** `initialize` (protocol version, capabilities, server name and
+   version), `notifications/initialized`, `tools/list` (every tool and every parameter
+   described in plain words, with a JSON Schema), and the JSON-RPC errors the specification
+   gives: -32700 for a parse error, -32601 for an unknown method, -32602 for invalid params,
+   and a tool's error that names a wrong argument.
+3. **Sign-in negotiation**, when the files offer `oauth2.1`: `dmd_whoami` without a token
+   answers 401 with its `WWW-Authenticate` challenge; the protected resource metadata names
+   exactly this MCP address and its sign-in server, whose metadata and keys answer; a wrong
+   token is refused (401 `invalid_token`).
+4. **One truth:** the tools in the runbook's card are exactly those `tools/list` gives, with
+   the same descriptions, and every file gives the same version. With `--registry`, the
+   official MCP Registry lists the server with the same address, title and description.
+
+**Every update runs it** on the server, after nginx answers (`--local`: through this
+server's nginx, under the public names), and fails if a check fails, so a broken update is
+seen at once. **Every day** the report runs it through the public address, as agents reach it
+through Cloudflare ([monitoring.md](monitoring.md#4-the-daily-report)). To run it yourself on
+the server:
+
+```bash
+/opt/agent-gateway/.venv/bin/dmd-gateway-handshake https://staging-api.debitmydata.io
+```
+
+Each line says `PASS`, `WARN`, `FAIL` or `SKIP` (sign-in, where it is not open) with what it
+found; the last one sums up. `--json` prints the same as JSON. If it passes with `--local` and
+fails without, something between the agents and the server (Cloudflare) stops them: look at
+Cloudflare's Security Events.
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |
