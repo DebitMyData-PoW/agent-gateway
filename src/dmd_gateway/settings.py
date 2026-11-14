@@ -59,8 +59,10 @@ class Settings(BaseSettings):
     # Agents get access tokens there by signing with their DID-LLM's key. Empty: no OAuth.
     auth_host: str = ""
     # What signs the access tokens: an RSA key file (PEM, mode 600) in development and on
-    # staging. Production will keep it in the signer service instead.
+    # staging. Production keeps it in the signer service instead (issuer_signer_socket), and
+    # the API has only its public half (oauth_public_key_path, a PEM file) to check tokens.
     oauth_key_path: Path | None = None
+    oauth_public_key_path: Path | None = None
     # How long an access token is valid.
     oauth_token_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     # DIDs left out of the daily report's figures (comma-separated), such as the company's
@@ -143,6 +145,7 @@ class Settings(BaseSettings):
         "mcp_url",
         "issuer_key_path",
         "oauth_key_path",
+        "oauth_public_key_path",
         "issuer_signer_socket",
         "issuer_public_key",
         "monitor_fallback_state_path",
@@ -222,6 +225,21 @@ class Settings(BaseSettings):
             raise ValueError(
                 "production must not keep the token signing key on the API host: the signer "
                 "service signs access tokens there"
+            )
+        if self.oauth_key_path is not None and self.oauth_public_key_path is not None:
+            raise ValueError("set oauth_key_path or oauth_public_key_path, not both")
+        if self.oauth_public_key_path is not None and self.issuer_signer_socket is None:
+            raise ValueError(
+                "oauth_public_key_path needs issuer_signer_socket: the signer service signs "
+                "the access tokens"
+            )
+        if (
+            self.environment == "production"
+            and self.auth_host
+            and self.oauth_public_key_path is None
+        ):
+            raise ValueError(
+                "in production, auth_host needs oauth_public_key_path (the signer's token key)"
             )
         if self.auth_host and self.auth_host in (
             self.app_host,

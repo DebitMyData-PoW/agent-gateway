@@ -5,6 +5,10 @@ Requests:
         -> {"ok": true, "did": "...", "public_key_multibase": "z6Mk..."}
     {"op": "sign", "document": {...}, "created": "2026-10-27T12:00:00Z"}
         -> {"ok": true, "document": {... with its proof ...}}
+    {"op": "token", "assertion": "<the agent's signed request>", "resource": "https://...",
+     "scope": "did:read", "ttl_seconds": 600}
+        -> {"ok": true, "access_token": "...", "expires_in": 600, "scope": "did:read"}
+    (describe also gives "token_key", the token key's public JWK, when the signer has one)
 Any refusal or failure:
         -> {"ok": false, "error": "a short reason"}
 """

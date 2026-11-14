@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from dmd_gateway.signer.client import RemoteIssuer
+from dmd_gateway.signer.client import RemoteIssuer, RemoteTokenSigner
 
 router = APIRouter(tags=["health"])
 log = logging.getLogger(__name__)
@@ -36,6 +36,10 @@ def readyz(request: Request) -> JSONResponse:
     issuer = request.app.state.issuance.issuer
     if isinstance(issuer, RemoteIssuer):
         checks["credential_signer"] = "ok" if issuer.ready() else "unavailable"
+    # ... and, once agents can sign in, sign access tokens with the expected key.
+    token_signer = request.app.state.token_signer
+    if isinstance(token_signer, RemoteTokenSigner):
+        checks["token_signer"] = "ok" if token_signer.ready() else "unavailable"
 
     ready = all(value == "ok" for value in checks.values())
     return JSONResponse(

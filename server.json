@@ -3,7 +3,7 @@
   "name": "io.debitmydata/agenticsuperhighway",
   "title": "DebitMyData Agentic Superhighway",
   "description": "Get a DID-LLM, DebitMyData's verifiable identity for AI agents, and pay for it by yourself.",
-  "version": "0.37.1",
+  "version": "0.37.2",
   "websiteUrl": "https://id.debitmydata.io/",
   "repository": {
     "url": "https://github.com/DebitMyData-PoW/agent-gateway",

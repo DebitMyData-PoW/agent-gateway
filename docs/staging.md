@@ -524,9 +524,9 @@ its address is set too:
    It signs in, then asks the MCP server who it is signed in as, and prints
    `The Agentic Superhighway says: signed in as did:web:...` with the DID-LLM's status.
 
-To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. Production comes
-later: there the signer service will sign the tokens, so the API server never holds the key
-(the gateway refuses a token key file in production).
+To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. In production the
+signer service signs the tokens, so the API server never holds the key (the gateway refuses a
+token key file there): [production.md, step 14](production.md#14-oauth-sign-in-authdebitmydataio).
 
 ## How staging differs from production
 
@@ -536,7 +536,7 @@ later: there the signer service will sign the tokens, so the API server never ho
 | USDC (x402) | Base Sepolia test USDC, the x402.org test facilitator; payments go back to the test wallet | Base mainnet USDC to DebitMyData's receiving address (the AgenticSpaces DID-LLM wallet), through Coinbase's CDP facilitator with DebitMyData's API key (DEC-08) |
 | Wallets on the server | test payer and treasury wallets, for demos | watch-only receiving wallet only; treasury elsewhere |
 | Credential signing key | file on the server | separate signing service (ID-15) |
-| OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (to come, `auth.debitmydata.io`) |
+| OAuth token-signing key | file on the server (`staging-auth.debitmydata.io`) | the same signing service (`auth.debitmydata.io`) |
 | DMD/USD price | quotes: fixed test price (1.00 USD); `GET /v1/prices/dmd-usd`: the mainnet price (the higher of the minimum rate and the mining cost, from the explorer's difficulty) | the higher of the minimum rate and the mining cost, from the gateway's own mainnet node averaged over a week (DEC-01) |
 | Test tools on the docs page | on (`/v1/staging/...`) | never: the gateway refuses to start with them |
 | Request limits | nginx on the server | at the edge (Cloudflare or AWS WAF), in front of several API servers |

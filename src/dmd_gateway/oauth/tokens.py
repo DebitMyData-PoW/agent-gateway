@@ -24,6 +24,8 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPubl
 
 from dmd_gateway.oauth.keys import public_jwk
 
+# The token endpoint, at the authorization server's own host.
+TOKEN_PATH = "/token"  # noqa: S105 - an address, not a password
 TOKEN_TYPE = "at+jwt"  # noqa: S105 - the JWT "typ" of access tokens (RFC 9068)
 CLOCK_SKEW_SECONDS = 60
 # What an access token may allow. Phase 1: reading the DID-LLM's own records. More scopes come

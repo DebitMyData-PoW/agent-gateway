@@ -1,4 +1,5 @@
-"""dmd-gateway-signer: signs DID credentials and donation receipts for the gateway (ID-15).
+"""dmd-gateway-signer: signs DID credentials, receipts and OAuth access tokens for the gateway
+(ID-15).
 
 Runs as its own system user, with no network access, and listens on a Unix socket that only
 the gateway's user can open. Settings come from the environment (``/etc/dmd-signer/signer.env``
@@ -9,6 +10,9 @@ in production):
     DMD_SIGNER_DATABASE_URL    the gateway's database through a read-only role, e.g.
                                postgresql+psycopg://dmd_signer@/agent_gateway?host=/var/run/postgresql
     DMD_SIGNER_ISSUER_DID      the issuer's DID, e.g. did:web:api.debitmydata.io
+    DMD_SIGNER_OAUTH_KEY_PATH  optional: the OAuth token-signing key (RSA PEM, signer only)
+    DMD_SIGNER_OAUTH_ISSUER    optional: the authorization server, e.g. https://auth.debitmydata.io;
+                               with the key, the signer signs access tokens (signer/tokens.py)
 
 Every signature and every refusal is logged (journalctl -u dmd-gateway-signer).
 """
@@ -24,7 +28,7 @@ import stat
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,8 +38,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.identity.issuer import IssuerKey, IssuerKeyError, load_issuer_key
+from dmd_gateway.oauth.keys import OAuthKeyError, load_private_key, public_jwk
 from dmd_gateway.observability import configure_logging
 from dmd_gateway.signer import policy
+from dmd_gateway.signer.tokens import TokenIssuer, TokenRefused, resources_for
 from dmd_gateway.signer.wire import WireError, encode, read_message
 
 log = logging.getLogger("dmd_gateway.signer")
@@ -46,15 +52,21 @@ REQUEST_TIMEOUT_SECONDS = 10
 class Signer:
     key: IssuerKey
     sessions: sessionmaker[Session]
+    tokens: TokenIssuer | None = None
 
     def handle(self, request: Mapping[str, Any]) -> dict[str, Any]:
         op = request.get("op")
         if op == "describe":
-            return {
+            described: dict[str, Any] = {
                 "ok": True,
                 "did": self.key.did,
                 "public_key_multibase": self.key.public_key_multibase,
             }
+            if self.tokens is not None:
+                described["token_key"] = self.tokens.public_jwk
+            return described
+        if op == "token":
+            return self._token(request)
         if op != "sign":
             return {"ok": False, "error": "unknown operation"}
         document, created = request.get("document"), request.get("created")
@@ -78,6 +90,22 @@ class Signer:
         signed = self.key.sign(document, created=moment)
         log.info("signed", extra={"event": facts})
         return {"ok": True, "document": signed}
+
+    def _token(self, request: Mapping[str, Any]) -> dict[str, Any]:
+        if self.tokens is None:
+            # A setup problem, not a refusal: the API answers 503 and its readiness fails.
+            return {"ok": False, "error": "this signer has no token key (DMD_SIGNER_OAUTH_*)"}
+        try:
+            with self.sessions() as session, session.begin():
+                answer, facts = self.tokens.issue(session, request, datetime.now(UTC))
+        except TokenRefused as exc:
+            log.warning("token refused", extra={"event": {"reason": str(exc)}})
+            return {"ok": False, "error": f"refused: {exc}"}
+        except SQLAlchemyError as exc:
+            log.error("database unavailable", extra={"event": {"error": type(exc).__name__}})
+            return {"ok": False, "error": "the signer cannot check the database"}
+        log.info("token signed", extra={"event": facts})
+        return answer
 
 
 class _Handler(socketserver.BaseRequestHandler):
@@ -148,14 +176,28 @@ def build(environ: Mapping[str, str]) -> tuple[Signer, Path, Engine]:
         connect_args={"connect_timeout": 3},
     )
     sessions = sessionmaker(engine, expire_on_commit=False)
-    return Signer(key=key, sessions=sessions), Path(environ["DMD_SIGNER_SOCKET"].strip()), engine
+    signer = Signer(key=key, sessions=sessions, tokens=_token_issuer(environ, did))
+    return signer, Path(environ["DMD_SIGNER_SOCKET"].strip()), engine
+
+
+def _token_issuer(environ: Mapping[str, str], did: str) -> TokenIssuer | None:
+    """The access-token signer, when both its key and the authorization server are set."""
+    key_path = environ.get("DMD_SIGNER_OAUTH_KEY_PATH", "").strip()
+    issuer = environ.get("DMD_SIGNER_OAUTH_ISSUER", "").strip().rstrip("/")
+    if not key_path or not issuer:
+        return None
+    if not issuer.startswith("https://") or "/" in issuer.removeprefix("https://"):
+        raise RuntimeError("DMD_SIGNER_OAUTH_ISSUER must be https://<host> only")
+    return TokenIssuer(
+        key=load_private_key(Path(key_path)), issuer=issuer, resources=resources_for(did)
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     configure_logging(os.environ.get("DMD_SIGNER_LOG_LEVEL", "INFO"))
     try:
         signer, path, engine = build(os.environ)
-    except (RuntimeError, IssuerKeyError) as exc:
+    except (RuntimeError, IssuerKeyError, OAuthKeyError) as exc:
         log.error("signer not started", extra={"event": {"error": str(exc)}})
         print(f"dmd-gateway-signer: {exc}", file=sys.stderr)
         return 2
@@ -166,7 +208,11 @@ def main(argv: list[str] | None = None) -> int:
 
     signal.signal(signal.SIGTERM, _stop)
     method = signer.key.verification_method
-    log.info("signer listening", extra={"event": {"socket": str(path), "key": method}})
+    token_key = public_jwk(signer.tokens.key.public_key())["kid"] if signer.tokens else None
+    log.info(
+        "signer listening",
+        extra={"event": {"socket": str(path), "key": method, "token_key": token_key}},
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

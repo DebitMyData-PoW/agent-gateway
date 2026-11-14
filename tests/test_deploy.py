@@ -304,7 +304,30 @@ def test_staging_setup_makes_the_token_signing_key() -> None:
     assert (
         'runuser -u gateway -- "$APP_DIR/.venv/bin/dmd-gateway-oauth-key" "$OAUTH_KEY"' in staging
     )
-    assert "OAUTH_KEY" not in SETUP_SCRIPTS[1].read_text(encoding="utf-8")
+    # Production: never DMD_GW_OAUTH_KEY_PATH (the settings refuse it); the signer's key instead.
+    assert "DMD_GW_OAUTH_KEY_PATH" not in SETUP_SCRIPTS[1].read_text(encoding="utf-8")
+
+
+def test_production_signer_holds_the_token_signing_key() -> None:
+    """Production: the signer makes and keeps the token key, the API gets only its public half,
+    the signer may read the DID-LLMs (to check signed requests), and it signs tokens only once
+    DMD_GW_AUTH_HOST opens sign-in, which also adds that host to nginx."""
+    production = SETUP_SCRIPTS[1].read_text(encoding="utf-8")
+    assert 'OAUTH_KEY="$SIGNER_DIR/oauth-key.pem"' in production
+    assert (
+        'runuser -u dmd_signer -- "$VENV/bin/dmd-gateway-oauth-key" "$OAUTH_KEY" >/dev/null'
+        in production
+    )
+    assert 'chown dmd_signer:dmd_signer "$OAUTH_KEY"' in production
+    assert 'chmod 600 "$OAUTH_KEY"' in production
+    assert '--public "$OAUTH_KEY" >"$OAUTH_PUBLIC.new"' in production
+    assert "printf 'DMD_GW_OAUTH_PUBLIC_KEY_PATH=%s\\n' \"$OAUTH_PUBLIC\"" in production
+    assert "DMD_SIGNER_OAUTH_KEY_PATH=$OAUTH_KEY" in production
+    assert 'if [ -n "$AUTH_HOST" ]; then\n    printf \'DMD_SIGNER_OAUTH_ISSUER=' in production
+    assert "GRANT SELECT ON identities TO dmd_signer;" in production
+    assert '-e "s#@AUTH_HOSTNAME@#${AUTH_HOST:+ $AUTH_HOST}#g"' in production
+    # The key is made before the API starts, which loads its public half.
+    assert production.index('--public "$OAUTH_KEY"') < production.index("restart dmd-gateway-api")
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")

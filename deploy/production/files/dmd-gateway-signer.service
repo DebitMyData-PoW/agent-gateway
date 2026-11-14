@@ -1,5 +1,5 @@
 [Unit]
-Description=DebitMyData Agent Gateway credential signer (the only holder of the issuer key)
+Description=DebitMyData Agent Gateway credential signer (the only holder of the issuer and OAuth token keys)
 After=postgresql.service
 Before=dmd-gateway-api.service
 

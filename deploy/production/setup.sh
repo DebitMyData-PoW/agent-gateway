@@ -7,7 +7,7 @@
 #     -> PostgreSQL 16 (local) and a DebitMyData node on the main chain (local RPC only,
 #        no inbound connections), holding only the treasury's watch-only key
 #   credential signer: its own user, no network, the only process that can read the
-#     issuer key; the API reaches it through a local socket
+#     issuer key and the OAuth token-signing key; the API reaches it through a local socket
 #   nightly encrypted backup to object storage
 #
 # Nothing here is for testing: no test tools, no test chain, no test wallets. Every payment
@@ -24,6 +24,10 @@ ENV_FILE="$CONF_DIR/gateway.env"
 SIGNER_DIR=/etc/dmd-signer
 SIGNER_ENV="$SIGNER_DIR/signer.env"
 ISSUER_KEY="$SIGNER_DIR/issuer-key.pem"
+# OAuth sign-in (docs/production.md, step 14): the signer signs the access tokens; the API
+# has only the public half, to check them.
+OAUTH_KEY="$SIGNER_DIR/oauth-key.pem"
+OAUTH_PUBLIC="$CONF_DIR/oauth-public.pem"
 SIGNER_SOCKET=/run/dmd-signer/signer.sock
 DMD_CONF_DIR=/etc/debitmydata
 DMD_CONF="$DMD_CONF_DIR/debitmydata.conf"
@@ -209,12 +213,35 @@ if [ -z "$CONFIGURED" ]; then
 elif [ "$CONFIGURED" != "$PUBLIC_KEY" ]; then
     fail "the issuer key in $ISSUER_KEY does not match DMD_GW_ISSUER_PUBLIC_KEY: it was replaced. Restore the original key (docs/production.md, backups); a new key would make every credential issued so far unverifiable"
 fi
+# The OAuth token-signing key: made once, kept by the signer only; its public half for the API.
+if [ ! -s "$OAUTH_KEY" ]; then
+    runuser -u dmd_signer -- "$VENV/bin/dmd-gateway-oauth-key" "$OAUTH_KEY" >/dev/null
+fi
+chown dmd_signer:dmd_signer "$OAUTH_KEY"
+chmod 600 "$OAUTH_KEY"
+runuser -u dmd_signer -- "$VENV/bin/dmd-gateway-oauth-key" --public "$OAUTH_KEY" >"$OAUTH_PUBLIC.new"
+grep -q 'BEGIN PUBLIC KEY' "$OAUTH_PUBLIC.new" || fail "could not read the OAuth token key's public half"
+chown root:gateway "$OAUTH_PUBLIC.new"
+chmod 640 "$OAUTH_PUBLIC.new"
+mv "$OAUTH_PUBLIC.new" "$OAUTH_PUBLIC"
+if [ -z "$(env_value DMD_GW_OAUTH_PUBLIC_KEY_PATH)" ]; then
+    end_line
+    printf 'DMD_GW_OAUTH_PUBLIC_KEY_PATH=%s\n' "$OAUTH_PUBLIC" >>"$ENV_FILE"
+fi
+# Sign-in opens only with DMD_GW_AUTH_HOST (e.g. auth.debitmydata.io): docs/production.md, 14.
+AUTH_HOST="$(env_value DMD_GW_AUTH_HOST | tr -d "'\" " | tr '[:upper:]' '[:lower:]')"
+[[ -z "$AUTH_HOST" || "$AUTH_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] ||
+    fail "DMD_GW_AUTH_HOST must be a host name only, e.g. auth.debitmydata.io"
 cat >"$SIGNER_ENV" <<EOF
 DMD_SIGNER_KEY_PATH=$ISSUER_KEY
 DMD_SIGNER_SOCKET=$SIGNER_SOCKET
 DMD_SIGNER_DATABASE_URL=postgresql+psycopg://dmd_signer@/agent_gateway?host=/var/run/postgresql
 DMD_SIGNER_ISSUER_DID=$ISSUER_DID
+DMD_SIGNER_OAUTH_KEY_PATH=$OAUTH_KEY
 EOF
+if [ -n "$AUTH_HOST" ]; then
+    printf 'DMD_SIGNER_OAUTH_ISSUER=https://%s\n' "$AUTH_HOST" >>"$SIGNER_ENV"
+fi
 chown root:dmd_signer "$SIGNER_ENV"
 chmod 640 "$SIGNER_ENV"
 
@@ -237,6 +264,8 @@ GRANT CONNECT ON DATABASE agent_gateway TO dmd_signer;
 GRANT USAGE ON SCHEMA public TO dmd_signer;
 GRANT SELECT ON registration_intents, payment_intents, controller_challenges,
     controller_proofs, credentials, purchases TO dmd_signer;
+-- ... and, to check an agent's signed request before signing an access token, its DID-LLM.
+GRANT SELECT ON identities TO dmd_signer;
 SQL
 
 step "Starting the credential signer, the gateway API and the payment worker"
@@ -275,6 +304,7 @@ APP_HOST="$(env_value DMD_GW_APP_HOST | tr -d "'\" " | tr '[:upper:]' '[:lower:]
 [[ -z "$APP_HOST" || "$APP_HOST" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] ||
     fail "DMD_GW_APP_HOST must be a host name only, e.g. id.debitmydata.io"
 sed -e "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" -e "s#@APP_HOSTNAME@#${APP_HOST:+ $APP_HOST}#g" \
+    -e "s#@AUTH_HOSTNAME@#${AUTH_HOST:+ $AUTH_HOST}#g" \
     "$FILES/nginx-site.conf" >/etc/nginx/sites-available/dmd-gateway
 if [ ! -e /proc/net/if_inet6 ]; then  # no IPv6 on this server: listen on IPv4 only
     sed -i '/listen \[::\]/d' /etc/nginx/sites-available/dmd-gateway
@@ -298,6 +328,12 @@ if [ -n "$APP_HOST" ]; then
     curl -sfk --noproxy '*' --resolve "$APP_HOST:443:127.0.0.1" "https://$APP_HOST/manifest.webmanifest" \
         >/dev/null || fail "nginx does not serve the app at $APP_HOST: check DMD_GW_APP_HOST and the certificate"
     printf '\nGet a DID app: https://%s\n' "$APP_HOST"
+fi
+if [ -n "$AUTH_HOST" ]; then
+    curl -sfk --noproxy '*' --resolve "$AUTH_HOST:443:127.0.0.1" \
+        "https://$AUTH_HOST/.well-known/oauth-authorization-server" >/dev/null ||
+        fail "nginx does not serve the sign-in server at $AUTH_HOST: check DMD_GW_AUTH_HOST and the certificate"
+    printf '\nOAuth sign-in: https://%s/.well-known/oauth-authorization-server\n' "$AUTH_HOST"
 fi
 printf '\nDone. Production gateway: https://%s\n' "$HOSTNAME_PUBLIC"
 printf 'DebitMyData node: %s (wait for 100%% before switching DMD payments on).\n' "$SYNC"

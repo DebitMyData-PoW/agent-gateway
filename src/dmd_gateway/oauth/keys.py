@@ -84,6 +84,26 @@ def load_public_jwk(text: str) -> RSAPublicKey:
     return key
 
 
+def public_pem(key: RSAPublicKey) -> str:
+    return key.public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode("ascii")
+
+
+def load_public_key(path: Path) -> RSAPublicKey:
+    """The token-signing key's public half (PEM), as the production API gets it: the signer
+    service holds the private half."""
+    try:
+        key = serialization.load_pem_public_key(path.read_bytes())
+    except FileNotFoundError as exc:
+        raise OAuthKeyError(f"token public key file not found: {path}") from exc
+    except (ValueError, TypeError) as exc:
+        raise OAuthKeyError(f"{path} is not a PEM public key") from exc
+    if not isinstance(key, RSAPublicKey) or key.key_size < 2048:
+        raise OAuthKeyError(f"{path} is not an RSA public key of 2048 bits or more")
+    return key
+
+
 def write_new_key(path: Path) -> dict[str, str]:
     """Create a new RSA key file (mode 600). Returns its public JWK."""
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -105,7 +125,19 @@ def main(argv: list[str] | None = None) -> int:
         description="Create the RSA key the authorization server signs access tokens with.",
     )
     parser.add_argument("path", type=Path, help="where to write the key, e.g. secrets/oauth.pem")
+    parser.add_argument(
+        "--public",
+        action="store_true",
+        help="print the public half (PEM) of the existing key at PATH instead",
+    )
     args = parser.parse_args(argv)
+    if args.public:
+        try:
+            print(public_pem(load_private_key(args.path).public_key()), end="")
+        except OAuthKeyError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        return 0
     try:
         jwk = write_new_key(args.path)
     except FileExistsError:

@@ -468,7 +468,81 @@ Optional: debitmydata.io's own site can point to the card too, with the same AI 
 `https://debitmydata.io/.well-known/ai-catalog.json` (the website's team), so that crawlers
 that start from the company's domain find it.
 
-## 14. Go-live checklist
+## 14. OAuth sign-in (auth.debitmydata.io)
+
+Agents can sign in to the Agentic Superhighway with their DID-LLM: they sign a short request
+with the DID-LLM's own key at `https://auth.debitmydata.io/token` and get an access token,
+valid for 10 minutes, for the MCP server. It is optional (registering a DID-LLM never needs
+it) and every claim is checked on every request. How it works, and the same steps on staging:
+[staging.md, section 9](staging.md#9-oauth-phase-1-the-authorization-server).
+
+In production the **signer service signs the tokens**, as it signs the credentials: the
+token-signing key is in `/etc/dmd-signer/oauth-key.pem`, readable by the signer only; the API
+has only its public half (`/etc/dmd-gateway/oauth-public.pem`), to check tokens. Before it
+signs, the signer checks the agent's signed request itself (through its read-only database
+role, which may read the DID-LLMs for this), uses each one once, and signs tokens only for this
+MCP server. So even a compromised API server cannot make a token for a DID-LLM that did not
+just sign in itself, nor for another service.
+
+The update (step 8) makes the key once and sets everything up, **with sign-in closed**. It
+opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
+
+1. **Cloudflare, DNS:** add a record `auth`, the same type and target as `api`, **Proxied**
+   (orange cloud).
+2. **Certificate:** the origin certificate must cover `auth.debitmydata.io`:
+
+   ```bash
+   sudo openssl x509 -in /etc/ssl/cloudflare/origin.pem -noout -ext subjectAltName
+   ```
+
+   If neither `auth.debitmydata.io` nor `*.debitmydata.io` is listed, create a new origin
+   certificate in Cloudflare (SSL/TLS, Origin Server) for every name listed plus
+   `auth.debitmydata.io` (RSA, 15 years), and replace both files, keeping the old ones until
+   the check below passes:
+
+   ```bash
+   cd /etc/ssl/cloudflare
+   sudo cp origin.pem origin.pem.old && sudo cp origin.key origin.key.old
+   sudo nano origin.pem.new   # paste the Origin Certificate
+   sudo nano origin.key.new   # paste the Private Key
+   sudo chmod 600 origin.key.new origin.key.old
+   sudo openssl x509 -in origin.pem.new -noout -ext subjectAltName
+   [ "$(sudo openssl x509 -in origin.pem.new -noout -pubkey | sha256sum)" = "$(sudo openssl pkey -in origin.key.new -pubout | sha256sum)" ] && echo "key matches"
+   sudo mv origin.pem.new origin.pem && sudo mv origin.key.new origin.key && sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+   Then check that `https://api.debitmydata.io/readyz` and `https://id.debitmydata.io` still
+   answer, revoke the old certificate in Cloudflare and delete the `.old` files.
+3. **Setting**, then the update (step 8), which gives the signer the sign-in server's address,
+   adds the name to nginx and checks that sign-in answers there:
+
+   ```bash
+   echo "DMD_GW_AUTH_HOST=auth.debitmydata.io" | sudo tee -a /etc/dmd-gateway/gateway.env
+   ```
+
+4. **Check** from your computer:
+   - `https://auth.debitmydata.io/.well-known/oauth-authorization-server`: the issuer
+     `https://auth.debitmydata.io`; `/.well-known/jwks.json` there: one RSA key;
+   - `https://api.debitmydata.io/readyz`: `"token_signer": "ok"`;
+   - `https://api.debitmydata.io/.well-known/oauth-protected-resource/agenticsuperhighway`
+     names the sign-in server, and `https://api.debitmydata.io/.well-known/mcp` lists
+     `"authentication": ["oauth2.1"]`.
+5. **Sign in, end to end,** with a DID-LLM made with your own key (owner-key tool,
+   [owner-key.md](owner-key.md#sign-in-as-the-did-llm-oauth)):
+
+   ```bash
+   python3 did-owner-key.py whoami ~/did-keys did:web:api.debitmydata.io:agents:...
+   ```
+
+   It prints `The Agentic Superhighway says: signed in as did:web:...`.
+
+Each token is in the audit trail (`oauth.token_issued`), and the signer logs each one it signs
+or refuses (`journalctl -u dmd-gateway-signer`). To close sign-in again, remove the
+`DMD_GW_AUTH_HOST` line and run the update: tokens already given stop working at once.
+**Never copy the token key** off the server or into a chat; a new key (delete it and run the
+update) only means agents sign in again.
+
+## 15. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set
@@ -480,4 +554,5 @@ that start from the company's domain find it.
 - [ ] The Agentic Spaces site points agents to `https://api.debitmydata.io`
 - [ ] The Get a DID app answers at `https://id.debitmydata.io` (step 12)
 - [ ] The Agentic Superhighway is listed in the official MCP Registry (step 13)
+- [ ] Sign-in answers at `https://auth.debitmydata.io` (step 14), once Preska says
 - [ ] Preska is told it is live

@@ -17,11 +17,13 @@ clients expect, and no answer here is ever cached.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qsl
 
+import anyio
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
@@ -39,17 +41,25 @@ from dmd_gateway.oauth.assertion import (
     ASSERTION_TYPE,
     Assertion,
     AssertionRejected,
+    database_lookup,
     verify_assertion,
 )
 from dmd_gateway.oauth.keys import jwk_set
-from dmd_gateway.oauth.tokens import DEFAULT_SCOPES, SCOPES, IssuedToken, issue_token
+from dmd_gateway.oauth.tokens import (
+    DEFAULT_SCOPES,
+    SCOPES,
+    TOKEN_PATH,
+    IssuedToken,
+    issue_token,
+)
 from dmd_gateway.settings import Settings
+from dmd_gateway.signer.client import SignerRefused, SignerUnavailable
 
+log = logging.getLogger(__name__)
 router = APIRouter(include_in_schema=False)
 
 METADATA_PATH = "/.well-known/oauth-authorization-server"
 JWKS_PATH = "/.well-known/jwks.json"
-TOKEN_PATH = "/token"  # noqa: S105 - an address, not a password
 AUTH_PATHS = frozenset({METADATA_PATH, JWKS_PATH, TOKEN_PATH})
 NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 PUBLIC = {
@@ -74,7 +84,8 @@ class LocalTokenSigner:
     def public_keys(self) -> tuple[RSAPublicKey, ...]:
         return (self.key.public_key(),)
 
-    def issue(self, **claims: Any) -> IssuedToken:
+    def issue(self, assertion: str, **claims: Any) -> IssuedToken:
+        # The API checked the agent's signed request itself; this key is its own.
         return issue_token(self.key, **claims)
 
 
@@ -124,11 +135,14 @@ def _not_found() -> JSONResponse:
     return JSONResponse(status_code=404, content=error_body("not_found", "Not Found"))
 
 
-def _oauth_error(status: int, error: str, description: str) -> JSONResponse:
+def _oauth_error(
+    status: int, error: str, description: str, *, retry_after: int | None = None
+) -> JSONResponse:
+    headers = {**NO_STORE, **({"Retry-After": str(retry_after)} if retry_after else {})}
     return JSONResponse(
         status_code=status,
         content={"error": error, "error_description": description},
-        headers=NO_STORE,
+        headers=headers,
     )
 
 
@@ -185,25 +199,6 @@ async def _read_form(request: Request) -> dict[str, str] | str:
     return fields
 
 
-def _controller_key(session: Any) -> Any:
-    def lookup(did: str) -> str | AssertionRejected:
-        identity = session.scalar(
-            select(AgentIdentity).where(AgentIdentity.public_identifier == did)
-        )
-        if identity is None:
-            return AssertionRejected("unknown DID-LLM")
-        if identity.status != "active":
-            return AssertionRejected(f"this DID-LLM is {identity.status}")
-        if not identity.controller_public_key:
-            return AssertionRejected(
-                "this DID-LLM is controlled by a wallet: wallets sign in through the browser, "
-                "which is not open yet"
-            )
-        return identity.controller_public_key
-
-    return lookup
-
-
 @router.post(TOKEN_PATH)
 async def token(request: Request) -> Response:
     if not _enabled(request):
@@ -238,19 +233,30 @@ async def token(request: Request) -> Response:
     unknown = [name for name in requested if name not in SCOPES]
     if unknown:
         return _oauth_error(400, "invalid_scope", f"unknown scope: {' '.join(unknown)}")
+    client_id = fields.get("client_id")
+    return await anyio.to_thread.run_sync(
+        _issue, request.app.state, assertion, client_id, resource, requested
+    )
+
+
+def _issue(
+    state: Any, assertion: str, client_id: str | None, resource: str, requested: tuple[str, ...]
+) -> Response:
+    """Checks the signed request against the database, then has the token signed (by this
+    process's key, or by the signer service in production). Runs in a worker thread."""
+    settings: Settings = state.settings
     now = datetime.now(UTC)
     iss = issuer(settings)
-    with transaction(request.app.state.session_factory) as session:
+    with transaction(state.session_factory) as session:
         try:
             checked: Assertion = verify_assertion(
                 assertion,
                 audience=[f"{iss}{TOKEN_PATH}", iss],
-                controller_key=_controller_key(session),
+                controller_key=database_lookup(session),
                 now=now,
             )
         except AssertionRejected as exc:
             return _oauth_error(401, "invalid_client", exc.reason)
-        client_id = fields.get("client_id")
         if client_id and client_id != checked.did:
             return _oauth_error(401, "invalid_client", "client_id must be the DID-LLM that signs")
         session.execute(
@@ -268,14 +274,28 @@ async def token(request: Request) -> Response:
         identity = session.scalar(
             select(AgentIdentity).where(AgentIdentity.public_identifier == checked.did)
         )
-        issued: IssuedToken = request.app.state.token_signer.issue(
-            issuer=iss,
-            did=checked.did,
-            audience=resource,
-            scopes=requested,
-            ttl_seconds=settings.oauth_token_ttl_seconds,
-            now=now,
-        )
+        try:
+            issued: IssuedToken = state.token_signer.issue(
+                assertion,
+                issuer=iss,
+                did=checked.did,
+                audience=resource,
+                scopes=requested,
+                ttl_seconds=settings.oauth_token_ttl_seconds,
+                now=now,
+            )
+        except SignerRefused as exc:
+            log.warning("access token refused by the signer: %s", exc)
+            return _oauth_error(401, "invalid_client", "the signed request was refused")
+        except SignerUnavailable as exc:
+            log.error("access token not signed: %s", exc)
+            return _oauth_error(
+                503,
+                "temporarily_unavailable",
+                "signing in is unavailable for a moment: sign a new request and try again in "
+                "a minute",
+                retry_after=60,
+            )
         audit.record_audit_event(
             session,
             action="oauth.token_issued",

@@ -53,14 +53,14 @@ from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
-from dmd_gateway.oauth.keys import load_private_key
+from dmd_gateway.oauth.keys import load_private_key, load_public_key
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
 from dmd_gateway.services.policy_pages import load_policy_pages
 from dmd_gateway.services.quotes import DID_REGISTRATION, QuoteContext
 from dmd_gateway.services.registrations import IssuanceContext
 from dmd_gateway.settings import Settings, get_settings, runtime_environ
-from dmd_gateway.signer.client import RemoteIssuer
+from dmd_gateway.signer.client import RemoteIssuer, RemoteTokenSigner
 
 log = logging.getLogger("dmd_gateway")
 
@@ -94,13 +94,20 @@ def create_app(
             public_key_multibase=settings.issuer_public_key,
         )
 
-    # OAuth phase 1 (api/oauth.py): what signs access tokens. Production: later, the signer
-    # service; until then, no OAuth there.
-    token_signer = (
-        oauth.LocalTokenSigner(load_private_key(settings.oauth_key_path))
-        if settings.auth_host and settings.oauth_key_path is not None
-        else None
-    )
+    # OAuth phase 1 (api/oauth.py): what signs access tokens, while auth_host is set. A key of
+    # this process (development, staging), or the signer service (production).
+    token_signer: oauth.LocalTokenSigner | RemoteTokenSigner | None = None
+    if settings.auth_host and settings.oauth_key_path is not None:
+        token_signer = oauth.LocalTokenSigner(load_private_key(settings.oauth_key_path))
+    elif (
+        settings.auth_host
+        and settings.oauth_public_key_path is not None
+        and settings.issuer_signer_socket is not None
+    ):
+        token_signer = RemoteTokenSigner(
+            socket_path=settings.issuer_signer_socket,
+            public_key=load_public_key(settings.oauth_public_key_path),
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:

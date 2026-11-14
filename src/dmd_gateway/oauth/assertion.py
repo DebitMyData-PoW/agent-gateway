@@ -22,7 +22,10 @@ from typing import Any
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
 
 ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
@@ -115,3 +118,25 @@ def verify_assertion(
     if not isinstance(jti, str) or not 1 <= len(jti) <= MAX_JTI_LENGTH:
         raise AssertionRejected(f"jti must be a string of 1 to {MAX_JTI_LENGTH} characters")
     return Assertion(did=did, jti=jti, expires_at=datetime.fromtimestamp(expires, UTC))
+
+
+def database_lookup(session: Session) -> KeyLookup:
+    """The controller key of an active DID-LLM owned by an Ed25519 key, from the gateway's
+    database (the API and the signer service both check with it)."""
+
+    def lookup(did: str) -> str | AssertionRejected:
+        identity = session.scalar(
+            select(AgentIdentity).where(AgentIdentity.public_identifier == did)
+        )
+        if identity is None:
+            return AssertionRejected("unknown DID-LLM")
+        if identity.status != "active":
+            return AssertionRejected(f"this DID-LLM is {identity.status}")
+        if not identity.controller_public_key:
+            return AssertionRejected(
+                "this DID-LLM is controlled by a wallet: wallets sign in through the browser, "
+                "which is not open yet"
+            )
+        return identity.controller_public_key
+
+    return lookup
