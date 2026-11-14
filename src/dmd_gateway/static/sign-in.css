@@ -1,0 +1,15 @@
+/* The sign-in page at the auth host (api/oauth_browser.py): one card, no site navigation. */
+body.sign-in{margin:0;min-height:100vh;background:var(--page-bg)}
+.sign-in-top{display:flex;align-items:center;justify-content:space-between;max-width:620px;margin:0 auto;padding:16px}
+.sign-in-top .brand{display:flex;align-items:center;gap:10px;font-size:1.15rem}
+.sign-in-top .logo-light,.sign-in-top .logo-dark{height:40px;width:auto}
+body.sign-in main{max-width:620px;margin:0 auto;padding:0 16px 8px}
+body.sign-in .card{padding:22px 22px 24px}
+body.sign-in h1{font-size:1.6rem;line-height:1.15;margin:0 0 12px}
+body.sign-in .app{font-size:1.05rem;margin:0 0 8px}
+body.sign-in .allows{color:var(--text-2);margin:0 0 18px}
+body.sign-in label[for=did]{display:block;font-weight:600}
+body.sign-in .who{background:var(--card-2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:0 0 14px;overflow-wrap:anywhere}
+body.sign-in .who b{display:block}
+body.sign-in .fine{max-width:620px;margin:14px auto 28px;padding:0 16px;text-align:center;font-size:.9rem;color:var(--muted)}
+.visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}

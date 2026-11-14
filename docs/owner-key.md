@@ -102,7 +102,16 @@ DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py toke
   DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:...
   ```
 
-- A DID-LLM controlled by a wallet signs in through the browser instead, which comes later.
+- Signing in to an **app** (ChatGPT, Claude...) happens on DebitMyData's sign-in page: for
+  a DID-LLM owned by a key, the page shows a command with its own address, to run as is:
+
+  ```bash
+  python3 did-owner-key.py sign-in ~/did-keys https://staging-auth.debitmydata.io/authorize/dmd_signin_...
+  ```
+
+  The tool shows which app asks and what for, asks you to confirm, signs and sends the
+  signature; then click Continue on the page. A DID-LLM owned by a wallet signs on the page
+  itself, with the wallet.
 
 ## Staging (the test server)
 

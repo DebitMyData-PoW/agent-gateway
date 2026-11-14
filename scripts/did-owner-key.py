@@ -24,6 +24,11 @@
         Signs in as above, then asks the Agentic Superhighway who it is signed in as: checks
         the whole sign-in from start to end. The token is never printed.
 
+    python3 did-owner-key.py sign-in  KEYS  https://auth.debitmydata.io/authorize/dmd_signin_...
+        Signs you in to an app (ChatGPT, Claude...) with the DID-LLM, from DebitMyData's sign-in
+        page (the address it shows): shows which app asks and what for, asks you to confirm,
+        signs with the owner key and sends the signature. Then click Continue on the page.
+
 KEYS is a key file, or a folder of key files (such as ~/did-keys): the tool then uses the one
 that owns the DID-LLM, and says so.
 
@@ -58,6 +63,12 @@ LISTING = "DebitMyData directory listing"
 GATEWAY = re.compile(r"^(https://[^/\s]+|http://(localhost|127\.0\.0\.1)(:\d+)?)$")
 AGENT_DID = re.compile(r"^did:web:([A-Za-z0-9.%-]+):agents:([A-Za-z0-9_-]+)$")
 ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
+
+SIGN_IN_PAGE = re.compile(
+    r"^((?:https://[^/\s]+)|(?:http://(?:localhost|127\.0\.0\.1)(?::\d+)?))"
+    r"/authorize/(dmd_signin_[0-9A-HJKMNP-TV-Z]{26})$"
+)
 
 
 def default_auth_server(api: str) -> str:
@@ -129,6 +140,32 @@ def fetch(url: str, form: dict | None = None) -> tuple[int, dict]:
             return error.code, json.load(error)
         except ValueError:
             return error.code, {"error": str(error.code), "error_description": error.reason}
+    except urllib.error.URLError as error:
+        sys.exit(f"Could not reach {url}: {error.reason}")
+
+
+def fetch_json(url: str, body: dict | None = None) -> tuple[int, dict]:
+    """GET ``url``, or POST ``body`` to it as JSON; the answer's status and JSON."""
+    if not GATEWAY.match(re.sub(r"^(https?://[^/]+).*$", r"\1", url)):
+        sys.exit(f"The sign-in server must be an https:// address, not {url!r}")
+    request = urllib.request.Request(  # noqa: S310 (https only, checked above)
+        url,
+        data=json.dumps(body).encode() if body is not None else None,
+        method="POST" if body is not None else "GET",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "dmd-did-owner-key",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 (https only)
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as error:
+        try:
+            return error.code, json.load(error)
+        except ValueError:
+            return error.code, {"error": {"code": str(error.code), "message": error.reason}}
     except urllib.error.URLError as error:
         sys.exit(f"Could not reach {url}: {error.reason}")
 
@@ -419,6 +456,49 @@ def whoami(path: str, did: str) -> None:
     print(f"  scope: {content.get('scope')}, token valid until {content.get('token_expires_at')}")
 
 
+def approve(path: str, page: str, confirm=input) -> None:
+    """Sign in to an app with the DID-LLM, from DebitMyData's sign-in page."""
+    page = page.strip().rstrip("/")
+    found = SIGN_IN_PAGE.match(page)
+    if not found:
+        sys.exit(
+            "Give the sign-in page's address, as the page shows it: "
+            "https://auth.debitmydata.io/authorize/dmd_signin_..."
+        )
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    server = found.group(1)
+    status, request = fetch_json(f"{page}/request")
+    if status != 200:
+        sys.exit(f"No such sign-in (HTTP {status}): {problem(request)}")
+    if request.get("status") != "open":
+        sys.exit(f"This sign-in is {request.get('status')}: start again from the app.")
+    controller = request.get("controller") or {}
+    message = request.get("message")
+    if not message or not controller:
+        sys.exit("Enter your DID-LLM on the page first (and Continue), then run this again.")
+    if controller.get("type") != "key":
+        sys.exit("This sign-in is for the DID-LLM's wallet: sign on the page, with the wallet.")
+    key = owner_key(path, str(controller.get("value")), "DID-LLM")
+    did = str(request.get("did") or "")
+    lines = message.split("\n")
+    if (
+        lines[0] != "DebitMyData sign-in"
+        or f"DID-LLM: {did}" not in lines
+        or f"Sign-in server: {server}" not in lines
+    ):
+        sys.exit(f"This is not a DebitMyData sign-in at {server}: nothing was signed.")
+    print("You are about to sign in:")
+    print("  " + "\n  ".join(lines[1:4]))
+    if confirm("Sign in? Type yes: ").strip().lower() not in ("y", "yes"):
+        sys.exit("Not signed.")
+    signature = b64url(key.sign(message.encode("utf-8")))
+    status, answer = fetch_json(f"{page}/signature", {"signature": signature})
+    if status != 200:
+        sys.exit(f"The signature was refused (HTTP {status}): {problem(answer)}")
+    print("Signed in. Back on the page, click Continue.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "new":
         new(sys.argv[2])
@@ -430,5 +510,7 @@ if __name__ == "__main__":
         token(sys.argv[2], sys.argv[3], show=sys.argv[4:] == ["--show"])
     elif len(sys.argv) == 4 and sys.argv[1] == "whoami":
         whoami(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) == 4 and sys.argv[1] == "sign-in":
+        approve(sys.argv[2], sys.argv[3])
     else:
         sys.exit(__doc__)

@@ -1,11 +1,14 @@
-"""The authorization server, at auth.debitmydata.io (the ``auth_host`` setting): OAuth 2.1
-phase 1, where AI agents get access tokens by signing with their DID-LLM's own key.
+"""The authorization server, at auth.debitmydata.io (the ``auth_host`` setting): OAuth 2.1.
+Phase 1: AI agents get access tokens by signing with their DID-LLM's own key. Phase 2: people
+sign in to apps (MCP clients) with their DID-LLM in the browser (api/oauth_browser.py).
 
     GET  /.well-known/oauth-authorization-server   what this server offers (RFC 8414)
     GET  /.well-known/jwks.json                    the key that signs the access tokens
     POST /token                                    an access token: the client-credentials
                                                    grant, authenticated with a JWT signed by
-                                                   the DID-LLM's key (oauth/assertion.py)
+                                                   the DID-LLM's key (oauth/assertion.py);
+                                                   and for apps (phase 2) the authorization
+                                                   code (PKCE) and refresh token grants
 
 They answer at the auth host only, and only while a token-signing key is set. Every other
 address at the auth host answers 404 (``AuthHostOnly``), so the authorization server shows
@@ -44,6 +47,7 @@ from dmd_gateway.oauth.assertion import (
     database_lookup,
     verify_assertion,
 )
+from dmd_gateway.oauth.clients import Client, ClientRejected, verify_client_assertion
 from dmd_gateway.oauth.keys import jwk_set
 from dmd_gateway.oauth.tokens import (
     DEFAULT_SCOPES,
@@ -52,6 +56,7 @@ from dmd_gateway.oauth.tokens import (
     IssuedToken,
     issue_token,
 )
+from dmd_gateway.services import oauth_sign_in as browser
 from dmd_gateway.settings import Settings
 from dmd_gateway.signer.client import SignerRefused, SignerUnavailable
 
@@ -60,7 +65,12 @@ router = APIRouter(include_in_schema=False)
 
 METADATA_PATH = "/.well-known/oauth-authorization-server"
 JWKS_PATH = "/.well-known/jwks.json"
-AUTH_PATHS = frozenset({METADATA_PATH, JWKS_PATH, TOKEN_PATH})
+AUTHORIZE_PATH = "/authorize"
+REVOKE_PATH = "/revoke"
+AUTH_PATHS = frozenset({METADATA_PATH, JWKS_PATH, TOKEN_PATH, AUTHORIZE_PATH, REVOKE_PATH})
+# What the sign-in page needs at the auth host besides its own addresses.
+AUTH_ASSETS = frozenset({"/favicon.ico", "/favicon.png", "/logo.png", "/logo-dark.png"})
+AUTH_PREFIXES = (AUTHORIZE_PATH + "/", "/fonts/")
 NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 PUBLIC = {
     "Cache-Control": "public, max-age=300",
@@ -100,9 +110,9 @@ def resources(settings: Settings) -> list[str]:
     return list(dict.fromkeys(addresses))
 
 
-def metadata(settings: Settings) -> dict[str, Any]:
+def metadata(settings: Settings, *, browser: bool = False) -> dict[str, Any]:
     iss = issuer(settings)
-    return {
+    document: dict[str, Any] = {
         "issuer": iss,
         "token_endpoint": f"{iss}{TOKEN_PATH}",
         "jwks_uri": f"{iss}{JWKS_PATH}",
@@ -110,15 +120,49 @@ def metadata(settings: Settings) -> dict[str, Any]:
         "token_endpoint_auth_methods_supported": ["private_key_jwt"],
         "token_endpoint_auth_signing_alg_values_supported": ["EdDSA"],
         "scopes_supported": list(SCOPES),
-        # Phase 1 has no browser sign-in (authorization endpoint) yet: phase 2.
         "response_types_supported": [],
         "service_documentation": f"{settings.public_base_url.rstrip('/')}{brand.LLMS_PATH}",
     }
+    if browser:
+        # Phase 2: people sign in to apps with their DID-LLM (authorization code, PKCE), the
+        # apps known by their Client ID Metadata Document (no registration step).
+        document.update(
+            {
+                "authorization_endpoint": f"{iss}{AUTHORIZE_PATH}",
+                "revocation_endpoint": f"{iss}{REVOKE_PATH}",
+                "grant_types_supported": [
+                    "client_credentials",
+                    "authorization_code",
+                    "refresh_token",
+                ],
+                "response_types_supported": ["code"],
+                "response_modes_supported": ["query"],
+                "code_challenge_methods_supported": ["S256"],
+                "token_endpoint_auth_methods_supported": ["private_key_jwt", "none"],
+                "token_endpoint_auth_signing_alg_values_supported": [
+                    "EdDSA",
+                    "RS256",
+                    "PS256",
+                    "ES256",
+                ],
+                "revocation_endpoint_auth_methods_supported": ["none"],
+                "client_id_metadata_document_supported": True,
+                "authorization_response_iss_parameter_supported": True,
+            }
+        )
+    return document
 
 
 def sign_in_open(state: Any) -> bool:
     """Whether agents can sign in: the auth host is set and a key signs access tokens."""
     return bool(state.settings.auth_host) and state.token_signer is not None
+
+
+def browser_sign_in_open(state: Any) -> bool:
+    """People can sign in to apps in the browser (phase 2): where this process signs the
+    tokens. With the signer service (production), not yet: the signer has to check browser
+    sign-ins itself first."""
+    return sign_in_open(state) and isinstance(state.token_signer, LocalTokenSigner)
 
 
 def _on_auth_host(request: Request) -> bool:
@@ -157,7 +201,9 @@ class AuthHostOnly:
         if self.auth_host and scope["type"] == "http":
             headers = dict(scope.get("headers") or [])
             host = headers.get(b"host", b"").decode("latin-1").strip().lower()
-            if host == self.auth_host and scope["path"] not in AUTH_PATHS:
+            path = scope["path"]
+            allowed = path in AUTH_PATHS or path in AUTH_ASSETS or path.startswith(AUTH_PREFIXES)
+            if host == self.auth_host and not allowed:
                 await _not_found()(scope, receive, send)
                 return
         await self.app(scope, receive, send)
@@ -167,7 +213,10 @@ class AuthHostOnly:
 def authorization_server_metadata(request: Request) -> Response:
     if not _enabled(request):
         return _not_found()
-    return JSONResponse(metadata(request.app.state.settings), headers=PUBLIC)
+    state = request.app.state
+    return JSONResponse(
+        metadata(state.settings, browser=browser_sign_in_open(state)), headers=PUBLIC
+    )
 
 
 @router.get(JWKS_PATH)
@@ -177,9 +226,11 @@ def jwks(request: Request) -> Response:
     return JSONResponse(jwk_set(*request.app.state.token_signer.public_keys), headers=PUBLIC)
 
 
-async def _read_form(request: Request) -> dict[str, str] | str:
+async def read_form(request: Request) -> dict[str, str] | str:
     """The token request's fields, or what is wrong with it. Each field may be sent once
     (RFC 6749 section 3.2), and the whole form is small: a signed request is under 1 KB."""
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != FORM:
+        return f"send the form as {FORM}"
     body = bytearray()
     async for chunk in request.stream():
         body += chunk
@@ -204,15 +255,14 @@ async def token(request: Request) -> Response:
     if not _enabled(request):
         return _not_found()
     settings: Settings = request.app.state.settings
-    if request.headers.get("content-type", "").split(";")[0].strip().lower() != FORM:
-        return _oauth_error(400, "invalid_request", f"send the form as {FORM}")
-    fields = await _read_form(request)
+    fields = await read_form(request)
     if isinstance(fields, str):
         return _oauth_error(400, "invalid_request", fields)
-    if fields.get("grant_type") != "client_credentials":
-        return _oauth_error(
-            400, "unsupported_grant_type", "this server issues tokens for client_credentials only"
-        )
+    grant = fields.get("grant_type")
+    if grant in ("authorization_code", "refresh_token") and browser_sign_in_open(request.app.state):
+        return await _app_grant(request.app.state, grant, fields)
+    if grant != "client_credentials":
+        return _oauth_error(400, "unsupported_grant_type", "unsupported grant_type")
     assertion = fields.get("client_assertion", "")
     if fields.get("client_assertion_type") != ASSERTION_TYPE or not assertion:
         return _oauth_error(
@@ -311,6 +361,137 @@ def _issue(
             "token_type": "Bearer",
             "expires_in": issued.expires_in,
             "scope": issued.scope,
+        },
+        headers=NO_STORE,
+    )
+
+
+# --------------------------------------------------------------------------- apps (phase 2)
+
+
+async def _app_grant(state: Any, grant: str, fields: dict[str, str]) -> Response:
+    """The authorization code and refresh token grants, for an app a person signed in to."""
+    client_id = fields.get("client_id", "")
+    if not client_id:
+        return _oauth_error(400, "invalid_request", "send client_id")
+    try:
+        client: Client = await anyio.to_thread.run_sync(state.oauth_clients.get, client_id)
+        assertion = fields.get("client_assertion")
+        keys = None
+        if assertion:
+            if fields.get("client_assertion_type") != ASSERTION_TYPE:
+                return _oauth_error(400, "invalid_request", "unsupported client_assertion_type")
+            if "private_key_jwt" not in client.auth_methods:
+                return _oauth_error(401, "invalid_client", "this app does not sign its requests")
+            keys = await anyio.to_thread.run_sync(state.oauth_clients.keys, client)
+        elif "none" not in client.auth_methods:
+            return _oauth_error(401, "invalid_client", "this app must sign its token requests")
+    except ClientRejected as exc:
+        return _oauth_error(401, "invalid_client", exc.reason)
+    return await anyio.to_thread.run_sync(_app_tokens, state, grant, fields, client, keys)
+
+
+def _app_tokens(
+    state: Any,
+    grant: str,
+    fields: dict[str, str],
+    client: Client,
+    keys: dict[str, Any] | None,
+) -> Response:
+    settings: Settings = state.settings
+    now = datetime.now(UTC)
+    iss = issuer(settings)
+    with transaction(state.session_factory) as session:
+        if keys is not None:
+            try:
+                checked = verify_client_assertion(
+                    fields["client_assertion"],
+                    client,
+                    keys,
+                    audience=[f"{iss}{TOKEN_PATH}", iss],
+                    now=now,
+                )
+            except ClientRejected as exc:
+                return _oauth_error(401, "invalid_client", exc.reason)
+            try:
+                with session.begin_nested():
+                    session.add(
+                        OAuthAssertion(
+                            did=client.client_id, jti=checked.jti, expires_at=checked.expires_at
+                        )
+                    )
+            except IntegrityError:
+                return _oauth_error(401, "invalid_client", "this client_assertion was already used")
+        try:
+            if grant == "authorization_code":
+                code = browser.exchange(
+                    session,
+                    code=fields.get("code", ""),
+                    client_id=client.client_id,
+                    redirect_uri=fields.get("redirect_uri", ""),
+                    code_verifier=fields.get("code_verifier", ""),
+                    resource=fields.get("resource"),
+                    now=now,
+                )
+                assert code.family_id is not None
+                family, identity_id, did = code.family_id, code.identity_id, code.did
+                scope, resource = code.scope, code.resource
+            else:
+                used, scope = browser.use_refresh_token(
+                    session,
+                    token=fields.get("refresh_token", ""),
+                    client_id=client.client_id,
+                    scope=fields.get("scope"),
+                    resource=fields.get("resource"),
+                    now=now,
+                )
+                family, identity_id, did = used.family_id, used.identity_id, used.did
+                resource = used.resource
+        except browser.TokenError as exc:
+            # Returning commits what a refused request changed (a revoked family).
+            return _oauth_error(exc.status, exc.error, exc.description)
+        issued: IssuedToken = state.token_signer.issue(
+            "",
+            issuer=iss,
+            did=did,
+            audience=resource,
+            scopes=tuple(scope.split()),
+            ttl_seconds=settings.oauth_token_ttl_seconds,
+            now=now,
+            client_id=client.client_id,
+        )
+        refresh = browser.new_refresh_token(
+            session,
+            family_id=family,
+            client_id=client.client_id,
+            identity_id=identity_id,
+            did=did,
+            scope=scope,
+            resource=resource,
+            now=now,
+        )
+        audit.record_audit_event(
+            session,
+            action="oauth.token_issued",
+            subject_type="identity",
+            subject_id=identity_id,
+            actor_type="agent",
+            actor_id=did,
+            data={
+                "grant": grant,
+                "client_id": client.client_id,
+                "scope": issued.scope,
+                "resource": resource,
+                "token_id": issued.jti,
+            },
+        )
+    return JSONResponse(
+        {
+            "access_token": issued.access_token,
+            "token_type": "Bearer",
+            "expires_in": issued.expires_in,
+            "scope": issued.scope,
+            "refresh_token": refresh,
         },
         headers=NO_STORE,
     )

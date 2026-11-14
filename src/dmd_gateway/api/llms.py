@@ -15,7 +15,13 @@ from dmd_gateway import __version__
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import mcp_url, page_url
 from dmd_gateway.api.mcp_auth import main_resource, metadata_url
-from dmd_gateway.api.oauth import TOKEN_PATH, issuer, sign_in_open
+from dmd_gateway.api.oauth import (
+    AUTHORIZE_PATH,
+    TOKEN_PATH,
+    browser_sign_in_open,
+    issuer,
+    sign_in_open,
+)
 from dmd_gateway.api.server_card import card_url
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
@@ -87,6 +93,20 @@ sign in to the MCP server with it: no password, the key is the login.
 
 The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP server's:
 `{metadata_url(resource)}`.
+{_apps(state, auth)}"""
+
+
+def _apps(state: object, auth: str) -> str:
+    """Apps signing their people in, in the browser (OAuth phase 2), where it is open."""
+    if not browser_sign_in_open(state):
+        return ""
+    return f"""
+Apps (MCP clients such as ChatGPT or Claude) sign their people in with the standard OAuth
+authorization code flow with PKCE (S256): `{auth}{AUTHORIZE_PATH}`, with your Client ID
+Metadata Document's https URL as `client_id` (no registration step), and the `resource` above.
+The person signs one message with their DID-LLM's wallet or key; you get a code, then tokens
+(with a refresh token) at `{auth}{TOKEN_PATH}`. A tool that needs a signed-in person answers
+with `_meta["mcp/www_authenticate"]`.
 """
 
 

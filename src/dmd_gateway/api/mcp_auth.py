@@ -98,6 +98,8 @@ for _path in (brand.MCP_PATH, *brand.MCP_OLD_PATHS):
     router.add_api_route(
         f"{METADATA_PREFIX}{_path}", _metadata_route(_path), methods=["GET", "HEAD"]
     )
+# The root form, which some clients try when they find no other: the main MCP address.
+router.add_api_route(METADATA_PREFIX, _metadata_route(brand.MCP_PATH), methods=["GET", "HEAD"])
 
 
 # --------------------------------------------------------------------------- tokens
@@ -162,11 +164,11 @@ def _authorization(scope: Scope) -> str | None:
     return None
 
 
-async def _refuse(send: Send, resource: str, description: str) -> None:
+async def _refuse(send: Send, resource: str, description: str, scope: str = "") -> None:
     body = json.dumps({"error": "invalid_token", "error_description": description}).encode()
     challenge = (
         f'Bearer error="invalid_token", error_description="{description}", '
-        f'resource_metadata="{metadata_url(resource)}"'
+        f'resource_metadata="{metadata_url(resource)}"' + (f', scope="{scope}"' if scope else "")
     )
     await send(
         {
@@ -183,23 +185,81 @@ async def _refuse(send: Send, resource: str, description: str) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
+# Tools that need a signed-in DID-LLM. Called without a token, they are answered with HTTP
+# 401 and a WWW-Authenticate challenge before the MCP server runs: what makes MCP clients such
+# as Claude offer the sign-in ("lazy authentication"); a tool result cannot do it.
+PROTECTED_TOOLS = frozenset({"dmd_whoami"})
+MAX_PEEK_BYTES = 1024 * 1024
+
+
+def _calls_protected_tool(body: bytes) -> str | None:
+    """The scope a JSON-RPC request needs, if it calls a protected tool."""
+    try:
+        parsed = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    for message in parsed if isinstance(parsed, list) else [parsed]:
+        if (
+            isinstance(message, dict)
+            and message.get("method") == "tools/call"
+            and isinstance(message.get("params"), dict)
+            and message["params"].get("name") in PROTECTED_TOOLS
+        ):
+            return "did:read"
+    return None
+
+
+async def _peek(receive: Receive) -> tuple[bytes, Receive]:
+    """The request's body (up to MAX_PEEK_BYTES), and a ``receive`` that gives it again."""
+    chunks: list[bytes] = []
+    size, more = 0, True
+    while more and size <= MAX_PEEK_BYTES:
+        message = await receive()
+        if message["type"] != "http.request":
+            break
+        chunk = message.get("body", b"")
+        chunks.append(chunk)
+        size += len(chunk)
+        more = bool(message.get("more_body", False))
+    body = b"".join(chunks)
+    replayed = False
+
+    async def replay() -> Any:
+        nonlocal replayed
+        if not replayed:
+            replayed = True
+            return {"type": "http.request", "body": body, "more_body": more}
+        return await receive()
+
+    return body, replay
+
+
 class BearerTokens:
     """The MCP endpoint, for anyone; with the agent signed in when the request carries a valid
     access token (``Authorization: Bearer ...``), refused with 401 when it carries an invalid
-    one. While signing in is not open, tokens are ignored."""
+    one, or none for a tool that needs it. While signing in is not open, tokens are ignored."""
 
     def __init__(self, endpoint: ASGIApp, settings: Settings) -> None:
         self.endpoint = endpoint
         self.settings = settings
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        header = _authorization(scope) if scope["type"] == "http" else None
-        state = scope["app"].state if header is not None else None
-        if header is None or not sign_in_open(state):
+        if scope["type"] != "http" or not sign_in_open(scope["app"].state):
             await self.endpoint(scope, receive, send)
             return
+        state = scope["app"].state
+        header = _authorization(scope)
         resources = protected_resources(self.settings)
         resource = resources.get(scope["path"], main_resource(self.settings))
+        if header is None:
+            if scope.get("method") == "POST":
+                body, receive = await _peek(receive)
+                needed = _calls_protected_tool(body)
+                if needed:
+                    await _refuse(send, resource, "Sign in with your DID-LLM", scope=needed)
+                    return
+            await self.endpoint(scope, receive, send)
+            return
         kind, _, token = header.partition(" ")
         token = token.strip()
         if kind.lower() != "bearer" or not token:

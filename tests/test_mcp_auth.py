@@ -109,7 +109,8 @@ def test_protected_resource_metadata(gateway: TestClient) -> None:
     }
     old = gateway.get("/.well-known/oauth-protected-resource/mcp").json()
     assert old["resource"] == OLD_MCP
-    assert gateway.get("/.well-known/oauth-protected-resource").status_code == 404
+    # The root form, for clients that try it: the main MCP address.
+    assert gateway.get("/.well-known/oauth-protected-resource").json()["resource"] == MCP
     # The authorization server's host shows only the authorization server.
     assert gateway.get(METADATA, headers={"host": AUTH}).status_code == 404
 
@@ -146,11 +147,44 @@ def test_without_a_token_everything_works_as_before(gateway: TestClient) -> None
     discover = rpc(gateway, "tools/call", {"name": "dmd_discover", "arguments": {}})
     assert not discover.json()["result"].get("isError")
 
-    result = whoami(gateway).json()["result"]
-    assert result["isError"] is True
-    error = result["content"][0]["text"]
-    assert '"code": "sign_in_required"' in error
-    assert ISS in error and f"http://localhost:8000{METADATA}" in error
+    whoami_tool = next(t for t in listed.json()["result"]["tools"] if t["name"] == "dmd_whoami")
+    assert whoami_tool["_meta"]["securitySchemes"] == [{"type": "oauth2", "scopes": ["did:read"]}]
+
+    # A tool that needs a signed-in DID-LLM, called without a token: HTTP 401 with the
+    # challenge, before the MCP server runs (what makes MCP clients offer the sign-in).
+    for body in (
+        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "dmd_whoami"}},
+        [{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "dmd_whoami"}}],
+    ):
+        refused = gateway.post("/agenticsuperhighway", json=body, headers=HOST)
+        assert refused.status_code == 401, refused.text
+        challenge = refused.headers["www-authenticate"]
+        assert challenge.startswith('Bearer error="invalid_token"')
+        assert f'resource_metadata="http://localhost:8000{METADATA}"' in challenge
+        assert challenge.endswith('scope="did:read"')
+
+
+def test_a_token_without_the_scope_is_told_what_it_needs(
+    gateway: TestClient, key_path: Path
+) -> None:
+    did = issue(gateway)["did"]
+    narrow = issue_token(
+        keys.load_private_key(key_path),
+        issuer=ISS,
+        did=did,
+        audience=MCP,
+        scopes=("other:read",),
+        ttl_seconds=600,
+        now=datetime.now(UTC),
+    ).access_token
+    result = whoami(gateway, narrow).json()["result"]
+    assert (
+        result["isError"] is True and '"code": "insufficient_scope"' in result["content"][0]["text"]
+    )
+    # Apps such as ChatGPT offer their account linking from this (a WWW-Authenticate value).
+    (challenge,) = result["_meta"]["mcp/www_authenticate"]
+    assert challenge.startswith('Bearer error="insufficient_scope", scope="did:read"')
+    assert f'resource_metadata="http://localhost:8000{METADATA}"' in challenge
 
 
 def test_invalid_tokens_are_refused(gateway: TestClient, key_path: Path, engine: Engine) -> None:  # noqa: F811

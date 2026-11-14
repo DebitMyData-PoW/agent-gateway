@@ -33,6 +33,7 @@ from dmd_gateway.api import (
     llms,
     mcp_auth,
     oauth,
+    oauth_browser,
     payments,
     policies,
     prices,
@@ -53,6 +54,7 @@ from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_mcp
+from dmd_gateway.oauth.clients import ClientDirectory
 from dmd_gateway.oauth.keys import load_private_key, load_public_key
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
 from dmd_gateway.runtime import PriceSourceFactory, build_runtime
@@ -162,6 +164,8 @@ def create_app(
         challenge_minutes=settings.controller_challenge_ttl_seconds // 60,
     )
     app.state.wallet_verifier = WalletVerifier.from_registry(registry, env)
+    # The apps people sign in to, by their Client ID Metadata Document (oauth/clients.py).
+    app.state.oauth_clients = ClientDirectory()
     app.state.issuance = IssuanceContext(
         registry=registry, issuer=issuer_key, public_base_url=settings.public_base_url
     )
@@ -188,6 +192,7 @@ def create_app(
     app.include_router(llms.router)  # /llms.txt: how an agent registers by itself
     app.include_router(oauth.router)  # the authorization server, at auth_host only
     app.include_router(mcp_auth.router)  # the MCP server as an OAuth protected resource
+    app.include_router(oauth_browser.router)  # people sign in to apps (OAuth phase 2)
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     if settings.staging_test_tools:
         app.include_router(staging.router)

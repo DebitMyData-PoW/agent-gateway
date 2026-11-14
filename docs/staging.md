@@ -528,6 +528,50 @@ To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. In pro
 signer service signs the tokens, so the API server never holds the key (the gateway refuses a
 token key file there): [production.md, step 14](production.md#14-oauth-sign-in-authdebitmydataio).
 
+## 10. OAuth, phase 2: people sign in to apps
+
+With the sign-in server of section 9 open, people can also sign in to **apps** (MCP clients
+such as ChatGPT or Claude, or an agent's own app) with their DID-LLM, in the browser: the
+standard OAuth authorization code flow with PKCE that MCP clients use. Nothing to set up:
+it opens with section 9, here where the gateway signs the tokens itself (staging). Production
+keeps it closed until the signer service checks browser sign-ins too (the signer would
+otherwise sign tokens for sign-ins it did not see).
+
+How it goes:
+
+1. The app sends the person to `https://staging-auth.debitmydata.io/authorize`. The app is
+   known by its **Client ID Metadata Document**: its `client_id` is an https address of a
+   small JSON file naming the app and its return addresses, which the gateway fetches (https
+   only, public addresses only, no redirects, small and quick) and keeps a while. No
+   registration step, and the page always shows which site asks (`ChatGPT (chatgpt.com)`).
+   An unknown app, or a return address the app does not list, is stopped on the page.
+2. The page asks for the DID-LLM, then shows one message to sign, with the DID-LLM's
+   **wallet** (a **Sign with …** button for browser wallets, or a pasted signature) or its
+   **key** (the owner-key tool's `sign-in` command, which shows the message and asks first).
+   Five wrong signatures end the sign-in. The page never asks for a private key.
+3. The person goes back to the app with a code, valid one minute, usable once; the app trades
+   it for an access token (10 minutes) and a **refresh token** (30 days). Each refresh token
+   is used once; a copied one used again ends the whole sign-in. Suspending the DID-LLM
+   ends it too. The app can end it itself (`/revoke`).
+4. With the token, the app's MCP requests are the person's: `dmd_whoami` answers who. Called
+   without one, `dmd_whoami` is answered with HTTP 401 and a `WWW-Authenticate` challenge
+   (`scope="did:read"`) before the MCP server runs: what makes apps such as Claude show their
+   **Connect** button ("lazy authentication"); every other tool stays open to all. The tool
+   also says so in its description (`securitySchemes`, which ChatGPT reads).
+
+The apps' return addresses: `https://chatgpt.com/connector_platform_oauth_redirect` (ChatGPT),
+`https://claude.ai/api/mcp/auth_callback` (Claude), and for apps on the person's computer
+(Claude Code) a loopback address whose port changes each time, matched on any port (RFC 8252).
+The page names where the person goes back to, with a warning for an app on their computer.
+
+**Try it** in an MCP client that supports OAuth sign-in (ChatGPT's developer mode, Claude's
+custom connectors, the MCP Inspector): add the MCP server
+`https://staging-api.debitmydata.io/agenticsuperhighway`, ask it to run `dmd_whoami`, sign in
+on the page it opens with a staging DID-LLM of your own (wallet or key), and run `dmd_whoami`
+again: it answers with your DID-LLM. If the app says it cannot reach the server or sign in,
+look at Cloudflare's Security Events for `staging-api` and `staging-auth`: the apps' own
+servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do.
+
 ## How staging differs from production
 
 | | Staging | Production (to come) |

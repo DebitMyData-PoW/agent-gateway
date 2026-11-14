@@ -61,14 +61,17 @@ def issue_token(
     scopes: tuple[str, ...],
     ttl_seconds: int,
     now: datetime,
+    client_id: str | None = None,
 ) -> IssuedToken:
+    """An access token for ``did``. ``client_id``: the app the DID-LLM's owner signed in to
+    (browser sign-in); an agent signing in with its own key is its own client."""
     issued = int(now.timestamp())
     jti = secrets.token_urlsafe(18)
     scope = " ".join(scopes)
     claims = {
         "iss": issuer,
         "sub": did,
-        "client_id": did,
+        "client_id": client_id or did,
         "aud": audience,
         "scope": scope,
         "iat": issued,

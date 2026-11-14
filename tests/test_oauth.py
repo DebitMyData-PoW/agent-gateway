@@ -285,9 +285,18 @@ def test_metadata_and_keys(auth: TestClient, key_path: Path) -> None:
     assert meta["issuer"] == ISS
     assert meta["token_endpoint"] == TOKEN_URL
     assert meta["jwks_uri"] == f"{ISS}/.well-known/jwks.json"
-    assert meta["grant_types_supported"] == ["client_credentials"]
-    assert meta["token_endpoint_auth_methods_supported"] == ["private_key_jwt"]
-    assert meta["token_endpoint_auth_signing_alg_values_supported"] == ["EdDSA"]
+    # Where this process signs the tokens (staging), people sign in to apps too (phase 2).
+    assert meta["grant_types_supported"] == [
+        "client_credentials",
+        "authorization_code",
+        "refresh_token",
+    ]
+    assert meta["token_endpoint_auth_methods_supported"] == ["private_key_jwt", "none"]
+    assert "EdDSA" in meta["token_endpoint_auth_signing_alg_values_supported"]
+    assert meta["authorization_endpoint"] == f"{ISS}/authorize"
+    assert meta["code_challenge_methods_supported"] == ["S256"]
+    assert meta["client_id_metadata_document_supported"] is True
+    assert meta["authorization_response_iss_parameter_supported"] is True
     assert meta["scopes_supported"] == ["did:read"]
     jwks = at_auth(auth, "GET", "/.well-known/jwks.json").json()
     public = keys.load_private_key(key_path).public_key()
@@ -380,9 +389,15 @@ def test_token_refusals(auth: TestClient) -> None:
         "invalid_target",
     )
     refused(
-        token_request(auth, live(did), grant_type="authorization_code"),
+        token_request(auth, live(did), grant_type="password"),
         400,
         "unsupported_grant_type",
+    )
+    refused(
+        token_request(auth, live(did), grant_type="authorization_code"),
+        400,
+        "invalid_request",
+        "client_id",
     )
     refused(
         token_request(auth, live(did), client_assertion_type="jwt"),

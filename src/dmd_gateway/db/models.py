@@ -655,6 +655,82 @@ class OAuthAssertion(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+SIGN_IN_STATUSES = ("open", "approved", "finished", "denied")
+
+
+class OAuthSignIn(Base):
+    """A person signing in to an app (an MCP client such as ChatGPT or Claude) with their
+    DID-LLM, in the browser (OAuth phase 2, api/oauth_browser.py): the app's authorization
+    request, then the message the DID-LLM's owner signs, until it is answered."""
+
+    __tablename__ = "oauth_sign_ins"
+    __table_args__ = (CheckConstraint(one_of("status", SIGN_IN_STATUSES), name="status"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    client_id: Mapped[str] = mapped_column(Text, nullable=False)
+    client_name: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str | None] = mapped_column(Text)
+    code_challenge: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    resource: Mapped[str] = mapped_column(Text, nullable=False)
+    # Set once the person names their DID-LLM: the message to sign, for its controller.
+    identity_id: Mapped[str | None] = mapped_column(ForeignKey("identities.id"), index=True)
+    controller_type: Mapped[str | None] = mapped_column(Text)
+    controller_value: Mapped[str | None] = mapped_column(Text)
+    nonce: Mapped[str | None] = mapped_column(Text, unique=True)
+    message: Mapped[str | None] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
+    approved_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    created_at: Mapped[datetime] = created_at()
+
+
+class OAuthCode(Base):
+    """An authorization code (kept as its SHA-256), used once within a minute, with PKCE."""
+
+    __tablename__ = "oauth_codes"
+
+    code_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    sign_in_id: Mapped[str] = mapped_column(
+        ForeignKey("oauth_sign_ins.id"), nullable=False, unique=True
+    )
+    client_id: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    code_challenge: Mapped[str] = mapped_column(Text, nullable=False)
+    identity_id: Mapped[str] = mapped_column(ForeignKey("identities.id"), nullable=False)
+    did: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    resource: Mapped[str] = mapped_column(Text, nullable=False)
+    # The refresh tokens the code was exchanged for: all revoked if the code is replayed.
+    family_id: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    created_at: Mapped[datetime] = created_at()
+
+
+class OAuthRefreshToken(Base):
+    """A refresh token (kept as its SHA-256), used once: each use gives a new one in the same
+    family, and a replayed one revokes the whole family (RFC 9700)."""
+
+    __tablename__ = "oauth_refresh_tokens"
+
+    token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+    family_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    client_id: Mapped[str] = mapped_column(Text, nullable=False)
+    identity_id: Mapped[str] = mapped_column(
+        ForeignKey("identities.id"), nullable=False, index=True
+    )
+    did: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    resource: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False, index=True)
+    used_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    revoked_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    created_at: Mapped[datetime] = created_at()
+
+
 APPEND_ONLY_TABLES = (
     "audit_events",
     "payment_events",

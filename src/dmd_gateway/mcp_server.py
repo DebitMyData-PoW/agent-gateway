@@ -727,43 +727,50 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     if sign_in:
         settings: Settings = app.state.settings
 
-        @server.tool(title="Who am I (signed in)", annotations=READ_ONLY)
+        def needs_sign_in(code: str, message: str, challenge: str) -> CallToolResult:
+            """A tool error that also tells apps how to sign the person in: ChatGPT shows its
+            account linking from ``_meta["mcp/www_authenticate"]`` (a WWW-Authenticate value)."""
+            resource = mcp_auth.main_resource(settings)
+            body = {
+                "error": {
+                    "code": code,
+                    "message": message,
+                    "authorization_server": issuer(settings),
+                    "resource": resource,
+                    "resource_metadata": mcp_auth.metadata_url(resource),
+                }
+            }
+            header = f'Bearer {challenge}, resource_metadata="{mcp_auth.metadata_url(resource)}"'
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(body))],
+                is_error=True,
+                _meta={"mcp/www_authenticate": [header]},
+            )
+
+        # Apps such as ChatGPT read which tools need a sign-in from securitySchemes.
+        signed_in_only = {"securitySchemes": [{"type": "oauth2", "scopes": ["did:read"]}]}
+
+        @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=signed_in_only)
         async def dmd_whoami() -> dict[str, Any]:
             """The DID-LLM this request is signed in as, with its record and entitlements. Sign
-            in first: get an access token from DebitMyData's authorization server (OAuth client
-            credentials, authenticated with a JWT signed by your DID-LLM's key, see llms.txt)
-            and send it as "Authorization: Bearer <token>" with your MCP requests."""
+            in first. An agent: get an access token from DebitMyData's authorization server
+            (OAuth client credentials, with a JWT signed by your DID-LLM's key, see llms.txt) and
+            send it as "Authorization: Bearer <token>". An app such as ChatGPT or Claude: its
+            person signs in with their DID-LLM in the browser (OAuth authorization code)."""
             token = mcp_auth.signed_in()
             if token is None:
-                resource = mcp_auth.main_resource(settings)
-                raise ToolError(
-                    json.dumps(
-                        {
-                            "error": {
-                                "code": "sign_in_required",
-                                "message": (
-                                    "Not signed in. Get an access token for this MCP server "
-                                    "from the authorization server, signed with your "
-                                    "DID-LLM's key, and send it as Authorization: Bearer."
-                                ),
-                                "authorization_server": issuer(settings),
-                                "resource": resource,
-                                "resource_metadata": mcp_auth.metadata_url(resource),
-                            }
-                        }
-                    )
+                return needs_sign_in(  # type: ignore[return-value]
+                    "sign_in_required",
+                    "Not signed in. Sign in with your DID-LLM (OAuth): an agent with an access "
+                    "token signed by its own key, a person through their app's sign-in.",
+                    'error="invalid_token", error_description="Sign in with your DID-LLM"',
                 )
             if "did:read" not in token.scopes:
-                raise ToolError(
-                    json.dumps(
-                        {
-                            "error": {
-                                "code": "insufficient_scope",
-                                "message": "This needs an access token with the did:read scope.",
-                                "scope": "did:read",
-                            }
-                        }
-                    )
+                return needs_sign_in(  # type: ignore[return-value]
+                    "insufficient_scope",
+                    "This needs an access token with the did:read scope.",
+                    'error="insufficient_scope", scope="did:read", '
+                    'error_description="This needs the did:read scope"',
                 )
             identity_id = (token.claims or {})["identity_id"]
             return {
