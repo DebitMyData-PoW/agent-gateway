@@ -494,6 +494,12 @@ role, which may read the DID-LLMs for this), uses each one once, and signs token
 MCP server. So even a compromised API server cannot make a token for a DID-LLM that did not
 just sign in itself, nor for another service.
 
+Agents whose DID-LLM is owned by a **wallet** sign in with it instead (the runbook's
+wallet-signature path: a message from `https://auth.debitmydata.io/challenge`, signed with the
+wallet, for the same token; [staging.md, section 9](staging.md#9-oauth-phase-1-the-authorization-server)).
+The signer checks that message and the wallet's signature itself too, with no network: an
+ordinary wallet can sign in, a smart wallet not yet.
+
 People can also sign in to **apps** (MCP clients such as ChatGPT or Claude) with their
 DID-LLM, in the browser; how it works:
 [staging.md, section 10](staging.md#10-oauth-phase-2-people-sign-in-to-apps). Here too the

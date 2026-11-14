@@ -230,7 +230,7 @@ def test_invalid_tokens_are_refused(gateway: TestClient, key_path: Path, engine:
 def test_discovery_files_offer_oauth_once_sign_in_is_open(gateway: TestClient) -> None:
     for path in ("/.well-known/mcp", "/.well-known/mcp/server-card.json"):
         document = gateway.get(path).json()
-        assert document["endpoints"][0]["authentication"] == ["oauth2.1"], path
+        assert document["endpoints"][0]["authentication"] == ["oauth2.1", "wallet-signature"]
     card = gateway.get("/.well-known/mcp/server-card.json").json()
     assert "dmd_whoami" in {tool["name"] for tool in card["tools"]}
     llms = gateway.get("/llms.txt").text

@@ -205,17 +205,25 @@ class RemoteTokenSigner:
         now: datetime,
         client_id: str | None = None,
         grant: str | None = None,
+        wallet: tuple[str, str] | None = None,
     ) -> IssuedToken:
-        """An access token for an agent (``assertion``: its signed request) or for an app a
-        person signed in to (``grant`` and the app's ``client_id``). ``SignerRefused`` if the
-        signer's own checks fail, ``SignerUnavailable`` if it cannot be reached or returns a
-        token that does not hold up."""
+        """An access token for an agent (``assertion``: its signed request; or ``wallet``: the
+        message from /challenge and its wallet's signature) or for an app a person signed in to
+        (``grant`` and the app's ``client_id``). ``SignerRefused`` if the signer's own checks
+        fail, ``SignerUnavailable`` if it cannot be reached or returns a token that does not
+        hold up."""
         target = {"resource": audience, "scope": " ".join(scopes), "ttl_seconds": ttl_seconds}
-        request: dict[str, Any] = (
-            {"op": "token", "grant": grant, "client_id": client_id, **target}
-            if grant is not None
-            else {"op": "token", "assertion": assertion, **target}
-        )
+        request: dict[str, Any] = {"op": "token", "assertion": assertion, **target}
+        if grant is not None:
+            request = {"op": "token", "grant": grant, "client_id": client_id, **target}
+        elif wallet is not None:
+            message, signature = wallet
+            request = {
+                "op": "token",
+                "wallet_message": message,
+                "wallet_signature": signature,
+                **target,
+            }
         response = call_signer(self.socket_path, request, self.timeout)
         token = response.get("access_token")
         if not isinstance(token, str):

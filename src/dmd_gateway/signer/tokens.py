@@ -12,6 +12,12 @@ Agents (phase 1, ``{"op": "token", "assertion": ...}``), with the agent's signed
 * each signed request is used once: the signer remembers them until they expire (in memory;
   they expire within minutes, so a restart forgets nothing that still matters).
 
+Agents owned by a wallet (``{"op": "token", "wallet_message": ..., "wallet_signature": ...}``):
+the message from /challenge must be this sign-in server's, for one of its MCP addresses and the
+scope asked, still valid and used once (oauth/wallet_sign_in.py), and the signature the
+DID-LLM's owner wallet's, checked with no network (an ordinary wallet; a smart wallet cannot be
+checked here, so it is refused).
+
 People signing in to apps (phase 2), in two steps:
 
 * ``{"op": "sign_in", ...}``, with the message the DID-LLM's owner signed in the browser and
@@ -43,6 +49,7 @@ from sqlalchemy.orm import Session
 from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.oauth import grants
+from dmd_gateway.oauth import wallet_sign_in as wallet
 from dmd_gateway.oauth.assertion import (
     CLOCK_SKEW_SECONDS,
     AssertionRejected,
@@ -127,6 +134,8 @@ class TokenIssuer:
         """The signed token and what it was checked against, or ``TokenRefused``."""
         if "grant" in request:
             return self._issue_for_app(session, request, now)
+        if "wallet_message" in request:
+            return self._issue_for_wallet(session, request, now)
         resource, scopes, ttl = self._target(request)
         assertion = request.get("assertion")
         if not isinstance(assertion, str):
@@ -258,6 +267,51 @@ class TokenIssuer:
             "grant_id": grant.jti,
             "token_id": issued.jti,
         }
+        return answer, facts
+
+    def _issue_for_wallet(
+        self, session: Session, request: Mapping[str, Any], now: datetime
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        resource, scopes, ttl = self._target(request)
+        text, signature = request.get("wallet_message"), request.get("wallet_signature")
+        if not isinstance(text, str) or not isinstance(signature, str):
+            raise TokenRefused("a wallet sign-in needs the message and its signature")
+        try:
+            message, _ = wallet.check(
+                text,
+                issuer=self.issuer,
+                resources=self.resources,
+                now=now,
+                scope=" ".join(scopes),
+                resource=resource,
+            )
+            identity = _active_identity(session, message.did)
+            owner = _controller(identity, grants.EIP155)
+            signed = grants.owner_signed(grants.EIP155, owner, text, signature)
+        except GrantRefused as exc:
+            raise TokenRefused(str(exc)) from exc
+        if not signed:
+            raise TokenRefused(
+                "the signature is not the owner wallet's (or a smart wallet's, which cannot be "
+                "checked here)"
+            )
+        self.used.use(message.did, wallet.NONCE_PREFIX + message.nonce, message.expires, now)
+        issued = issue_token(
+            self.key,
+            issuer=self.issuer,
+            did=message.did,
+            audience=resource,
+            scopes=scopes,
+            ttl_seconds=ttl,
+            now=now,
+        )
+        answer = {
+            "ok": True,
+            "access_token": issued.access_token,
+            "expires_in": issued.expires_in,
+            "scope": issued.scope,
+        }
+        facts = {"kind": "access_token", "did": message.did, "by": "wallet", "token_id": issued.jti}
         return answer, facts
 
 

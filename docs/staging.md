@@ -524,6 +524,23 @@ its address is set too:
    It signs in, then asks the MCP server who it is signed in as, and prints
    `The Agentic Superhighway says: signed in as did:web:...` with the DID-LLM's status.
 
+**Agents owned by a wallet** (a DID-LLM whose owner is an EVM address, with no Ed25519 key)
+sign in with the wallet instead: the discovery runbook's **wallet-signature** path, which the
+discovery files list next to `oauth2.1`. No browser and no key file:
+
+1. `POST https://staging-auth.debitmydata.io/challenge` with the form field `did`: the answer's
+   `message` (`DebitMyData agent sign-in`, the DID-LLM, what it allows, the MCP server, the
+   sign-in server, a nonce) is valid 5 minutes and can be used once.
+2. The agent signs that exact message with its wallet (EIP-191, `personal_sign`).
+3. `POST https://staging-auth.debitmydata.io/token` with
+   `grant_type=urn:debitmydata:params:oauth:grant-type:wallet-signature`, `message` and
+   `signature`: the same access token as with a key.
+
+The signature must be the DID-LLM's owner wallet's now; a suspended DID-LLM cannot sign in.
+On staging a smart wallet can sign in too (the gateway asks its chain); in production the
+signer checks every signature again itself, with no network, so there only ordinary wallets
+can, for now. The handshake check (section 11) checks that the path answers.
+
 To close it again, remove the `DMD_GW_AUTH_HOST` line and run the update. In production the
 signer service signs the tokens, so the API server never holds the key (the gateway refuses a
 token key file there): [production.md, step 14](production.md#14-oauth-sign-in-authdebitmydataio).
@@ -593,7 +610,8 @@ what any agent does to find and use the Agentic Superhighway. The gateway has it
 3. **Sign-in negotiation**, when the files offer `oauth2.1`: `dmd_whoami` without a token
    answers 401 with its `WWW-Authenticate` challenge; the protected resource metadata names
    exactly this MCP address and its sign-in server, whose metadata and keys answer; a wrong
-   token is refused (401 `invalid_token`).
+   token is refused (401 `invalid_token`); with `wallet-signature`, the wallet's challenge and
+   token requests answer as OAuth does (a wrong one refused with 400).
 4. **One truth:** the tools in the runbook's card are exactly those `tools/list` gives, with
    the same descriptions, and every file gives the same version. With `--registry`, the
    official MCP Registry lists the server with the same address, title and description.

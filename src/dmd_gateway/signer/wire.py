@@ -12,6 +12,10 @@ Requests:
      "did": "did:web:...", "controller_type": "ed25519" or "eip155",
      "client_id": "https://<the app>/...", "scope": "did:read", "resource": "https://..."}
         -> {"ok": true, "grant": "<a sign-in grant, kept by the API>"}
+    {"op": "token", "wallet_message": "DebitMyData agent sign-in\n...",
+     "wallet_signature": "0x...", "resource": "https://...", "scope": "did:read",
+     "ttl_seconds": 600}
+        -> {"ok": true, "access_token": "...", "expires_in": 600, "scope": "did:read"}
     {"op": "token", "grant": "...", "client_id": "https://<the app>/...",
      "resource": "https://...", "scope": "did:read", "ttl_seconds": 600}
         -> {"ok": true, "access_token": "...", "expires_in": 600, "scope": "did:read"}

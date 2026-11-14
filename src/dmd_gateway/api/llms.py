@@ -26,6 +26,8 @@ from dmd_gateway.api.server_card import card_url
 from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
 from dmd_gateway.oauth.assertion import ASSERTION_TYPE
+from dmd_gateway.oauth.wallet_sign_in import CHALLENGE_PATH
+from dmd_gateway.oauth.wallet_sign_in import GRANT_TYPE as WALLET_GRANT
 from dmd_gateway.services.directory import pages_base
 
 router = APIRouter(include_in_schema=False)
@@ -90,6 +92,15 @@ sign in to the MCP server with it: no password, the key is the login.
 3. Send it with your MCP requests: `Authorization: Bearer <access_token>`. `dmd_whoami`
    shows which DID-LLM you are signed in as. Without a token everything else works as before;
    an invalid or expired token is refused with 401.
+
+**A DID-LLM owned by a wallet** (an EVM address, no Ed25519 key) signs in with the wallet
+instead (wallet-signature):
+
+1. `POST {auth}{CHALLENGE_PATH}` as a form: `did=<your DID-LLM>` (and `resource`, `scope` as
+   above). The answer's `message` is valid 5 minutes, for one use.
+2. Sign that exact message with the wallet (EIP-191, `personal_sign`).
+3. `POST {auth}{TOKEN_PATH}` as a form: `grant_type={WALLET_GRANT}`, `message=<the message>`,
+   `signature=<0x...>`. The answer is the same access token as above.
 
 The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP server's:
 `{metadata_url(resource)}`.

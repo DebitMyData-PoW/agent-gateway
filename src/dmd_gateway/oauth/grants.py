@@ -113,7 +113,7 @@ def sign_in_message(
     )
 
 
-def _moment(text: str) -> datetime:
+def message_time(text: str) -> datetime:
     try:
         moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -145,8 +145,8 @@ def parse_sign_in_message(text: str) -> SignInMessage:
         resource=values["For"],
         issuer=values["Sign-in server"],
         nonce=values["Nonce"],
-        issued=_moment(values["Issued"]),
-        expires=_moment(values["Expires"]),
+        issued=message_time(values["Issued"]),
+        expires=message_time(values["Expires"]),
     )
 
 

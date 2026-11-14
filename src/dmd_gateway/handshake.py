@@ -19,7 +19,8 @@ the Agentic Superhighway, and says what fails.
    signed-in agent, called without a token, answers HTTP 401 with a ``WWW-Authenticate``
    challenge (``resource_metadata``, ``scope``); the protected resource metadata names exactly
    this MCP address and its sign-in server; that server's metadata (RFC 8414) and keys answer;
-   a wrong token is refused (401 ``invalid_token``).
+   a wrong token is refused (401 ``invalid_token``); with ``wallet-signature``, the wallet's
+   challenge and token requests answer as OAuth does (an unknown DID-LLM refused, 400).
 4. One truth: the tools in the runbook's card are exactly those ``tools/list`` gives, and the
    manifest, both cards and ``initialize`` give the same version; with ``--registry``, the
    official MCP Registry lists the server with the same address, title and description.
@@ -43,6 +44,8 @@ from urllib.parse import urlsplit
 
 import httpx
 from mcp_types.version import LATEST_PROTOCOL_VERSION
+
+from dmd_gateway.oauth.wallet_sign_in import GRANT_TYPE as WALLET_GRANT
 
 PASS, WARN, FAIL, SKIP = "pass", "warn", "fail", "skip"
 JSON_TYPE = "application/json"
@@ -535,6 +538,7 @@ class Handshake:
                 if "S256" not in (document.get("code_challenge_methods_supported") or []):
                     raise Failed("the browser sign-in does not offer PKCE S256")
             state["jwks_uri"] = document["jwks_uri"]
+            state["metadata"] = document
             grants = ", ".join(document.get("grant_types_supported") or [])
             return f"grants: {grants}"
 
@@ -558,12 +562,33 @@ class Handshake:
                 raise Failed(f"error {fields.get('error')!r}, not invalid_token")
             return "401 invalid_token"
 
+        def wallet_path() -> str:
+            metadata = state["metadata"]
+            if WALLET_GRANT not in (metadata.get("grant_types_supported") or []):
+                raise Failed("the sign-in server does not offer the wallet-signature grant")
+            endpoint = str(metadata.get("dmd_wallet_challenge_endpoint", ""))
+            if not _web_address(endpoint):
+                raise Failed("no https dmd_wallet_challenge_endpoint")
+            unknown = f"did:web:{urlsplit(self.endpoint).hostname}:agents:handshake-check"
+            for url, form in (
+                (endpoint, {"did": unknown}),
+                (metadata["token_endpoint"], {"grant_type": WALLET_GRANT, "message": "x"}),
+            ):
+                response = self.http.post(url, data=form, headers={"Accept": JSON_TYPE})
+                if response.status_code != 400 or _content_type(response) != JSON_TYPE:
+                    raise Failed(f"{url}: HTTP {response.status_code}, not a 400 OAuth error")
+                if not _object(response.json(), "the error").get("error"):
+                    raise Failed(f"{url}: no OAuth error code")
+            return "challenge and token requests answer (a wrong one refused, 400)"
+
         if not self.step("sign-in: 401 challenge without a token", challenge):
             return
         if not self.step("sign-in: protected resource metadata", resource):
             return
         if self.step("sign-in: authorization server metadata", server):
             self.step("sign-in: token keys (JWKS)", keys)
+            if "wallet-signature" in self.authentication:
+                self.step("sign-in: wallet-signature responds", wallet_path)
         self.step("sign-in: a wrong token is refused", wrong_token)
 
     # ----------------------------------------------------------------------- the Registry

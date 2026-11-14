@@ -87,6 +87,7 @@ def test_the_sign_in_negotiation_completes(signing_in: TestClient) -> None:
     assert "authorization_code" in details["sign-in: authorization server metadata"]
     assert details["sign-in: token keys (JWKS)"] == "1 RSA key(s)"
     assert details["sign-in: a wrong token is refused"] == "401 invalid_token"
+    assert details["sign-in: wallet-signature responds"].startswith("challenge and token")
     assert "oauth2.1" in details["discovery: /.well-known/mcp"]
 
 

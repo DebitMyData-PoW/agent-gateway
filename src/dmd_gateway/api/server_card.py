@@ -156,12 +156,13 @@ def ai_catalog(settings: Settings) -> dict[str, Any]:
 
 def _endpoint(settings: Settings, sign_in: bool) -> dict[str, Any]:
     # Registering needs no authentication (agents pay for each DID-LLM and prove control of
-    # their own key). Once agents can sign in, OAuth 2.1 is offered, never required.
+    # their own key). Once agents can sign in, OAuth 2.1 is offered, never required, with the
+    # wallet-signature path for agents owned by a wallet (oauth/wallet_sign_in.py).
     return {
         "url": mcp_url(settings),
         "transport": "streamable-http",
         "protocol_versions": PROTOCOL_VERSIONS,
-        "authentication": ["oauth2.1"] if sign_in else [],
+        "authentication": ["oauth2.1", "wallet-signature"] if sign_in else [],
     }
 
 

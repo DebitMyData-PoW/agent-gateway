@@ -288,9 +288,11 @@ def test_metadata_and_keys(auth: TestClient, key_path: Path) -> None:
     # Where this process signs the tokens (staging), people sign in to apps too (phase 2).
     assert meta["grant_types_supported"] == [
         "client_credentials",
+        "urn:debitmydata:params:oauth:grant-type:wallet-signature",
         "authorization_code",
         "refresh_token",
     ]
+    assert meta["dmd_wallet_challenge_endpoint"] == f"{ISS}/challenge"
     assert meta["token_endpoint_auth_methods_supported"] == ["private_key_jwt", "none"]
     assert "EdDSA" in meta["token_endpoint_auth_signing_alg_values_supported"]
     assert meta["authorization_endpoint"] == f"{ISS}/authorize"
