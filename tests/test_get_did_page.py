@@ -145,7 +145,10 @@ def test_the_page_says_the_did_needs_an_owner_not_a_particular_wallet() -> None:
     assert "id=wallet-address-label" in html
     # the steps not open yet say when they open
     assert html.count('class="small locked"') == 3
-    assert "Opens after <strong>Get my quote</strong> at step 1" in html
+    assert "Opens after <strong>Continue to payment</strong> at step 1" in html
+    # The buy button says what it does: no "quote", which reads as a request for a price.
+    assert "<button type=submit id=get-quote>Continue to payment</button>" in html
+    assert "Get my quote" not in html
     script = get_did_page._SCRIPT
     assert "It needs no balance (no USDC, no ETH)" in html
     assert "Every DID-LLM needs an owner before step 2 opens: type the 0x… address" in script

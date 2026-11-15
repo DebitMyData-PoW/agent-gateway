@@ -291,8 +291,9 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             "payment_options": [{"id": o["id"], "name": o["name"]} for o in options],
             "for_a_person": (
                 "Open checkout_url: say what the DID-LLM is for and which wallet or key will own "
-                f"it, pay {item['price_text']} by card or from your own wallet, then sign one "
-                "message to prove it is yours. Nothing is charged before you pay."
+                "it, choose how to pay, press Continue to payment, pay "
+                f"{item['price_text']} by card or from your own wallet, then sign one message to "
+                "prove it is yours. Nothing is charged before you pay."
             ),
             "for_an_agent": (
                 "1. dmd_create_did_payment_quote (your DID-LLM's owner key or wallet and a "

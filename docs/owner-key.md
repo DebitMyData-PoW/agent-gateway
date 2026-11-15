@@ -41,7 +41,7 @@ signature are sent to the gateway.
    the DID-LLM is yours: whoever has it can act as the owner, and nobody can recover it for you.
 
 3. **On the Get a DID-LLM page** (<https://id.debitmydata.io>): choose **My agent's public key**,
-   paste the public key, choose how to pay, then **Get my quote** and pay.
+   paste the public key, choose how to pay, then **Continue to payment** and pay.
 
 4. **Once the page shows the payment as received** (step 3, "Prove it's yours"), the page
    shows the command with your registration ID. Copy it and run it:

@@ -512,13 +512,13 @@ placeholder="ed25519:z6Mk…"></label>
 <a href="/policies/payment-methods" target=_blank>payment policy</a>, and I understand that a
 DID-LLM registration is <a href="/policies/refunds" target=_blank>not refundable</a>.</span></label>
 <p class=error id=details-error hidden role=alert></p>
-<button type=submit id=get-quote>Get my quote</button>
+<button type=submit id=get-quote>{PAY_BUTTON}</button>
 </form>
 </div>
 </section>
 <section class="card step waiting" id=s2>
 <div class=step-head><span class=num>2</span><h2>Pay</h2></div>
-<p class="small locked">Opens after <strong>Get my quote</strong> at step 1: you then pay
+<p class="small locked">Opens after <strong>{PAY_BUTTON}</strong> at step 1: you then pay
 {how_to_pay}.</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s3>
@@ -547,6 +547,10 @@ PRODUCT_DESCRIPTION = (
 )
 SERVICE = "did_registration"
 CHECKOUT_SECTION = "start"  # the form where a person buys a DID-LLM (id=start)
+# The form's buy button. It fixes the exact amount (the quote) and opens step 2, Pay. Its words
+# say what people do there: a "quote" reads as a request for a price, which people (and agents
+# acting for them) do not take for buying.
+PAY_BUTTON = "Continue to payment"
 
 
 def did_price(request: Request) -> tuple[str, str]:

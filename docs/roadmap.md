@@ -146,6 +146,7 @@ place; the application logic comes with the related phase.
   (0.43.0)
 - [x] `dmd_open_checkout`: agents open the checkout without buying anything; the MCP server's
   page says what is sold there, with its price (0.44.0)
+- [x] Get a DID-LLM's buy button: **Continue to payment**, not "Get my quote" (0.45.0)
 
 ## Phase 7 – x402 / USDC on Base
 

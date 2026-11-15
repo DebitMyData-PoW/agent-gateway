@@ -443,7 +443,7 @@
     }
     busy = true;
     quoteButton.disabled = true;
-    quoteButton.textContent = "Getting your quote…";
+    quoteButton.textContent = "Preparing your payment…";
     try {
       const key = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}-quote`;
       const result = await call("POST", "/v1/dids/registration-quotes", details.request, { "Idempotency-Key": key });
@@ -470,7 +470,7 @@
       detailsError.textContent = error.message;
       detailsError.hidden = false;
       quoteButton.disabled = false;
-      quoteButton.textContent = "Get my quote";
+      quoteButton.textContent = "Continue to payment";
     } finally {
       busy = false;
     }
