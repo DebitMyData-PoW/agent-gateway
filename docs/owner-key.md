@@ -115,10 +115,10 @@ credential and its entitlements stop working forever (MCP: `dmd_revoke_did`).
 
 ## Sign in as the DID-LLM (OAuth)
 
-Where DebitMyData's authorization server is open (on staging for now:
-[staging.md](staging.md#9-oauth-phase-1-the-authorization-server)), the same key signs the
-DID-LLM in and gets an **access token** for the Agentic Superhighway (the MCP server), valid
-for 10 minutes:
+With DebitMyData's authorization server (`auth.debitmydata.io`; on staging
+`staging-auth.debitmydata.io`, [staging.md](staging.md#9-oauth-phase-1-the-authorization-server)),
+the same key signs the DID-LLM in and gets an **access token** for the Agentic Superhighway
+(the MCP server), valid for 10 minutes:
 
 ```bash
 DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py token ~/did-keys did:web:staging-api.debitmydata.io:agents:...
