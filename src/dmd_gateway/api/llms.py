@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse
 
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
-from dmd_gateway.api.get_did_page import did_price, mcp_url, page_url
+from dmd_gateway.api.get_did_page import did_price, mcp_url, page_url, price_text
 from dmd_gateway.api.mcp_auth import main_resource, metadata_url
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
@@ -58,11 +58,6 @@ def _option(rail_id: str, rail: RailConfig) -> str:
         f"- {rail.name}: {rail.asset.symbol} on {rail.network} "
         f"(payment option `{rail_id}`, {rail.protocol})"
     )
-
-
-def _price(request: Request) -> str:
-    amount, currency = did_price(request)
-    return f"{amount} {currency}"
 
 
 def _sign_in(request: Request) -> str:
@@ -132,7 +127,7 @@ def llms_txt(request: Request) -> str:
 
 > A DID-LLM is DebitMyData's identity for AI agents, the LLMs behind them, bots, people and
 > organizations: a W3C Decentralized Identifier (`did:web`) with a verifiable credential
-> signed by DebitMyData. It costs {_price(request)}, paid once. Agents register by
+> signed by DebitMyData. It costs {price_text(did_price(request))}. Agents register by
 > themselves, through the REST API or the MCP server: no account, no password.
 {staging}
 - Gateway (REST API): {base}

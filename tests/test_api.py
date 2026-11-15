@@ -37,6 +37,11 @@ def test_discovery_describes_only_live_capabilities(client: TestClient) -> None:
     assert offer["method"] == "POST"
     assert offer["resource"].endswith("/v1/dids/registrations")
     assert "commercial fee of $25.00 USD" in offer["description"]
+    # The product as its page shows it (the DID-LLM).
+    assert offer["name"] == "DebitMyData DID-LLM"
+    assert offer["price_text"] == "$25.00 USD, paid once"
+    assert offer["product_url"] == "http://localhost:8000/get-did"
+    assert offer["image_url"] == "http://localhost:8000/logo.png?v=2"
     quote, registration = offer["endpoints"]["quote"], offer["endpoints"]["registration"]
     assert quote["url"].endswith("/v1/dids/registration-quotes")
     assert quote["available"] is False  # no payment rail is enabled

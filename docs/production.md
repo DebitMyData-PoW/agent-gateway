@@ -396,6 +396,14 @@ Open Graph tags for link previews, a `Link` header to the API catalog, the OpenA
 and `llms.txt`, and the same text in Markdown for an agent that asks for it
 (`Accept: text/markdown`). Staging's `robots.txt` asks crawlers to stay away, with no sitemap.
 
+The price is one text, word for word, wherever an agent looks: `$25.00 USD, paid once` on the
+page, in `llms.txt`, in `/v1/discovery` and in the MCP tools, all from the configuration
+(`config/payment_routes.yaml`). Agent checkers such as Axidort look for the price an agent found
+through the API or the MCP server on the product's page: the tools now give that page
+(`product_url`), and the page shows the same text. Agents that use the MCP server get the
+product (name, price, page, picture) before any tool call, in the server's instructions, and
+first from `dmd_discover` and `dmd_get_did_registration_offer`.
+
 Cloudflare's **Bot Preference Sync** (Security settings, Bot traffic, "AI Crawler and Agent
 access policies") must stay off for debitmydata.io: it puts Cloudflare's own lines in front of
 the gateway's `robots.txt`, which say `ai-train=no` and turn away AI crawlers such as GPTBot and

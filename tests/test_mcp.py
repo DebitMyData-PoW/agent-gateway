@@ -138,6 +138,50 @@ async def test_discovery_tools(app: FastAPI) -> None:
     assert marketplace["status"] == "not_open"
 
 
+async def test_an_agent_finds_the_product_before_any_tool_call(app: FastAPI) -> None:
+    """What DebitMyData sells comes first: in the server's instructions (before any tool
+    call), then in dmd_discover, the first tool, with its page and picture. The price text is
+    word for word the one on the page and in llms.txt (test_site_files.py)."""
+    text = "$25.00 USD, paid once"
+    async with mcp_client(app) as mcp:
+        instructions = mcp.instructions
+        discovery = await call(mcp, "dmd_discover")
+        offered = await call(mcp, "dmd_get_did_registration_offer")
+        catalog = (await call(mcp, "dmd_catalog"))["products"][0]
+    assert instructions.startswith(
+        "DebitMyData sells the DebitMyData DID-LLM. A verifiable identity"
+    )
+    assert f"Price: {text}. Product page: {BASE}/get-did" in instructions
+    assert list(discovery)[0] == "product"
+    item = discovery["product"]
+    assert (item["name"], item["price"], item["currency"]) == (
+        "DebitMyData DID-LLM",
+        "25.00",
+        "USD",
+    )
+    assert item["price_text"] == text
+    assert item["product_url"] == f"{BASE}/get-did"
+    assert item["image_url"] == f"{BASE}/logo.png?v=2"
+    assert "dmd_create_did_payment_quote" in item["how_to_buy"]
+    # The other tools an agent may call first give the same, first.
+    assert list(offered)[0] == "product" and offered["product"] == item
+    offer = offered["offer"]
+    assert list(offer)[:5] == ["id", "name", "price_text", "product_url", "image_url"]
+    assert list(catalog)[:6] == [
+        "product_id",
+        "kind",
+        "name",
+        "price_text",
+        "product_url",
+        "image_url",
+    ]
+    for found in (offer, catalog):
+        assert found["name"] == "DebitMyData DID-LLM"
+        assert found["price_text"] == text
+        assert found["product_url"] == f"{BASE}/get-did"
+        assert found["image_url"] == f"{BASE}/logo.png?v=2"
+
+
 async def test_errors_carry_the_rest_error_code(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
         unavailable = await call_error(

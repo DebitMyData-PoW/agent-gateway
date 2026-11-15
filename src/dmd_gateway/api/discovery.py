@@ -11,12 +11,20 @@ from pydantic import BaseModel
 
 from dmd_gateway import __version__
 from dmd_gateway.api.brand import MCP_PATH
+from dmd_gateway.api.get_did_page import (
+    PRODUCT_NAME,
+    did_price,
+    page_url,
+    price_text,
+    product_image,
+)
 from dmd_gateway.domain.routes import PaymentRouteRegistry, RailConfig, RailState
 from dmd_gateway.services.policy_pages import policy_links
 
 router = APIRouter(prefix="/v1", tags=["discovery"])
 
 QUOTE_PATHS = {"did_registration": "/v1/dids/registration-quotes"}
+QUOTE_SERVICE = "did_registration"  # the DID-LLM, the product of the Get a DID-LLM page
 
 # What these endpoints say only changes when the gateway restarts with a new configuration,
 # so agents and caches in front of the gateway (such as Cloudflare) may keep it a minute.
@@ -42,6 +50,12 @@ class Endpoint(BaseModel):
 
 class Offer(BaseModel):
     id: str
+    # First, what people buy, as its page shows it: the product's name, its price word for
+    # word, the page and the picture (the DID-LLM only).
+    name: str | None = None
+    price_text: str | None = None
+    product_url: str | None = None
+    image_url: str | None = None
     title: str
     description: str
     method: str
@@ -136,9 +150,14 @@ def discovery(request: Request, response: Response) -> Discovery:
     for service_id, service in registry.services.items():
         accepting = bool(registry.enabled_rails(service_id))
         registration = f"{base}/v1/dids/registrations/{{registration_intent_id}}"
+        product = service_id == QUOTE_SERVICE
         offers.append(
             Offer(
                 id=service_id,
+                name=PRODUCT_NAME if product else None,
+                price_text=price_text(did_price(request)) if product else None,
+                product_url=page_url(settings) if product else None,
+                image_url=product_image(settings) if product else None,
                 title=service.title,
                 description=service.description,
                 method=service.method,

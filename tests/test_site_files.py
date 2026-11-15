@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from dmd_gateway.api import site_files
+from dmd_gateway.api import get_did_page, site_files
 from dmd_gateway.api.get_did_page import head_tags, wants_markdown
 from dmd_gateway.settings import Settings
 
@@ -137,7 +138,7 @@ def test_the_page_describes_the_did_llm_for_agents_and_search_engines(
     assert offer["url"] == f"https://{APP_HOST}/#start"  # the page's own start section
     assert "id=start" in page or 'id="start"' in page
     # The same price as the page shows people.
-    assert "$25 USD, paid once" in page
+    assert "id=price>$25.00 USD, paid once<" in page
     organization = by_type(data, "Organization")
     assert organization["name"] == "DebitMyData"
     assert organization["url"] == "https://debitmydata.com/"
@@ -175,7 +176,7 @@ def test_agents_that_ask_for_markdown_get_it(app_client: TestClient) -> None:  #
         assert response.status_code == 200, accept
         assert response.headers["content-type"] == "text/markdown; charset=utf-8"
         assert response.text.startswith("# DebitMyData DID-LLM")
-        assert "25.00 USD, paid once" in response.text
+        assert "It costs $25.00 USD, paid once." in response.text
         assert response.headers["vary"] == "Accept" and "api-catalog" in response.headers["link"]
     for accept in (BROWSER["accept"], "*/*", "", "text/html, text/markdown", "text/markdown;q=0"):
         response = app_client.get("/", headers={"accept": accept})
@@ -197,3 +198,22 @@ def test_agents_that_ask_for_markdown_get_it(app_client: TestClient) -> None:  #
 )
 def test_wants_markdown(accept: str, markdown: bool) -> None:
     assert wants_markdown(accept) is markdown
+
+
+def test_the_page_script_shows_the_same_price_text() -> None:
+    """The page's script writes the price again from the API: with two decimals, as the
+    server wrote it (an agent compares the price it got with the page's, word for word)."""
+    script = (Path(get_did_page.__file__).parent.parent / "static" / "get-did.js").read_text()
+    assert "minimumFractionDigits: 2, maximumFractionDigits: 2" in script
+    assert '`${currency === "USD" ? "$" : ""}${amount} ${currency}, paid once`' in script
+
+
+@pytest.mark.parametrize(
+    ("price", "text"),
+    [
+        (("25.00", "USD"), "$25.00 USD, paid once"),
+        (("30.50", "EUR"), "30.50 EUR, paid once"),
+    ],
+)
+def test_price_text(price: tuple[str, str], text: str) -> None:
+    assert get_did_page.price_text(price) == text

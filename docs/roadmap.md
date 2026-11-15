@@ -141,6 +141,9 @@ place; the application logic comes with the related phase.
   Content Signals, `sitemap.xml`, the API catalog (RFC 9727), and on Get a DID-LLM schema.org
   structured data (Product, Offer, Organization, WebSite), Open Graph, a `Link` header and a
   Markdown version (0.42.0)
+- [x] The same price text everywhere an agent looks (page, llms.txt, API, MCP), and the product
+  (name, price, page, picture) first in the MCP server's instructions and `dmd_discover`
+  (0.43.0)
 
 ## Phase 7 – x402 / USDC on Base
 

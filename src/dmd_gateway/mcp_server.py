@@ -33,7 +33,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dmd_gateway import __version__
-from dmd_gateway.api import mcp_auth, superhighway_page
+from dmd_gateway.api import get_did_page, mcp_auth, superhighway_page
 from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.api.oauth import issuer, sign_in_open
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
@@ -188,6 +188,37 @@ def _meta_payment(ctx: Context) -> dict[str, Any] | None:
     return payment if isinstance(payment, dict) else None
 
 
+def product(app: FastAPI) -> dict[str, Any]:
+    """What DebitMyData sells, as its page shows it: the name, the price word for word, the
+    page and the picture. An agent gets it before any tool call (the server's instructions)
+    and from the first tool (dmd_discover), so that it does not have to look for it."""
+    settings: Settings = app.state.settings
+    amount, currency = get_did_page.configured_price(app.state.registry)
+    return {
+        "name": get_did_page.PRODUCT_NAME,
+        "description": get_did_page.PRODUCT_DESCRIPTION,
+        "price": amount,
+        "currency": currency,
+        "price_text": get_did_page.price_text((amount, currency)),
+        "product_url": get_did_page.page_url(settings),
+        "image_url": get_did_page.product_image(settings),
+        "how_to_buy": (
+            "dmd_create_did_payment_quote, pay the quoted amount, dmd_prove_wallet_control, "
+            "dmd_register_did: the steps are in this server's instructions"
+        ),
+    }
+
+
+def instructions(app: FastAPI) -> str:
+    """The server's instructions: the product first, then how to buy it."""
+    item = product(app)
+    return (
+        f"DebitMyData sells the {item['name']}. {item['description']} "
+        f"Price: {item['price_text']}. Product page: {item['product_url']} "
+        f"(picture: {item['image_url']}).\n\n{INSTRUCTIONS}"
+    )
+
+
 def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     """The MCP server and its tools. ``sign_in``: agents can sign in with an access token
     (api/mcp_auth.py), which adds the tools for signed-in agents."""
@@ -198,7 +229,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         description=(
             "DebitMyData Agentic DID-LLM Registration: quote, pay, prove control, get a DID-LLM."
         ),
-        instructions=INSTRUCTIONS,
+        instructions=instructions(app),
         version=__version__,
     )
 
@@ -224,17 +255,20 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
 
     @server.tool(title="Discover DebitMyData", annotations=READ_ONLY)
     async def dmd_discover() -> dict[str, Any]:
-        """Explain DebitMyData, its Proof-of-Work chain and DMD coin, the offers, the enabled
-        payment methods, the policies and the public endpoints."""
+        """Start here. What DebitMyData sells (``product``: the DebitMyData DID-LLM, $25.00 USD,
+        paid once, with its page, its picture and how to buy it), then DebitMyData, its
+        Proof-of-Work chain and DMD coin, the offers, the enabled payment methods, the policies
+        and the public endpoints."""
         discovery = await api.call("GET", "/v1/discovery")
-        return {"about": ABOUT, **discovery}
+        return {"product": product(app), "about": ABOUT, **discovery}
 
     @server.tool(title="DID-LLM registration offer", annotations=READ_ONLY)
     async def dmd_get_did_registration_offer() -> dict[str, Any]:
-        """The 25.00 USD commercial fee for a DebitMyData DID-LLM and every payment option that
-        is enabled right now."""
+        """The DebitMyData DID-LLM: $25.00 USD, paid once (its name, price, page and picture),
+        and every payment option that is enabled right now."""
         offer = next(o for o in await offers() if o["id"] == DID_REGISTRATION)
-        return {"offer": offer, "payment_options": await payment_options(DID_REGISTRATION)}
+        options = await payment_options(DID_REGISTRATION)
+        return {"product": product(app), "offer": offer, "payment_options": options}
 
     @server.tool(title="Supported payment options", annotations=READ_ONLY)
     async def dmd_list_supported_payment_options(
@@ -566,6 +600,10 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                 {
                     "product_id": offer["id"],
                     "kind": "fixed_price",
+                    "name": offer.get("name"),
+                    "price_text": offer.get("price_text"),
+                    "product_url": offer.get("product_url"),
+                    "image_url": offer.get("image_url"),
                     "title": offer["title"],
                     "description": offer["description"],
                     "commercial_price": offer["commercial_price"],

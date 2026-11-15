@@ -48,7 +48,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand, docs_pages
 from dmd_gateway.api.hosts import is_app, to_api, to_app
-from dmd_gateway.domain.routes import STRIPE_CHECKOUT
+from dmd_gateway.domain.routes import STRIPE_CHECKOUT, PaymentRouteRegistry
 from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.settings import Settings
 
@@ -226,6 +226,8 @@ def _cards(items: tuple[tuple[str, str, str], ...], cls: str = "features") -> st
     return f'<ul class="{cls}">{cards}</ul>'
 
 
+DEFAULT_PRICE = "$25.00 USD, paid once"  # until the configuration says otherwise
+
 STATS = (
     ("tag", "$25", "paid once"),
     ("steps", "4", "simple steps"),
@@ -391,7 +393,13 @@ def _new_key_help(staging: bool) -> str:
     )
 
 
-def _body(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
+def _body(
+    staging: bool,
+    app: bool = False,
+    mcp_url: str = MCP_PATH,
+    card: bool = False,
+    price: str = DEFAULT_PRICE,
+) -> str:
     # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once,
     # in groups, on an even grid. The first one is picked.
     labels = dict(PARTICIPANTS)
@@ -443,7 +451,7 @@ by DebitMyData that anyone can check.</p>
 needed</li></ul>
 <p class=cta><a class="button go" href="#start">Get my DID-LLM</a>
 <a class="button ghost" href="#what">What is a DID-LLM?</a></p>
-<span class=price id=price>$25 USD, paid once</span>
+<span class=price id=price>{price}</span>
 {_for_agents(mcp_url)}
 </section>
 {staging_note}
@@ -542,11 +550,30 @@ SERVICE = "did_registration"
 
 def did_price(request: Request) -> tuple[str, str]:
     """The DID-LLM's price, from the configuration: ("25.00", "USD")."""
-    service = request.app.state.registry.services.get(SERVICE)
+    return configured_price(request.app.state.registry)
+
+
+def configured_price(registry: PaymentRouteRegistry) -> tuple[str, str]:
+    service = registry.services.get(SERVICE)
     if service is None:
         return "25.00", "USD"
     price = service.commercial_price
     return f"{price.amount:.2f}", price.currency
+
+
+def price_text(price: tuple[str, str]) -> str:
+    """The price as people read it on the page and agents get it from the API and the MCP
+    tools, word for word: "$25.00 USD, paid once". The same text everywhere, so an agent that
+    reads it in one place finds it in the others."""
+    amount, currency = price
+    shown = f"${amount}" if currency == "USD" else amount
+    return f"{shown} {currency}, paid once"
+
+
+def product_image(settings: Settings) -> str:
+    """The DID-LLM's picture (the app's icon), for the page's structured data, the API and
+    the MCP tools."""
+    return _image(settings)
 
 
 def _image(settings: Settings) -> str:
@@ -626,6 +653,7 @@ def page_html(
     mcp_url: str = MCP_PATH,
     card: bool = False,
     head: str = "",
+    price: str = DEFAULT_PRICE,
 ) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
@@ -647,7 +675,7 @@ def page_html(
         '<link rel=icon href="/favicon.png">'
         f"{head}{installable}"
         f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head>"
-        f"<body>{_body(staging, app, mcp_url, card)}"
+        f"<body>{_body(staging, app, mcp_url, card, escape(price))}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -701,8 +729,10 @@ def _render(request: Request, app: bool) -> Response:
     staging = bool(settings.staging_test_tools)
     rails = request.app.state.registry.enabled_rails(DID_REGISTRATION)
     card = any(rail.protocol == STRIPE_CHECKOUT for _, rail in rails)
-    head = head_tags(settings, did_price(request))
-    return HTMLResponse(page_html(staging, app, mcp_url(settings), card, head), headers=headers)
+    price = did_price(request)
+    head = head_tags(settings, price)
+    page = page_html(staging, app, mcp_url(settings), card, head, price_text(price))
+    return HTMLResponse(page, headers=headers)
 
 
 def _page(request: Request) -> Response:

@@ -336,7 +336,12 @@
     const result = await call("GET", "/v1/payment-options?service=did_registration").catch(() => null);
     const options = (result && result.data && result.data.supported_payment_options) || [];
     const fee = result && result.data && result.data.commercial_fee;
-    if (fee && fee.amount) $("#price").textContent = `$${Number(fee.amount).toLocaleString("en-US")} ${fee.currency || "USD"}, paid once`;
+    // Word for word what the server wrote and what agents get ("$25.00 USD, paid once").
+    if (fee && fee.amount) {
+      const currency = fee.currency || "USD";
+      const amount = Number(fee.amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      $("#price").textContent = `${currency === "USD" ? "$" : ""}${amount} ${currency}, paid once`;
+    }
     optionsBox.replaceChildren();
     let first = true;
     // USDC first, then the DebitMyData coin (DMD), then the others, as DebitMyData lists them.
