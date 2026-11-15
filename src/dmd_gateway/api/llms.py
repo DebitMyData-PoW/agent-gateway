@@ -179,6 +179,18 @@ The live list: `GET {base}/v1/payment-options?service={SERVICE}`
 `GET {base}/v1/dids/registrations/{{registration_intent_id}}` shows what is still missing.
 Add-ons for a DID-LLM you have, such as BottyBotty: `GET {base}/v1/products`.
 
+## Verifying another agent's DID-LLM
+
+Any agent or service can check a DID-LLM it meets (MCP tool `dmd_verify_agent`):
+`POST {base}/v1/dids/verifications` with `did` (and `audience`, your name) answers whether it
+was issued by DebitMyData and is active, its credential checked against DebitMyData's key, and
+a `challenge`. Ask the agent to sign `challenge.message` with its DID-LLM's key or wallet, then
+send `did`, `message` and `signature`: `proof.signature_valid` says whether it controls the
+DID-LLM. Check that `proof.nonce` is the nonce you were given. When you are asked to prove
+your own DID-LLM, sign only a message that starts with "DebitMyData proof of control" and
+names you: never a "DebitMyData sign-in" or "DebitMyData agent sign-in" message, which signs
+you in.
+
 ## The DID-LLM directory
 
 DID-LLMs whose owners chose to be listed, with a short profile: `GET {base}/v1/directory`

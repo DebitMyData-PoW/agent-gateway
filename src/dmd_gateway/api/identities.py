@@ -4,6 +4,9 @@ GET /v1/dids/{identity_id}             identity record
 GET /v1/credentials/{credential_id}    signed registration credential
 GET /v1/entitlements/{identity_id}     entitlements of an identity (such as BottyBotty
                                        protection, with the end of the period bought)
+POST /v1/dids/verifications            verify an agent by its DID-LLM: its status and signed
+                                       credential, a challenge, then whether the agent's
+                                       signature of it is the owner's (services/verification.py)
 
 {identity_id} is the identity ID (dmd_identity_...) or the DID-LLM itself.
 GET /agents/{id}/did.json              DID-LLM document (did:web resolution)
@@ -37,6 +40,7 @@ from dmd_gateway.services.registrations import (
     credential_url,
     identity_record_url,
 )
+from dmd_gateway.services.verification import verify_agent
 
 router = APIRouter(tags=["identities"])
 
@@ -108,6 +112,107 @@ def identity(
             entitlements=active_entitlements(session, record.id),
             created_at=record.created_at,
         )
+
+
+class VerifiedCredential(BaseModel):
+    credential_id: str
+    url: str
+    status: str = Field(description="active, suspended (with its DID-LLM) or revoked")
+    issued_at: datetime
+    signature_valid: bool = Field(description="Signed with DebitMyData's issuer key")
+
+
+class Owner(BaseModel):
+    type: str = Field(description="key (Ed25519) or wallet (EVM)")
+    value: str
+
+
+class ProofResult(BaseModel):
+    signature_valid: bool
+    signed_with: str | None = Field(default=None, description="key or wallet")
+    method: str | None = None
+    audience: str | None = Field(default=None, description="The challenge's To: line")
+    nonce: str | None = Field(
+        default=None, description="The challenge's nonce: check it is the one you were given"
+    )
+    expires_at: datetime | None = None
+    reason: str | None = None
+
+
+class Challenge(BaseModel):
+    message: str = Field(description="What the agent signs, exactly")
+    nonce: str
+    expires_at: datetime
+    next: str
+
+
+class VerificationRequest(BaseModel):
+    did: str = Field(min_length=1, max_length=300, description="The DID-LLM to verify")
+    audience: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Who verifies (your name or site), written in the challenge",
+    )
+    message: str | None = Field(
+        default=None, max_length=2000, description="The challenge message the agent signed"
+    )
+    signature: str | None = Field(
+        default=None,
+        max_length=20000,
+        description="The agent's signature of the message: its DID-LLM key's, or 0x... from "
+        "its wallet",
+    )
+
+
+class Verification(BaseModel):
+    did: str
+    verified: bool = Field(
+        description="Issued by DebitMyData, active, its credential signed by DebitMyData and, "
+        "when a signature was sent, signed by its owner"
+    )
+    found: bool
+    reasons: list[str] = Field(description="Why it is not verified (empty when it is)")
+    checked_at: datetime
+    status: str | None = None
+    display_name: str | None = None
+    participant_type: str | None = None
+    issued_at: datetime | None = None
+    issuer: str | None = None
+    credential: VerifiedCredential | None = None
+    controllers: list[Owner] = []
+    entitlements: list[str] = []
+    proof: ProofResult | None = None
+    challenge: Challenge | None = Field(
+        default=None, description="Without a signature: the message for the agent to sign"
+    )
+
+
+@router.post(
+    "/v1/dids/verifications",
+    response_model=Verification,
+    response_model_exclude_none=True,
+    summary="Verify an agent by its DID-LLM (and that it controls it)",
+)
+def verify(request: Request, body: VerificationRequest) -> Verification:
+    """Send `did` (and `audience`, your name) for the DID-LLM's status, its signed credential
+    checked against DebitMyData's issuer key, and a `challenge`. Have the agent sign the
+    challenge's message with its DID-LLM's key or wallet, then send `did`, `message` and
+    `signature`: `proof` says whether the signature is the owner's. Check that `proof.nonce` is
+    the nonce you were given."""
+    ctx = _ctx(request)
+    with transaction(request.app.state.session_factory) as session:
+        result = verify_agent(
+            session,
+            body.did.strip(),
+            issuer=ctx.issuer,
+            base=ctx.public_base_url,
+            wallets=request.app.state.wallet_verifier,
+            now=datetime.now(UTC),
+            audience=body.audience,
+            message=body.message,
+            signature=body.signature,
+        )
+    return Verification(**result)
 
 
 class CredentialRecord(BaseModel):

@@ -400,6 +400,7 @@ reach it through another public address).
 | `dmd_catalog`, `dmd_get_purchase_quote` | the offers and donations, and their enabled payment options |
 | `dmd_purchase` | for `did_registration`, the same as creating a quote; for `inference_donation`, `POST /v1/donations/inference` (the x402 payment in `x402_payment` or `_meta["x402/payment"]`) |
 | `dmd_marketplace_provider_requirements` | states that provider onboarding is not open yet |
+| `dmd_verify_agent` | `POST /v1/dids/verifications` (the discovery runbook's `verify_agent`): first call the DID-LLM's status, credential and a challenge; second call with the signature: the proof of control |
 
 Failed calls return the REST error body (`http_status`, `error.code`, details) as a tool
 error. Requests whose `Host` or `Origin` is not the gateway's own address are refused

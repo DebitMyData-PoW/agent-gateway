@@ -444,6 +444,32 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         and the next action."""
         return await api.call("GET", f"/v1/dids/registrations/{registration_intent_id}")
 
+    @server.tool(title="Verify an agent", annotations=READ_ONLY)
+    async def dmd_verify_agent(
+        did: Annotated[
+            str, Field(description="The DID-LLM to verify (did:web:api.debitmydata.io:agents:...)")
+        ],
+        audience: Annotated[
+            str | None,
+            Field(description="Who verifies (your name or site), written in the challenge"),
+        ] = None,
+        message: Annotated[
+            str | None, Field(description="The challenge message the agent signed")
+        ] = None,
+        signature: Annotated[
+            str | None,
+            Field(description="The agent's signature of the message (its key's, or its wallet's)"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Check another agent's DID-LLM: issued by DebitMyData and active, its credential
+        signed by DebitMyData, its owner key or wallet. Call with did (and audience) for that and
+        a challenge; have the agent sign the challenge's message with its DID-LLM; call again
+        with did, message and signature to know whether it controls the DID-LLM (check that
+        proof.nonce is the nonce you were given)."""
+        fields = {"did": did, "audience": audience, "message": message, "signature": signature}
+        body = {name: value for name, value in fields.items() if value is not None}
+        return await api.call("POST", "/v1/dids/verifications", json_body=body)
+
     # ------------------------------------------------------------------ directory
 
     @server.tool(title="Search the DID-LLM directory", annotations=READ_ONLY)

@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.40.0`). The whole registration flow (quote,
+This is an early development release (`0.41.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -204,10 +204,21 @@ its first address, still works): `dmd_discover`,
 `dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase`, `dmd_marketplace_provider_requirements`,
-`dmd_search_directory` and `dmd_list_in_directory`. Each
+`dmd_search_directory`, `dmd_list_in_directory` and `dmd_verify_agent`. Each
 tool calls the REST API above in-process, so both give the same results and error codes. Its
 Server Card, `/agenticsuperhighway/server-card` (listed in `/.well-known/ai-catalog.json`),
 tells MCP clients and registries what it is and how to connect.
+
+**Verifying an agent by its DID-LLM** (the runbook's `verify_agent`; MCP `dmd_verify_agent`).
+Any agent or service checks a DID-LLM it meets: `POST /v1/dids/verifications` with `did` (and
+`audience`, its own name) answers whether DebitMyData issued it and it is active, its
+credential checked against DebitMyData's issuer key, its owner key or wallet, its
+entitlements, and a `challenge`: a "DebitMyData proof of control" message, valid 10 minutes,
+naming the DID-LLM, the verifier and a nonce. The agent signs it with its DID-LLM's key or
+wallet; the same request with `message` and `signature` adds `proof` (whether the signature is
+the owner's now, with the nonce to compare). `verified` sums it up, `reasons` says why not.
+Only messages in this form are checked, so a signature made to sign in to DebitMyData is
+never taken as a proof for someone else.
 
 **Inference donations (agents).** `POST /v1/donations/inference` with
 `{"amount_usd": "5.00"}` (from 0.50 to 1,000.00 USD; optionally `donor_name` and
