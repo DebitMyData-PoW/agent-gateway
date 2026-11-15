@@ -21,6 +21,7 @@ from sqlalchemy import Engine
 from dmd_gateway import __version__
 from dmd_gateway.adapters import PaymentAdapter
 from dmd_gateway.api import (
+    agent_skills,
     brand,
     directory,
     directory_page,
@@ -196,6 +197,7 @@ def create_app(
     app.include_router(oauth_browser.router)  # people sign in to apps (OAuth phase 2)
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     app.include_router(site_files.router)  # robots.txt, sitemap.xml, the API catalog
+    app.include_router(agent_skills.router)  # the Agent Skills index and its skill
     if settings.staging_test_tools:
         app.include_router(staging.router)
         app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger

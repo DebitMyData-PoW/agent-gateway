@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.46.0`). The whole registration flow (quote,
+This is an early development release (`0.47.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -114,6 +114,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Agents open the checkout without buying anything: `dmd_open_checkout` (read-only, no arguments, creates and charges nothing) gives the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options enabled now and the steps for an agent paying by itself; the server's instructions and `dmd_discover` point to it (`checkout_url`). The page at the MCP server's address also says what is sold there, with the same price text and structured data as Get a DID-LLM | done |
 | Get a DID-LLM's buy button says what it does: **Continue to payment** (it fixes the exact amount and opens step 2, Pay), not "Get my quote", which reads as a request for a price | done |
 | `dmd_open_checkout` ends with the purchase step, ready to fill in (`next_step`: `dmd_create_did_payment_quote` and its arguments), so an agent that opened the checkout knows what to call to buy | done |
+| An Agent Skill to install (`api/agent_skills.py`): `/.well-known/agent-skills/index.json` (Agent Skills discovery 0.2.0) lists `debitmydata-did-llm`, a SKILL.md the gateway writes itself from llms.txt (when to use it, the quickest path through the MCP server, then the full text), with the SHA-256 digest of the very text it serves; it links to DebitMyData's shared skill (debitmydata-skill) | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

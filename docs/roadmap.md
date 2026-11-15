@@ -148,6 +148,8 @@ place; the application logic comes with the related phase.
   page says what is sold there, with its price (0.44.0)
 - [x] Get a DID-LLM's buy button: **Continue to payment**, not "Get my quote" (0.45.0)
 - [x] `dmd_open_checkout` gives the purchase step ready to fill in (`next_step`) (0.46.0)
+- [x] An Agent Skill to install: `/.well-known/agent-skills/index.json` and the
+  `debitmydata-did-llm` SKILL.md, written from llms.txt (0.47.0)
 
 ## Phase 7 – x402 / USDC on Base
 

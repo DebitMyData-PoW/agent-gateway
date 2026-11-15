@@ -407,6 +407,12 @@ checkout without buying anything (read-only: the checkout page and the agent's s
 agent that may not pay, such as a checker's, can still reach the purchase step; and the page at
 the MCP server's address says what is sold there, with the same price text.
 
+Agents that use Agent Skills find one at `/.well-known/agent-skills/index.json`:
+`debitmydata-did-llm`, a SKILL.md the gateway writes itself from llms.txt, so it always has
+this server's addresses, price and payment options. To change its words, edit
+`src/dmd_gateway/api/agent_skills.py` (the top part) or `llms.py` (the rest); the index's
+digest follows by itself.
+
 Cloudflare's **Bot Preference Sync** (Security settings, Bot traffic, "AI Crawler and Agent
 access policies") must stay off for debitmydata.io: it puts Cloudflare's own lines in front of
 the gateway's `robots.txt`, which say `ai-train=no` and turn away AI crawlers such as GPTBot and

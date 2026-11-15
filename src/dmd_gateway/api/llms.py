@@ -199,6 +199,8 @@ controller, then `POST {base}/v1/directory/{{did}}/proofs` with `challenge_id` a
 
 - [API reference (OpenAPI)]({base}/openapi.json)
 - [API docs]({base}{brand.ADVANCED_PATH})
+- [Agent skill to install]({base}/.well-known/agent-skills/index.json): these steps as an Agent
+  Skill (SKILL.md)
 - [Policies]({base}{brand.POLICIES_PATH}): terms, privacy, payment methods, refunds, DID-LLMs
 - [Source code]({brand.SOURCE_CODE})
 
