@@ -114,6 +114,8 @@ async def test_tools_cover_the_directive(app: FastAPI) -> None:
     assert {"controller_public_key", "controller_wallet_address"} <= set(schema["properties"])
     for tool in tools.values():
         assert tool.description, tool.name
+        # Apps show the descriptions as they are: no reStructuredText markup in them.
+        assert "``" not in tool.description, tool.name
 
 
 async def test_discovery_tools(app: FastAPI) -> None:

@@ -260,7 +260,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
 
     @server.tool(title="Discover DebitMyData", annotations=READ_ONLY)
     async def dmd_discover() -> dict[str, Any]:
-        """Start here. What DebitMyData sells (``product``: the DebitMyData DID-LLM, $25.00 USD,
+        """Start here. What DebitMyData sells (product: the DebitMyData DID-LLM, $25.00 USD,
         paid once, with its page, its picture and how to buy it), then DebitMyData, its
         Proof-of-Work chain and DMD coin, the offers, the enabled payment methods, the policies
         and the public endpoints."""
