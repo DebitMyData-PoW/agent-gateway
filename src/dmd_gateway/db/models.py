@@ -71,7 +71,14 @@ PURCHASE_STATUSES = (
 IDENTITY_STATUSES = ("active", "suspended", "revoked")
 PROOF_STATUSES = ("verified", "rejected")
 # directory_listing: an owner's signed change to the DID-LLM's directory listing.
-CHALLENGE_PURPOSES = ("registration", "rotation", "recovery", "directory_listing")
+# rotation: an owner change (owner_changes), signed by a current owner and each new one.
+# revocation: the owner revokes the DID-LLM for good.
+CHALLENGE_PURPOSES = ("registration", "rotation", "recovery", "directory_listing", "revocation")
+# The messages about an issued DID-LLM (identity_id), as opposed to a registration.
+IDENTITY_PURPOSES = ("directory_listing", "rotation", "revocation")
+# open: waiting for its signatures; applied: the DID-LLM has its new owner; cancelled: another
+# change was applied first. An open change past its expiry is expired (it is never applied).
+OWNER_CHANGE_STATUSES = ("open", "applied", "cancelled")
 # A directory listing's type, as on the Agentic Hub.
 DIRECTORY_ENTITY_TYPES = ("avatar", "robot", "sentient")
 # hosted_payment_page: a card payment page made for one intent (Stripe Checkout).
@@ -397,6 +404,8 @@ class AgentIdentity(Base):
         ForeignKey("controller_proofs.id", use_alter=True), nullable=False, unique=True
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    # When the owner last changed (owner_changes): sign-ins from before it no longer count.
+    controller_changed_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = updated_at()
 
@@ -414,8 +423,12 @@ class ControllerChallenge(Base):
             "(purpose = 'directory_listing') = (proposal IS NOT NULL)", name="proposal_present"
         ),
         CheckConstraint(
-            "purpose <> 'directory_listing' OR identity_id IS NOT NULL",
+            f"purpose NOT IN {IDENTITY_PURPOSES} OR identity_id IS NOT NULL",
             name="listing_names_identity",
+        ),
+        # An owner change's messages belong to it.
+        CheckConstraint(
+            "(purpose = 'rotation') = (owner_change_id IS NOT NULL)", name="rotation_has_change"
         ),
     )
 
@@ -431,6 +444,8 @@ class ControllerChallenge(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     # directory_listing only: the change the message describes, applied once it is signed.
     proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # rotation only: the owner change this message signs for.
+    owner_change_id: Mapped[str | None] = mapped_column(ForeignKey("owner_changes.id"), index=True)
     expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
@@ -455,6 +470,36 @@ class ControllerProof(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(Timestamp)
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at()
+
+
+class OwnerChange(Base):
+    """An owner change of an issued DID-LLM (ID-12): its owner key and/or wallet replaced, once
+    one of its current owners approved it and each new owner accepted it, by signing
+    (services/owner_changes.py). The owners before and after are kept for the record."""
+
+    __tablename__ = "owner_changes"
+    __table_args__ = (
+        CheckConstraint(one_of("status", OWNER_CHANGE_STATUSES), name="status"),
+        CheckConstraint(
+            "new_public_key IS NOT NULL OR new_wallet_address IS NOT NULL", name="new_owner"
+        ),
+        CheckConstraint("(status = 'applied') = (applied_at IS NOT NULL)", name="applied_at_set"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    identity_id: Mapped[str] = mapped_column(
+        ForeignKey("identities.id"), nullable=False, index=True
+    )
+    previous_public_key: Mapped[str | None] = mapped_column(Text)
+    previous_wallet_address: Mapped[str | None] = mapped_column(Text)
+    previous_network: Mapped[str | None] = mapped_column(Text)
+    new_public_key: Mapped[str | None] = mapped_column(Text)
+    new_wallet_address: Mapped[str | None] = mapped_column(Text)
+    new_network: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    expires_at: Mapped[datetime] = mapped_column(Timestamp, nullable=False)
+    applied_at: Mapped[datetime | None] = mapped_column(Timestamp)
     created_at: Mapped[datetime] = created_at()
 
 

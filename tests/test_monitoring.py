@@ -632,6 +632,39 @@ def test_audit_check_reports_did_status_changes(db: Session) -> None:
 
 
 @needs_db
+def test_audit_check_reports_owner_changes_and_owner_revocations(db: Session) -> None:
+    ctx = context()
+    assert mc.check_audit(ctx, db, NOW) == []  # the first run starts from now
+    key, wallet = "ed25519:z6MkOld", "eip155:8453:0xNew"
+    record_audit_event(
+        db,
+        action="identity.owner_changed",
+        subject_type="identity",
+        subject_id="dmd_identity_unknown",
+        actor_type="agent",
+        data={"did": "did:web:x", "from": {"ed25519": key}, "to": {"eip155": wallet}},
+    )
+    record_audit_event(
+        db,
+        action="identity.status_changed",
+        subject_type="identity",
+        subject_id="dmd_identity_unknown",
+        actor_type="agent",
+        actor_id=key,
+        data={"did": "did:web:x", "from": "active", "to": "revoked", "reason": "Key leaked"},
+    )
+    db.flush()
+    changed, revoked = mc.check_audit(ctx, db, NOW)
+    assert (changed.severity, changed.kind) == (W, "event")
+    assert changed.title == "A DID-LLM changed owners: dmd_identity_unknown"
+    assert f"Before: key {key}" in changed.detail and f"After: wallet {wallet}" in changed.detail
+    assert "dmd-gateway-admin did suspend did:web:x" in changed.detail
+    assert revoked.title == "A DID-LLM was revoked: dmd_identity_unknown"
+    assert f"by its owner, signed with {key}" in revoked.detail
+    assert "dmd-gateway-admin" not in revoked.detail and "Reason: Key leaked" in revoked.detail
+
+
+@needs_db
 def test_audit_check_reports_directory_listings(db: Session) -> None:
     ctx = context()
     assert mc.check_audit(ctx, db, NOW) == []  # the first run starts from now

@@ -111,8 +111,10 @@ def downgrade() -> None:
         op.get_bind()
         .execute(
             sa.text(
+                # Any purpose added since (a directory listing, or a later one kept by a
+                # later migration's downgrade) keeps the purposes as they are.
                 "SELECT EXISTS (SELECT 1 FROM controller_challenges "
-                "WHERE purpose = 'directory_listing')"
+                "WHERE purpose NOT IN ('registration', 'rotation', 'recovery'))"
             )
         )
         .scalar()

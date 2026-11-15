@@ -118,6 +118,22 @@ async def test_tools_cover_the_directive(app: FastAPI) -> None:
         assert "``" not in tool.description, tool.name
 
 
+def test_tool_descriptions_lose_the_codes_indentation() -> None:
+    """On Python 3.12 a docstring keeps the code's indentation; apps show descriptions as
+    they are."""
+    from types import SimpleNamespace
+
+    from dmd_gateway.mcp_server import clean_descriptions
+
+    tools = [
+        SimpleNamespace(description="Start here.\n        Then this.\n\n        And that."),
+        SimpleNamespace(description=None),
+    ]
+    clean_descriptions(tools)
+    assert tools[0].description == "Start here.\nThen this.\n\nAnd that."
+    assert tools[1].description is None
+
+
 async def test_discovery_tools(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
         discovery = await call(mcp, "dmd_discover")

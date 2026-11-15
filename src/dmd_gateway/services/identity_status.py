@@ -1,8 +1,10 @@
 """Suspending, reactivating and revoking an issued DID (ID-13).
 
-An operator changes a DID's status with ``dmd-gateway-admin`` on the server; nothing on the
-public API can. The change, who made it and why are written to the audit trail in the same
-transaction, and the audit trail cannot be edited or deleted, so the history is kept.
+An operator changes a DID's status with ``dmd-gateway-admin`` on the server. On the public API,
+only the DID-LLM's owner can, and only to revoke it for good, with a message signed with its
+owner key or wallet (services/owner_changes.py). The change, who made it and why are written
+to the audit trail in the same transaction, and the audit trail cannot be edited or deleted, so
+the history is kept.
 
   active     -> suspended   temporary: the DID stops resolving (410 Gone) until reactivated
   suspended  -> active      reactivated
@@ -23,7 +25,7 @@ from urllib.parse import unquote
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from dmd_gateway.audit import record_audit_event
+from dmd_gateway.audit import ActorType, record_audit_event
 from dmd_gateway.db.models import AgentIdentity, AuditEvent, Credential, Entitlement
 
 STATUS_CHANGED = "identity.status_changed"
@@ -129,7 +131,32 @@ def change_status(
     operator = operator.strip()
 
     identity = find_identity(session, text, lock=True)
-    old, new = identity.status, TARGETS[command]
+    return set_status(
+        session,
+        identity,
+        TARGETS[command],
+        reason=reason,
+        actor_type="operator",
+        actor_id=operator,
+        now=now,
+    )
+
+
+def set_status(
+    session: Session,
+    identity: AgentIdentity,
+    new: str,
+    *,
+    reason: str,
+    actor_type: ActorType,
+    actor_id: str,
+    now: datetime,
+) -> StatusChange:
+    """Change a (locked) DID-LLM's status, its entitlements and, when revoked, its credentials,
+    with the audit event, in the caller's transaction. An operator does it with
+    ``change_status``; an owner revokes their own DID-LLM with a signed message
+    (services/owner_changes.py)."""
+    old = identity.status
     if old == new:
         raise StatusChangeError(f"This DID-LLM is already {old}: nothing was changed.")
     if (old, new) not in ALLOWED:
@@ -165,8 +192,8 @@ def change_status(
         action=STATUS_CHANGED,
         subject_type="identity",
         subject_id=identity.id,
-        actor_type="operator",
-        actor_id=operator,
+        actor_type=actor_type,
+        actor_id=actor_id,
         data={"did": identity.public_identifier, "from": old, "to": new, "reason": reason},
     )
     session.flush()

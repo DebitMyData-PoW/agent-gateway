@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.47.1`). The whole registration flow (quote,
+This is an early development release (`0.48.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -115,7 +115,8 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | Get a DID-LLM's buy button says what it does: **Continue to payment** (it fixes the exact amount and opens step 2, Pay), not "Get my quote", which reads as a request for a price | done |
 | `dmd_open_checkout` ends with the purchase step, ready to fill in (`next_step`: `dmd_create_did_payment_quote` and its arguments), so an agent that opened the checkout knows what to call to buy | done |
 | An Agent Skill to install (`api/agent_skills.py`): `/.well-known/agent-skills/index.json` (Agent Skills discovery 0.2.0) lists `debitmydata-did-llm`, a SKILL.md the gateway writes itself from llms.txt (when to use it, the quickest path through the MCP server, then the full text), with the SHA-256 digest of the very text it serves; it links to DebitMyData's shared skill (debitmydata-skill) | done |
-| Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
+| Owner changes and owner revocation (ID-12; `services/owner_changes.py`, `api/owners.py`): an owner moves a DID-LLM to new owners (a new key and/or wallet) with `POST /v1/dids/{did}/owner-changes`, MCP `dmd_change_owner` or the owner-key tool's `change-owner`: one current owner signs the change's "approve" message and each new owner its "accept" message, within 15 minutes; then only the new owners control it (DID document, record, proofs of control), every sign-in made before ends (apps' refresh tokens revoked; older access tokens refused by the API, older app sign-ins by the token signer), and the monitor reports it. An owner revokes the DID-LLM for good with one signed message (`/revocations`, `dmd_revoke_did`, `revoke`). MCP tool descriptions lose the code's indentation on Python 3.12 too | done |
+| Native DMD wallet proofs (DEC-07); lost-key recovery (ID-14) | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](docs/regtest-demo.md)); on mainnet it is
@@ -210,7 +211,8 @@ its first address, still works): `dmd_discover`,
 `dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase`, `dmd_marketplace_provider_requirements`,
-`dmd_search_directory`, `dmd_list_in_directory` and `dmd_verify_agent`. Each
+`dmd_search_directory`, `dmd_list_in_directory`, `dmd_verify_agent`, `dmd_change_owner`
+and `dmd_revoke_did`. Each
 tool calls the REST API above in-process, so both give the same results and error codes. Its
 Server Card, `/agenticsuperhighway/server-card` (listed in `/.well-known/ai-catalog.json`),
 tells MCP clients and registries what it is and how to connect.

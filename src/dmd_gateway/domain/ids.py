@@ -20,6 +20,7 @@ CHALLENGE = "dmd_challenge"
 PROOF = "dmd_proof"
 CREDENTIAL = "dmd_credential"
 PURCHASE = "dmd_purchase"
+OWNER_CHANGE = "dmd_owner_change"
 
 REGISTRATION_INTENT_ID_PATTERN = rf"^{REGISTRATION_INTENT}_[0-9A-HJKMNP-TV-Z]{{26}}$"
 

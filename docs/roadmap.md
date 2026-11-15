@@ -101,8 +101,8 @@ place; the application logic comes with the related phase.
 - [x] ID-09 Identity issued only after settlement, verified proof and policy checks; idempotent
 - [x] ID-10 Signed registration credential/receipt (W3C VC 2.0, `eddsa-jcs-2022`, DEC-06)
 - [ ] ID-11 Entitlements: `dmd_did_holder` done; products bought for a DID (ID-17: the BottyBotty tiers, owned for good; products with a period) done; marketplace eligibility open
-- [ ] ID-12 Controller rotation with proof and audit history
-- [x] ID-13 Suspension and revocation without deleting history: `dmd-gateway-admin did suspend|reactivate|revoke` on the server only, every change in the write-once audit trail with its reason and operator, an alert for each, `did_status` in the registration status; open: recovery (with ID-12) and a public status list in new credentials
+- [x] ID-12 Controller rotation with proof and audit history: owner changes approved by a current owner and accepted by each new one, signed; earlier sign-ins end; owner revocation (0.48.0)
+- [x] ID-13 Suspension and revocation without deleting history: `dmd-gateway-admin did suspend|reactivate|revoke` on the server only, every change in the write-once audit trail with its reason and operator, an alert for each, `did_status` in the registration status; the owner can also revoke with a signed message (0.48.0); open: recovery (ID-14) and a public status list in new credentials
 - [ ] ID-14 Transfer/new-registration policy for material controller changes
 - [x] ID-16 Display names that cannot pass for another one, checked when the quote is requested (before payment): no hidden characters, one alphabet per word, DebitMyData's own names (DebitMyData, DMD, BottyBotty, AgenticSpaces and their lookalikes) only for the company's controllers (`DMD_GW_BRAND_NAME_CONTROLLERS`); `dmd-gateway-admin names check` for the DIDs issued before
 - [x] ID-17 Products bought for a DID (Preska Thomas, October and November 2026: BottyBotty

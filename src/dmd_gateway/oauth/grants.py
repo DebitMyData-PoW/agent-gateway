@@ -219,6 +219,18 @@ class Grant:
     resource: str
     expires_at: datetime
     jti: str
+    issued_at: datetime | None = None
+
+
+def before_owner_change(issued_at: int | float | datetime, changed_at: datetime | None) -> bool:
+    """Whether a sign-in (a token or grant issued at ``issued_at``, in whole seconds) may have
+    been made before the DID-LLM's owners last changed: it then no longer counts. One made in
+    the very second of the change does not count either (an issue time has no finer
+    precision): the new owner signs in again a second later."""
+    if changed_at is None:
+        return False
+    issued = issued_at.timestamp() if isinstance(issued_at, datetime) else float(issued_at)
+    return int(issued) <= int(changed_at.timestamp())
 
 
 def issue_grant(
@@ -290,6 +302,9 @@ def verify_grant(token: str, keys: Sequence[RSAPublicKey], *, issuer: str, now: 
         resource=claims["resource"],
         expires_at=datetime.fromtimestamp(claims["exp"], UTC),
         jti=claims["jti"],
+        issued_at=datetime.fromtimestamp(claims["iat"], UTC)
+        if isinstance(claims.get("iat"), int)
+        else None,
     )
 
 

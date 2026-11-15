@@ -16,7 +16,9 @@ names to block DNS-rebinding attacks.
 
 from __future__ import annotations
 
+import inspect
 import json
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
@@ -81,6 +83,10 @@ owners chose to be listed. To list yours, call dmd_list_in_directory with your D
 profile, sign the message it returns with your controller (as in step 5), then call it again \
 with the challenge_id and the signature. listed=false removes the listing the same way.
 
+Owners (signed by them): dmd_change_owner moves a DID-LLM to a new owner key and/or wallet (one \
+current owner approves, each new owner accepts; earlier sign-ins end); dmd_revoke_did revokes \
+it for good.
+
 DebitMyData never asks for private keys, seed phrases or wallet access."""
 
 ABOUT = (
@@ -98,6 +104,8 @@ ABOUT = (
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 CREATES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+# Replaces or ends something: a DID-LLM's owners, or the DID-LLM itself.
+DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False)
 IDEMPOTENT = ToolAnnotations(
     readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False
 )
@@ -637,6 +645,127 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             json_body={"challenge_id": challenge_id, "signature": signature},
         )
 
+    # ------------------------------------------------------------------ owners
+
+    def _both_or_neither(first: str | None, second: str | None, names: str) -> None:
+        if (first is None) != (second is None) or (first is not None and not (first and second)):
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "invalid_request",
+                            "message": f"Send both {names}, or neither to get the messages "
+                            "to sign.",
+                        }
+                    }
+                )
+            )
+
+    @server.tool(title="Change a DID-LLM's owners", annotations=DESTRUCTIVE)
+    async def dmd_change_owner(
+        did: DidLlm,
+        new_controller_public_key: Annotated[
+            str | None,
+            Field(
+                description="The owner key after the change, ed25519:z6Mk...: the current one "
+                "to keep it, a new one to replace it, or empty to have none"
+            ),
+        ] = None,
+        new_controller_wallet_address: Annotated[
+            str | None,
+            Field(description="The owner wallet after the change, 0x..., the same way"),
+        ] = None,
+        new_controller_network: Annotated[
+            str | None, Field(description="The wallet's network, eip155:8453 (Base) by default")
+        ] = None,
+        change_id: Annotated[
+            str | None,
+            Field(description="Leave empty to start a change; then the change_id it returned"),
+        ] = None,
+        challenge_id: Annotated[
+            str | None, Field(description="The message you signed (from `messages`)")
+        ] = None,
+        signature: Annotated[
+            str | None,
+            Field(description="Its signature, as for dmd_prove_wallet_control"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Move a DID-LLM to new owners (a new key and/or wallet), signed by its owners. First
+        call, with did and the owners it will have afterwards: returns the change and its
+        messages. One current owner signs its "approve" message and each new owner its "accept"
+        message; send each with did, change_id, challenge_id and signature. The last one needed
+        applies the change (within 15 minutes): only the new owners control the DID-LLM and
+        sign-ins made before it end. With change_id alone: where it stands."""
+        base = f"/v1/dids/{did}/owner-changes"
+        if change_id is None:
+            body = {
+                key: value
+                for key, value in {
+                    "new_controller_public_key": new_controller_public_key,
+                    "new_controller_wallet_address": new_controller_wallet_address,
+                    "new_controller_network": new_controller_network,
+                }.items()
+                if value
+            }
+            change = await api.call("POST", base, json_body=body)
+            how = (
+                "Sign each message in `messages` that is yours, exactly as given, with its "
+                "`signer` (Ed25519 key: its UTF-8 bytes, base64url; wallet: personal_sign), then "
+                "call dmd_change_owner with did, change_id, challenge_id and signature for each, "
+                "before expires_at. One approve message is enough; every accept message is needed."
+            )
+            return {"step": "sign_owner_change", **change, "how_to_answer": how}
+        _both_or_neither(challenge_id, signature, "challenge_id and signature")
+        if challenge_id is None:
+            return await api.call("GET", f"{base}/{change_id}")
+        return await api.call(
+            "POST",
+            f"{base}/{change_id}/signatures",
+            json_body={"challenge_id": challenge_id, "signature": signature},
+        )
+
+    @server.tool(title="Revoke a DID-LLM for good", annotations=DESTRUCTIVE)
+    async def dmd_revoke_did(
+        did: DidLlm,
+        reason: Annotated[
+            str | None, Field(description="Optional, kept with the revocation")
+        ] = None,
+        controller_type: Annotated[
+            Literal["ed25519", "eip155"] | None,
+            Field(description="Who signs: ed25519 (the key, by default) or eip155 (the wallet)"),
+        ] = None,
+        challenge_id: Annotated[
+            str | None, Field(description="Leave empty to get the message to sign")
+        ] = None,
+        signature: Annotated[
+            str | None,
+            Field(description="Signature of the message, as for dmd_prove_wallet_control"),
+        ] = None,
+    ) -> dict[str, Any]:
+        """Revoke a DID-LLM for good, signed by its owner: it cannot be undone. The DID-LLM, its
+        credential and its entitlements stop working forever. Without challenge_id and
+        signature: returns the message to sign. Sign it with the owner key or wallet it names,
+        then call again with did, challenge_id and signature. Only when the owner really wants
+        it ended (for example a key that leaked and no other owner to change to)."""
+        base = f"/v1/dids/{did}/revocations"
+        if challenge_id is None and signature is None:
+            body: dict[str, Any] = {}
+            if reason:
+                body["reason"] = reason
+            if controller_type:
+                body["controller_type"] = controller_type
+            challenge = await api.call("POST", base, json_body=body)
+            how = (
+                "This revokes the DID-LLM for good. If that is what its owner wants, sign "
+                "`message` exactly as given with `controller`, then call dmd_revoke_did again "
+                "with did, challenge_id and signature before expires_at."
+            )
+            return {"step": "sign_revocation", **challenge, "how_to_answer": how}
+        _both_or_neither(challenge_id, signature, "challenge_id and signature")
+        return await api.call(
+            "POST", f"{base}/{challenge_id}/signature", json_body={"signature": signature}
+        )
+
     # ------------------------------------------------------------------ catalog
 
     @server.tool(title="Catalog", annotations=READ_ONLY)
@@ -910,7 +1039,16 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             "policy_urls": discovery["policy_urls"],
         }
 
+    clean_descriptions(server._tool_manager.list_tools())  # noqa: SLF001 (no public setter)
     return server
+
+
+def clean_descriptions(tools: Iterable[Any]) -> None:
+    """Each tool's description as apps show it: its docstring without the code's indentation.
+    Python 3.13 strips it when it compiles; 3.12, which the servers may run, keeps it."""
+    for tool in tools:
+        if tool.description:
+            tool.description = inspect.cleandoc(tool.description)
 
 
 def transport_security(settings: Settings) -> TransportSecuritySettings:

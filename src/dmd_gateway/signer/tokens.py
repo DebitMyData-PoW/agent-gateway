@@ -243,7 +243,11 @@ class TokenIssuer:
             grants.check_use(grant, client_id=client_id, resource=resource, scopes=scopes)
         except GrantRefused as exc:
             raise TokenRefused(str(exc)) from exc
-        _active_identity(session, grant.did)
+        identity = _active_identity(session, grant.did)
+        if grant.issued_at is None or grants.before_owner_change(
+            grant.issued_at, identity.controller_changed_at
+        ):
+            raise TokenRefused("this DID-LLM's owners changed after this sign-in: sign in again")
         issued = issue_token(
             self.key,
             issuer=self.issuer,

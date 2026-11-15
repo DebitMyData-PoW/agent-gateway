@@ -40,6 +40,7 @@ from dmd_gateway.api.oauth import PUBLIC, issuer, sign_in_open
 from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import error_body
+from dmd_gateway.oauth.grants import before_owner_change
 from dmd_gateway.oauth.tokens import SCOPES, TokenRejected, verify_token
 from dmd_gateway.settings import Settings
 
@@ -140,6 +141,11 @@ def check_token(state: Any, token: str, now: datetime) -> AccessToken:
             raise Refused("The access token is not valid for this server", f"unknown DID {did}")
         if identity.status != "active":
             raise Refused(f"This DID-LLM is {identity.status}")
+        if before_owner_change(claims["iat"], identity.controller_changed_at):
+            raise Refused(
+                "This DID-LLM's owners changed after this sign-in: sign in again",
+                f"token issued before the owner change of {did}",
+            )
         identity_id = identity.id
     return AccessToken(
         token=token,

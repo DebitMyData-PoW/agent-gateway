@@ -264,8 +264,12 @@ data formats did not change. The monitor may send one node alert during the rest
 ## 9. Suspending, reactivating or revoking a DID
 
 When a DID is misused (impersonation, fraud, a compromised key, a payment that left the chain)
-or its holder asks, change its status on the server with `dmd-gateway-admin`. Nothing on the
-public API can do it. The [DID policy](https://api.debitmydata.io/policies/did) says when DebitMyData may.
+or its holder asks, change its status on the server with `dmd-gateway-admin`. On the public API,
+only the DID-LLM's own owner can, and only to revoke it for good, with a message signed with its
+owner key or wallet ([owner-key.md](owner-key.md#revoke-the-did-llm-for-good)); the alert then
+says "by its owner". An owner can also move the DID-LLM to new owners (a new key or wallet,
+signed by a current owner and each new one): each change is alerted too ("A DID-LLM changed
+owners"), so that someone sees a key change that may follow a stolen key. The [DID policy](https://api.debitmydata.io/policies/did) says when DebitMyData may.
 
 ```bash
 sudo dmd-gateway-admin did show <DID>

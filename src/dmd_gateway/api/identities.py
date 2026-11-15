@@ -72,6 +72,11 @@ class IdentityRecord(BaseModel):
     credentials: list[str]
     entitlements: list[str]
     created_at: datetime
+    owner_changed_at: datetime | None = Field(
+        default=None,
+        description="When its owners last changed (an owner change signed by its owners); "
+        "null if never.",
+    )
 
 
 @router.get(
@@ -111,6 +116,7 @@ def identity(
             credentials=[credential_url(base, cid) for cid in credentials],
             entitlements=active_entitlements(session, record.id),
             created_at=record.created_at,
+            owner_changed_at=record.controller_changed_at,
         )
 
 

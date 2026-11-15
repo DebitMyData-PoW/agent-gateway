@@ -78,6 +78,41 @@ The tool finds the key file that owns the DID-LLM in `~/did-keys`, shows what wi
 page's command starts with `DMD_GATEWAY_API=https://staging-api.debitmydata.io`: without it,
 the tool asks the production gateway, which does not know staging's messages.
 
+## Change the owner key, or add a wallet
+
+To move the DID-LLM to a new key (a key that may have leaked, a new machine), make the new key,
+then name every owner the DID-LLM will have afterwards:
+
+```bash
+python3 did-owner-key.py new ~/did-keys/new.key
+python3 did-owner-key.py change-owner ~/did-keys did:web:api.debitmydata.io:agents:... ~/did-keys/new.key
+```
+
+- The tool shows the owners now and the new ones, and asks you to confirm. Then the current key
+  **approves** the change and the new key **accepts** it: both are in `~/did-keys`, so it signs
+  both, and the change applies at once.
+- To keep the current key and add a wallet, name both: `... change-owner ~/did-keys did:web:...
+  ed25519:z6Mk<the current key> 0x<the wallet>`. The tool shows the wallet's message: sign it in
+  the wallet (personal_sign) and paste the signature when it asks.
+- Once applied, only the new owners can sign for the DID-LLM; every sign-in made before ends
+  (agents and apps sign in again). Its credential, entitlements and directory listing stay.
+- Everything happens within 15 minutes; a change not finished by then expires. Through the MCP
+  server, the tool is `dmd_change_owner`.
+- With no owner key or wallet left that can sign, nothing can be changed: keep a backup of the
+  key file.
+
+## Revoke the DID-LLM for good
+
+If the DID-LLM must end (a key that leaked with no other owner to move to, an agent retired),
+its owner revokes it:
+
+```bash
+python3 did-owner-key.py revoke ~/did-keys did:web:api.debitmydata.io:agents:...
+```
+
+The tool shows the message and asks you to type `REVOKE`. It cannot be undone: the DID-LLM, its
+credential and its entitlements stop working forever (MCP: `dmd_revoke_did`).
+
 ## Sign in as the DID-LLM (OAuth)
 
 Where DebitMyData's authorization server is open (on staging for now:

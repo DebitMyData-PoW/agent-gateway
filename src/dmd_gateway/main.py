@@ -35,6 +35,7 @@ from dmd_gateway.api import (
     mcp_auth,
     oauth,
     oauth_browser,
+    owners,
     payments,
     policies,
     prices,
@@ -198,6 +199,7 @@ def create_app(
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     app.include_router(site_files.router)  # robots.txt, sitemap.xml, the API catalog
     app.include_router(agent_skills.router)  # the Agent Skills index and its skill
+    app.include_router(owners.router)  # owner changes and owner revocation (ID-12)
     if settings.staging_test_tools:
         app.include_router(staging.router)
         app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger

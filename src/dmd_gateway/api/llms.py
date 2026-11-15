@@ -183,6 +183,18 @@ your own DID-LLM, sign only a message that starts with "DebitMyData proof of con
 names you: never a "DebitMyData sign-in" or "DebitMyData agent sign-in" message, which signs
 you in.
 
+## Changing a DID-LLM's owners, or revoking it
+
+A DID-LLM's owners (its owner key and/or wallet) can move it to new ones (MCP tool
+`dmd_change_owner`): `POST {base}/v1/dids/{{did}}/owner-changes` with the owners it will have
+afterwards (`new_controller_public_key` and/or `new_controller_wallet_address`) answers with
+messages: one current owner signs its "approve" message and each new owner its "accept"
+message; send each to `signatures_url` with its `challenge_id` (within 15 minutes). With the
+last one needed, only the new owners control it, and every sign-in made before ends. An owner
+can also revoke it for good (`dmd_revoke_did`, `POST {base}/v1/dids/{{did}}/revocations`, then
+the signed message): it cannot be undone. Sign only a "DebitMyData owner change" or
+"DebitMyData revocation" message that names your own DID-LLM and the change you want.
+
 ## The DID-LLM directory
 
 DID-LLMs whose owners chose to be listed, with a short profile: `GET {base}/v1/directory`

@@ -29,6 +29,18 @@
         page (the address it shows): shows which app asks and what for, asks you to confirm,
         signs with the owner key and sends the signature. Then click Continue on the page.
 
+    python3 did-owner-key.py change-owner  KEYS  did:web:...  NEW-OWNER  [NEW-OWNER]
+        Moves the DID-LLM to new owners: NEW-OWNER is a new key file (made with "new"), a public
+        key (ed25519:z6Mk...) or a wallet (0x... on Base, or eip155:<chain id>:0x...); name every
+        owner it will have afterwards (to keep the current key, name it too). Shows the change,
+        asks you to confirm, then signs what your keys can sign: the current owner key approves,
+        a new owner key accepts. A wallet's message is shown for you to sign in the wallet and
+        paste its signature. Earlier sign-ins end once the change applies.
+
+    python3 did-owner-key.py revoke  KEYS  did:web:...
+        Revokes the DID-LLM for good, with the owner key: it cannot be undone. Shows what you are
+        signing and asks you to type REVOKE first.
+
 KEYS is a key file, or a folder of key files (such as ~/did-keys): the tool then uses the one
 that owns the DID-LLM, and says so.
 
@@ -59,6 +71,9 @@ B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 REGISTRATION = re.compile(r"^dmd_did_intent_[0-9A-HJKMNP-TV-Z]{26}$")
 CHALLENGE = re.compile(r"^dmd_challenge_[0-9A-HJKMNP-TV-Z]{26}$")
 LISTING = "DebitMyData directory listing"
+OWNER_CHANGE = "DebitMyData owner change"
+REVOCATION = "DebitMyData revocation"
+WALLET = re.compile(r"^(0x[0-9a-fA-F]{40}|eip155:[0-9]{1,12}:0x[0-9a-fA-F]{40})$")
 # Only https (or a gateway running on this machine, for testing).
 GATEWAY = re.compile(r"^(https://[^/\s]+|http://(localhost|127\.0\.0\.1)(:\d+)?)$")
 AGENT_DID = re.compile(r"^did:web:([A-Za-z0-9.%-]+):agents:([A-Za-z0-9_-]+)$")
@@ -227,6 +242,26 @@ def load(path: str) -> Ed25519PrivateKey:
     if not isinstance(key, Ed25519PrivateKey):
         sys.exit(f"{path} is not an Ed25519 key")
     return key
+
+
+def find_key(path: str, controller: str) -> Ed25519PrivateKey | None:
+    """The key in ``path`` (a key file, or a folder of key files) whose public key is
+    ``controller``, or None."""
+    files = (
+        [path]
+        if not os.path.isdir(path)
+        else [os.path.join(path, name) for name in sorted(os.listdir(path))]
+    )
+    for file in files:
+        try:
+            with open(file, "rb") as handle:
+                key = serialization.load_pem_private_key(handle.read(), password=None)
+        except (OSError, ValueError, TypeError):
+            continue  # not a key file
+        if isinstance(key, Ed25519PrivateKey) and public_key(key) == controller:
+            print(f"The key {controller[:20]}... is {file}.")
+            return key
+    return None
 
 
 def owner_key(path: str, controller: str, what: str) -> Ed25519PrivateKey:
@@ -499,6 +534,138 @@ def approve(path: str, page: str, confirm=input) -> None:
     print("Signed in. Back on the page, click Continue.")
 
 
+def did_path(did: str) -> str:
+    if not AGENT_DID.match(did):
+        sys.exit("Give the DID-LLM itself: did:web:...:agents:...")
+    return urllib.parse.quote(did, safe=":")
+
+
+def new_owners(values: list[str]) -> dict:
+    """NEW-OWNER arguments -> the owner change request: a key file, a public key or a wallet."""
+    body: dict = {}
+    for value in values:
+        if value.startswith("ed25519:"):
+            field, owner = "new_controller_public_key", value
+        elif WALLET.match(value):
+            field, owner = "new_controller_wallet_address", value
+        elif os.path.isfile(value):
+            field, owner = "new_controller_public_key", public_key(load(value))
+        else:
+            sys.exit(
+                f"{value!r} is not a key file, a public key (ed25519:z6Mk...) or a wallet (0x...)."
+            )
+        if field in body:
+            sys.exit("Name at most one owner key and one owner wallet.")
+        body[field] = owner
+    return body
+
+
+def _checked(message: str, did: str, change_id: str, signer: str) -> list[str]:
+    lines = message.split("\n")
+    if (
+        lines[:3] != [OWNER_CHANGE, f"Audience: {API}", "Purpose: rotation"]
+        or f"DID-LLM: {did}" not in lines
+        or f"Change: {change_id}" not in lines
+        or f"Signer: {signer}" not in lines
+    ):
+        sys.exit(f"This is not an owner change of {did} at {API}: nothing was signed.")
+    return lines
+
+
+def change_owner(path: str, did: str, values: list[str], confirm=input, paste=input) -> None:
+    where = did_path(did)
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    status, change = call("POST", f"/v1/dids/{where}/owner-changes", new_owners(values))
+    if status != 201:
+        sys.exit(f"The change was refused (HTTP {status}): {problem(change)}{elsewhere(status)}")
+
+    def owners(items: list) -> str:
+        return ", ".join(f"{item['type']} {item['value']}" for item in items) or "-"
+
+    print(f"Owner change {change['change_id']} of {did}:")
+    print("  Owners now:  " + owners(change["previous_owners"]))
+    print("  New owners:  " + owners(change["new_owners"]))
+    print("Only the new owners will control it, and every sign-in made before ends.")
+    if confirm("Change the owners? Type yes: ").strip().lower() not in ("y", "yes"):
+        sys.exit("Nothing was signed.")
+    view = change
+    for item in change["messages"]:
+        if view.get("status") != "open":
+            break
+        if item["role"] == "approve" and not view["waiting_for"]["approval"]:
+            continue  # one approval is enough
+        lines = _checked(item["message"], did, change["change_id"], item["signer"])
+        if item["signer"].startswith("ed25519:"):
+            key = find_key(path, item["signer"])
+            if key is None:
+                print(f"No key file in {path} for {item['signer']}: its message is not signed.")
+                continue
+            signature = base64.urlsafe_b64encode(key.sign(item["message"].encode("utf-8")))
+            answer = signature.rstrip(b"=").decode("ascii")
+        else:
+            print(f"\nSign this message with the wallet {item['signer']} ({item['role']}):")
+            print("  " + "\n  ".join(lines))
+            answer = paste("Paste the wallet's signature (0x...), or leave empty to skip: ")
+            answer = answer.strip()
+            if not answer:
+                continue
+        status, view = call(
+            "POST",
+            f"/v1/dids/{where}/owner-changes/{change['change_id']}/signatures",
+            {"challenge_id": item["challenge_id"], "signature": answer},
+        )
+        if status != 201:
+            sys.exit(f"The signature was refused (HTTP {status}): {problem(view)}")
+        print(f"Signed ({item['role']}) by {item['signer']}.")
+    if view.get("status") == "applied":
+        print("Done: the DID-LLM has its new owners. Earlier sign-ins have ended.")
+        return
+    waiting = view.get("waiting_for", {})
+    missing = (["a current owner's approval"] if waiting.get("approval") else []) + [
+        f"the acceptance of {owner}" for owner in waiting.get("acceptances", [])
+    ]
+    sys.exit(
+        "Not applied yet: still needed: " + ", ".join(missing) + f". The change "
+        f"{change['change_id']} waits until {change['expires_at']} (the MCP tool "
+        "dmd_change_owner takes the other signatures)."
+    )
+
+
+def revoke(path: str, did: str, confirm=input) -> None:
+    where = did_path(did)
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    status, challenge = call(
+        "POST", f"/v1/dids/{where}/revocations", {"controller_type": "ed25519"}
+    )
+    if status != 201:
+        sys.exit(f"No message to sign (HTTP {status}): {problem(challenge)}{elsewhere(status)}")
+    key = owner_key(path, str(challenge.get("controller")), "DID-LLM")
+    message = challenge["message"]
+    lines = message.split("\n")
+    if (
+        lines[:3] != [REVOCATION, f"Audience: {API}", "Purpose: revocation"]
+        or f"DID-LLM: {did}" not in lines
+        or f"Controller: {public_key(key)}" not in lines
+    ):
+        sys.exit(f"This is not a revocation of {did} at {API}: nothing was signed.")
+    print("You are about to sign:")
+    print("  " + "\n  ".join(lines[3:-3]))
+    print("This revokes the DID-LLM for good. It cannot be undone.")
+    if confirm("Type REVOKE to revoke it: ").strip() != "REVOKE":
+        sys.exit("Not signed: the DID-LLM is not revoked.")
+    signature = base64.urlsafe_b64encode(key.sign(message.encode("utf-8"))).rstrip(b"=")
+    status, answer = call(
+        "POST",
+        f"/v1/dids/{where}/revocations/{challenge['challenge_id']}/signature",
+        {"signature": signature.decode("ascii")},
+    )
+    if status != 201:
+        sys.exit(f"The signature was refused (HTTP {status}): {problem(answer)}")
+    print("Revoked: the DID-LLM, its credential and its entitlements no longer work.")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "new":
         new(sys.argv[2])
@@ -512,5 +679,9 @@ if __name__ == "__main__":
         whoami(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "sign-in":
         approve(sys.argv[2], sys.argv[3])
+    elif len(sys.argv) in (5, 6) and sys.argv[1] == "change-owner":
+        change_owner(sys.argv[2], sys.argv[3], sys.argv[4:])
+    elif len(sys.argv) == 4 and sys.argv[1] == "revoke":
+        revoke(sys.argv[2], sys.argv[3])
     else:
         sys.exit(__doc__)

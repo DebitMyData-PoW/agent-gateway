@@ -60,6 +60,7 @@ from dmd_gateway.pricing.mining_cost import DmdExplorerFigures, latest_record
 from dmd_gateway.runtime import Runtime
 from dmd_gateway.services import directory
 from dmd_gateway.services.identity_status import STATUS_CHANGED
+from dmd_gateway.services.owner_changes import OWNER_CHANGED, OWNER_NAMES
 from dmd_gateway.settings import Settings
 
 C, W = Severity.CRITICAL, Severity.WARNING
@@ -278,7 +279,9 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
         .where(
             AuditEvent.id > after,
             AuditEvent.action.like("alert.%")
-            | AuditEvent.action.in_(("payment.refund_due", STATUS_CHANGED, *directory.REPORTED)),
+            | AuditEvent.action.in_(
+                ("payment.refund_due", STATUS_CHANGED, OWNER_CHANGED, *directory.REPORTED)
+            ),
         )
         .order_by(AuditEvent.id)
         .limit(AUDIT_BATCH)
@@ -289,6 +292,8 @@ def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
             findings.append(_refund_finding(session, event))
         elif event.action == STATUS_CHANGED:
             findings.append(_status_finding(session, event))
+        elif event.action == OWNER_CHANGED:
+            findings.append(_owner_finding(session, event))
         elif event.action in directory.REPORTED:
             findings.append(_directory_finding(ctx, session, event))
         else:
@@ -322,13 +327,42 @@ def _status_finding(session: Session, event: AuditEvent) -> Finding:
     name = identity.display_name if identity else event.subject_id
     word = STATUS_WORDS.get(str(data.get("to")), f"set to {data.get('to')}")
     when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
+    if event.actor_type == "agent":  # its owner, with a signed message (owner_changes.py)
+        who = f"by its owner, signed with {event.actor_id}"
+        check = "Nothing to do: a revocation by the owner is their own choice, and final."
+    else:
+        who = f"by {event.actor_id} (dmd-gateway-admin)"
+        check = "If nobody on the team made this change, someone else has access to the server."
     return Finding(
         f"audit.{event.id}",
         W,
         f"A DID-LLM was {word}: {name}",
         f"{data.get('did')} went from {data.get('from')} to {data.get('to')} on {when} UTC, "
-        f"by {event.actor_id} (dmd-gateway-admin).\nReason: {redact(str(data.get('reason')))}\n"
-        "If nobody on the team made this change, someone else has access to the server.",
+        f"{who}.\nReason: {redact(str(data.get('reason')))}\n{check}",
+        kind="event",
+    )
+
+
+def _owner_finding(session: Session, event: AuditEvent) -> Finding:
+    """An owner change, signed by a current owner and the new ones: reported so that someone
+    sees it, as a key change is often the first sign of a stolen key."""
+    data = event.data
+    identity = session.get(AgentIdentity, event.subject_id)
+    name = identity.display_name if identity else event.subject_id
+    when = event.occurred_at.strftime("%Y-%m-%d %H:%M")
+
+    def owners(found: object) -> str:
+        items = found.items() if isinstance(found, dict) else []
+        return ", ".join(f"{OWNER_NAMES.get(k, k)} {v}" for k, v in items) or "-"
+
+    return Finding(
+        f"audit.{event.id}",
+        W,
+        f"A DID-LLM changed owners: {name}",
+        f"{data.get('did')}, on {when} UTC, signed by a current owner and each new one.\n"
+        f"Before: {owners(data.get('from'))}\nAfter: {owners(data.get('to'))}\n"
+        "Earlier sign-ins ended. If its owner reports a stolen key, suspend it: "
+        f'dmd-gateway-admin did suspend {data.get("did")} --reason "..." --by "<you>"',
         kind="event",
     )
 
