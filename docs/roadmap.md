@@ -144,6 +144,8 @@ place; the application logic comes with the related phase.
 - [x] The same price text everywhere an agent looks (page, llms.txt, API, MCP), and the product
   (name, price, page, picture) first in the MCP server's instructions and `dmd_discover`
   (0.43.0)
+- [x] `dmd_open_checkout`: agents open the checkout without buying anything; the MCP server's
+  page says what is sold there, with its price (0.44.0)
 
 ## Phase 7 – x402 / USDC on Base
 

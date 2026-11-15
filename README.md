@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.43.0`). The whole registration flow (quote,
+This is an early development release (`0.44.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -111,6 +111,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | The discovery runbook's Day 5 handshake check (`dmd-gateway-handshake`, `handshake.py`): an automated client does what any agent does to find and use the Agentic Superhighway, unsupervised: the well-known files (200, `application/json`, the runbook's fields), the Server Card and AI Catalog, `llms.txt`, `initialize`, `tools/list` (every tool and parameter described, JSON Schema), the JSON-RPC errors (-32700, -32601, -32602), the sign-in negotiation when it is open (401 challenge, protected resource and authorization server metadata, keys, a wrong token refused), the same tools and version in every file and, with `--registry`, the official MCP Registry's listing; every update runs it on the server and fails if a check fails, and the daily report runs it through Cloudflare, with the Registry in production ([docs/staging.md](docs/staging.md#11-the-handshake-check-the-runbooks-day-5)) | done |
 | What search engines, AI assistants and agents read about the site (`api/site_files.py`, `api/get_did_page.py`): at each name a `robots.txt` that welcomes them, with Content Signals (`search=yes, ai-input=yes, ai-train=yes`) and the sitemap (`/sitemap.xml`, the pages at that name; on staging, crawlers are asked to stay away and there is no sitemap); the API catalog (`/.well-known/api-catalog`, RFC 9727: the REST API with its OpenAPI description, docs, `llms.txt` and status, and the MCP server with its Server Card); on Get a DID-LLM, schema.org structured data (the DID-LLM as a Product with its price, from the registry, and image; DebitMyData; the site), Open Graph tags, a `Link` header (RFC 8288) to the API catalog, the OpenAPI description and `llms.txt`, and the page in Markdown for an agent that asks for it (`Accept: text/markdown`). The Server Card also gives `name`, `title`, `serverInfo`, `protocolVersion` and `transport`, and the AI Catalog each entry's `displayName` and `description` | done |
 | One price text, word for word, wherever an agent looks: `$25.00 USD, paid once` on Get a DID-LLM (written by the server from the configuration, and again by the page's script), in `llms.txt` and its Markdown version, in `/v1/discovery` and in the MCP tools. The product comes first for agents that use the MCP server: the server's instructions (before any tool call), `dmd_discover` and `dmd_get_did_registration_offer` give its name, price, page and picture first, and how to buy it; `/v1/discovery`'s DID-LLM offer and `dmd_catalog` start with `name`, `price_text`, `product_url` and `image_url` | done |
+| Agents open the checkout without buying anything: `dmd_open_checkout` (read-only, no arguments, creates and charges nothing) gives the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options enabled now and the steps for an agent paying by itself; the server's instructions and `dmd_discover` point to it (`checkout_url`). The page at the MCP server's address also says what is sold there, with the same price text and structured data as Get a DID-LLM | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
@@ -202,7 +203,7 @@ While every payment rail is off, this answers `409` with `"code": "payment_optio
 
 The same steps are available as MCP tools at `/agenticsuperhighway` (Streamable HTTP; `/mcp`,
 its first address, still works): `dmd_discover`,
-`dmd_get_did_registration_offer`, `dmd_list_supported_payment_options`,
+`dmd_get_did_registration_offer`, `dmd_open_checkout`, `dmd_list_supported_payment_options`,
 `dmd_create_did_payment_quote`, `dmd_submit_payment_reference`, `dmd_get_payment_status`,
 `dmd_prove_wallet_control`, `dmd_register_did`, `dmd_get_registration_status`, `dmd_catalog`,
 `dmd_get_purchase_quote`, `dmd_purchase`, `dmd_marketplace_provider_requirements`,

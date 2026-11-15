@@ -8,12 +8,18 @@ get exactly what they got before.
 
 Like the policy pages, it has the look of the gateway's other pages (``brand``) and runs no
 script but the light / dark theme one.
+
+It also says what is sold here, as the Get a DID-LLM page does: the DID-LLM, its price word for
+word ("$25.00 USD, paid once") and where to buy it, with the same structured data (schema.org
+Product). Agent checkers that shop through the MCP server look for the price on the page at
+this address.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from html import escape
 from importlib.resources import files
 
@@ -22,7 +28,14 @@ from starlette.responses import HTMLResponse
 from starlette.types import Scope
 
 from dmd_gateway.api import brand
-from dmd_gateway.api.get_did_page import mcp_url
+from dmd_gateway.api.get_did_page import (
+    PRODUCT_NAME,
+    checkout_url,
+    mcp_url,
+    page_url,
+    price_text,
+    structured_data,
+)
 from dmd_gateway.settings import Settings
 
 _STYLE = brand.CSS + (files("dmd_gateway") / "static" / "policies.css").read_text(encoding="utf-8")
@@ -52,9 +65,25 @@ def wants_page(scope: Scope) -> bool:
     return "text/html" in accept and "text/event-stream" not in accept
 
 
-def page_html(settings: Settings) -> str:
+def _structured_data(settings: Settings, price: tuple[str, str]) -> str:
+    """The DID-LLM (Product, Offer) and DebitMyData, as on the Get a DID-LLM page."""
+    product, organization, _website = structured_data(settings, price)
+    data = json.dumps([product, organization], separators=(",", ":")).replace("<", "\\u003c")
+    return f'<script type="application/ld+json">{data}</script>'
+
+
+def page_html(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> str:
     staging = bool(settings.staging_test_tools)
     address = escape(mcp_url(settings))
+    sold = (
+        "<h2>Sold here</h2>"
+        f"<p><strong>{PRODUCT_NAME}</strong>: <span class=price>{escape(price_text(price))}"
+        "</span>. A verifiable identity for an AI agent, a bot, a person or an organization, "
+        "with a credential signed by DebitMyData. No account, no password.</p>"
+        f'<p><a href="{escape(checkout_url(settings))}">Buy a DID-LLM</a> (people) · '
+        f'<a href="{escape(page_url(settings))}">its page</a> · agents: the tool '
+        "<code>dmd_open_checkout</code></p>"
+    )
     note = (
         "<p class=note><strong>Test server.</strong> Payments here use test networks whose "
         "coins have no value, and DID-LLMs issued here are test DID-LLMs.</p>"
@@ -68,6 +97,7 @@ def page_html(settings: Settings) -> str:
         "agents, bots, people and organizations, and to pay for it by itself. There is "
         "nothing more to see here in a web browser.</p>"
         f"{note}"
+        f"{sold}"
         "<h2>Connect an agent</h2>"
         f"<p>In the agent's MCP client, add a remote MCP server (streamable HTTP) with this "
         f"address:</p><p><code>{address}</code></p>"
@@ -84,6 +114,7 @@ def page_html(settings: Settings) -> str:
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Agentic Superhighway · DebitMyData Agent Gateway</title>"
         '<link rel=icon href="/favicon.png">'
+        f"{_structured_data(settings, price)}"
         f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
         f"{brand.header('', staging)}"
         f"<main><article>{body}</article></main>{brand.footer(staging)}"
@@ -91,5 +122,5 @@ def page_html(settings: Settings) -> str:
     )
 
 
-def page(settings: Settings) -> HTMLResponse:
-    return HTMLResponse(page_html(settings), headers=HTML_HEADERS)
+def page(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> HTMLResponse:
+    return HTMLResponse(page_html(settings, price), headers=HTML_HEADERS)

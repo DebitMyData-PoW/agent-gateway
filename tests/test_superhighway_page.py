@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -63,3 +66,19 @@ def test_the_test_server_note_shows_away_from_production_only(settings: Settings
     assert "<strong>Test server.</strong>" in page_html(settings)
     production = settings.model_copy(update={"environment": "production"})
     assert "<strong>Test server.</strong>" not in page_html(production)
+
+
+def test_the_page_says_what_is_sold_here_with_the_price_word_for_word(client: TestClient) -> None:
+    """Agent checkers that shop through the MCP server look for the price on the page at its
+    address: the same text as on Get a DID-LLM, in the API and in the tools."""
+    body = client.get("/agenticsuperhighway", headers={**HOST, "Accept": BROWSER}).text
+    assert "<h2>Sold here</h2>" in body
+    assert "<strong>DebitMyData DID-LLM</strong>: <span class=price>$25.00 USD, paid once" in body
+    assert 'href="http://localhost:8000/get-did#start">Buy a DID-LLM</a>' in body
+    assert "<code>dmd_open_checkout</code>" in body
+    found = re.search(r'<script type="application/ld\+json">(.*?)</script>', body, re.S)
+    product, organization = json.loads(found.group(1))
+    assert (product["@type"], product["name"]) == ("Product", "DebitMyData DID-LLM")
+    assert (product["offers"]["price"], product["offers"]["priceCurrency"]) == ("25.00", "USD")
+    assert product["offers"]["url"] == "http://localhost:8000/get-did#start"
+    assert organization["@type"] == "Organization"

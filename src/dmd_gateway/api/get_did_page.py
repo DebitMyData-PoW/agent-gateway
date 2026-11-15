@@ -546,6 +546,7 @@ PRODUCT_DESCRIPTION = (
     "password."
 )
 SERVICE = "did_registration"
+CHECKOUT_SECTION = "start"  # the form where a person buys a DID-LLM (id=start)
 
 
 def did_price(request: Request) -> tuple[str, str]:
@@ -610,7 +611,7 @@ def structured_data(settings: Settings, price: tuple[str, str]) -> list[dict[str
             "price": price[0],
             "priceCurrency": price[1],
             "availability": "https://schema.org/InStock",
-            "url": f"{url}#start",
+            "url": f"{url}#{CHECKOUT_SECTION}",
             "seller": {"@id": f"{ORGANIZATION_URL}#organization"},
             "description": "Paid once, not a subscription: by card, or from your own crypto "
             "wallet.",
@@ -686,6 +687,11 @@ def page_url(settings: Settings) -> str:
     if settings.app_host:
         return f"https://{settings.app_host}/"
     return f"{settings.public_base_url.rstrip('/')}{PAGE_PATH}"
+
+
+def checkout_url(settings: Settings) -> str:
+    """Where a person buys a DID-LLM: the page's form (its start section)."""
+    return f"{page_url(settings)}#{CHECKOUT_SECTION}"
 
 
 def mcp_url(settings: Settings) -> str:

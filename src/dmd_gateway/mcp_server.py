@@ -202,9 +202,12 @@ def product(app: FastAPI) -> dict[str, Any]:
         "price_text": get_did_page.price_text((amount, currency)),
         "product_url": get_did_page.page_url(settings),
         "image_url": get_did_page.product_image(settings),
+        "checkout_url": get_did_page.checkout_url(settings),
         "how_to_buy": (
-            "dmd_create_did_payment_quote, pay the quoted amount, dmd_prove_wallet_control, "
-            "dmd_register_did: the steps are in this server's instructions"
+            "dmd_open_checkout opens the checkout (it creates and charges nothing): the page "
+            "where a person buys it, and the steps for an agent paying by itself "
+            "(dmd_create_did_payment_quote, pay the quoted amount, dmd_prove_wallet_control, "
+            "dmd_register_did)"
         ),
     }
 
@@ -215,7 +218,9 @@ def instructions(app: FastAPI) -> str:
     return (
         f"DebitMyData sells the {item['name']}. {item['description']} "
         f"Price: {item['price_text']}. Product page: {item['product_url']} "
-        f"(picture: {item['image_url']}).\n\n{INSTRUCTIONS}"
+        f"(picture: {item['image_url']}). To buy it: dmd_open_checkout opens the checkout, "
+        "creating and charging nothing: the page where a person buys it, and the steps below "
+        f"for an agent that pays by itself.\n\n{INSTRUCTIONS}"
     )
 
 
@@ -269,6 +274,34 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         offer = next(o for o in await offers() if o["id"] == DID_REGISTRATION)
         options = await payment_options(DID_REGISTRATION)
         return {"product": product(app), "offer": offer, "payment_options": options}
+
+    @server.tool(
+        title="Open the checkout (creates nothing, charges nothing)", annotations=READ_ONLY
+    )
+    async def dmd_open_checkout() -> dict[str, Any]:
+        """Open the checkout for the DebitMyData DID-LLM ($25.00 USD, paid once): the checkout
+        page where a person buys it (by card or from their own wallet), the payment options
+        enabled right now, and the steps an agent follows to buy it by itself. Read-only: it
+        creates nothing, charges nothing and needs no personal details."""
+        item = product(app)
+        options = (await payment_options(DID_REGISTRATION))["supported_payment_options"]
+        return {
+            "checkout_url": item["checkout_url"],
+            "product": item,
+            "payment_options": [{"id": o["id"], "name": o["name"]} for o in options],
+            "for_a_person": (
+                "Open checkout_url: say what the DID-LLM is for and which wallet or key will own "
+                f"it, pay {item['price_text']} by card or from your own wallet, then sign one "
+                "message to prove it is yours. Nothing is charged before you pay."
+            ),
+            "for_an_agent": (
+                "1. dmd_create_did_payment_quote (your DID-LLM's owner key or wallet and a "
+                "payment option above): the exact amount and where to pay. 2. Pay it from your "
+                "own wallet (or give the card payment page to your human). 3. "
+                "dmd_get_payment_status until settled. 4. dmd_prove_wallet_control. 5. "
+                "dmd_register_did: your DID-LLM and its signed credential."
+            ),
+        }
 
     @server.tool(title="Supported payment options", annotations=READ_ONLY)
     async def dmd_list_supported_payment_options(
@@ -886,13 +919,14 @@ class _BrowserPage:
     """The MCP endpoint, except that a web browser opening its address gets a short page
     saying what it is (``superhighway_page``). MCP clients get the endpoint, as before."""
 
-    def __init__(self, endpoint: ASGIApp, settings: Settings) -> None:
+    def __init__(self, endpoint: ASGIApp, settings: Settings, price: tuple[str, str]) -> None:
         self.endpoint = endpoint
         self.settings = settings
+        self.price = price  # the DID-LLM's, from the configuration
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if superhighway_page.wants_page(scope):
-            await superhighway_page.page(self.settings)(scope, receive, send)
+            await superhighway_page.page(self.settings, self.price)(scope, receive, send)
             return
         await self.endpoint(scope, receive, send)
 
@@ -913,7 +947,9 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
             # The endpoint, with its page for browsers, at its address and at its earlier
             # ones (brand.MCP_OLD_PATHS).
             # Signed in when the request carries a valid access token (api/mcp_auth.py).
-            endpoint = mcp_auth.BearerTokens(_BrowserPage(route.endpoint, settings), settings)
+            price = get_did_page.configured_price(app.state.registry)
+            page = _BrowserPage(route.endpoint, settings, price)
+            endpoint = mcp_auth.BearerTokens(page, settings)
             routes += [Route(path, endpoint=endpoint) for path in (MCP_PATH, *MCP_OLD_PATHS)]
         else:
             routes.append(route)

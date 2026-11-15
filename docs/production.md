@@ -402,7 +402,10 @@ page, in `llms.txt`, in `/v1/discovery` and in the MCP tools, all from the confi
 through the API or the MCP server on the product's page: the tools now give that page
 (`product_url`), and the page shows the same text. Agents that use the MCP server get the
 product (name, price, page, picture) before any tool call, in the server's instructions, and
-first from `dmd_discover` and `dmd_get_did_registration_offer`.
+first from `dmd_discover` and `dmd_get_did_registration_offer`. `dmd_open_checkout` opens the
+checkout without buying anything (read-only: the checkout page and the agent's steps), so an
+agent that may not pay, such as a checker's, can still reach the purchase step; and the page at
+the MCP server's address says what is sold there, with the same price text.
 
 Cloudflare's **Bot Preference Sync** (Security settings, Bot traffic, "AI Crawler and Agent
 access policies") must stay off for debitmydata.io: it puts Cloudflare's own lines in front of

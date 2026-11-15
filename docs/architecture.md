@@ -390,6 +390,7 @@ reach it through another public address).
 | --- | --- |
 | `dmd_discover` | `GET /v1/discovery`, plus a short description of DebitMyData and DMD |
 | `dmd_get_did_registration_offer` | the DID offer and `GET /v1/payment-options` |
+| `dmd_open_checkout` | read-only: the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options from `GET /v1/payment-options` and the steps for an agent; creates and charges nothing |
 | `dmd_list_supported_payment_options` | `GET /v1/payment-options` |
 | `dmd_create_did_payment_quote` | `POST /v1/dids/registration-quotes` |
 | `dmd_submit_payment_reference` | `POST /v1/payments/{id}/references` |

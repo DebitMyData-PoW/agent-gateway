@@ -182,6 +182,27 @@ async def test_an_agent_finds_the_product_before_any_tool_call(app: FastAPI) -> 
         assert found["image_url"] == f"{BASE}/logo.png?v=2"
 
 
+async def test_an_agent_opens_the_checkout_without_buying_anything(app: FastAPI) -> None:
+    """dmd_open_checkout: read-only, no arguments, nothing created or charged; the checkout
+    page for a person and the steps for an agent paying by itself."""
+    async with mcp_client(app) as mcp:
+        tools = {tool.name: tool for tool in (await mcp.list_tools()).tools}
+        instructions = mcp.instructions
+        checkout = await call(mcp, "dmd_open_checkout")
+        product = (await call(mcp, "dmd_discover"))["product"]
+    tool = tools["dmd_open_checkout"]
+    assert tool.annotations.read_only_hint is True
+    assert not tool.input_schema.get("properties")
+    assert "creates nothing, charges nothing" in tool.description
+    assert checkout["checkout_url"] == f"{BASE}/get-did#start"
+    assert checkout["product"] == product and product["checkout_url"] == checkout["checkout_url"]
+    assert checkout["payment_options"] == []  # every rail is off here
+    assert "$25.00 USD, paid once" in checkout["for_a_person"]
+    assert "dmd_create_did_payment_quote" in checkout["for_an_agent"]
+    assert "dmd_open_checkout" in product["how_to_buy"]
+    assert "To buy it: dmd_open_checkout opens the checkout" in instructions
+
+
 async def test_errors_carry_the_rest_error_code(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
         unavailable = await call_error(
