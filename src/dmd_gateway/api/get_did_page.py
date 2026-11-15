@@ -25,6 +25,13 @@ that people can add it to their phone's home screen and open it full screen, lik
 Share, Add to Home Screen; Android: Install app). The service worker only keeps the last copy
 of the page, its font and icons, for opening without a network: it never touches the API calls.
 The app's identity is its address, so the host must not change once people have installed it.
+
+For agents and search engines, the page also describes what it sells in a form they read
+without running it: schema.org structured data (JSON-LD: the DID-LLM as a Product with its
+Offer, its price and currency; DebitMyData as the Organization; the WebSite), Open Graph tags
+for link previews, a ``Link`` header to the API catalog, the OpenAPI description and llms.txt
+(api/site_files.py), and a Markdown version (llms.txt) for a client that asks for
+``text/markdown``.
 """
 
 from __future__ import annotations
@@ -32,7 +39,9 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+from html import escape
 from importlib.resources import files
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -518,7 +527,106 @@ DID-LLM registration is <a href="/policies/refunds" target=_blank>not refundable
 """.strip()
 
 
-def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: bool = False) -> str:
+# The DID-LLM, as search engines and agents read it (schema.org)
+PRODUCT_NAME = "DebitMyData DID-LLM"
+ORGANIZATION = "DebitMyData"
+ORGANIZATION_URL = "https://debitmydata.com/"
+ORGANIZATION_PROFILES = ("https://debitmydata.io/", "https://github.com/DebitMyData-PoW")
+PRODUCT_DESCRIPTION = (
+    "A verifiable identity, a W3C did:web DID, for an AI agent, a bot, a person or an "
+    "organization, with a credential signed by DebitMyData. Paid once, with no account and no "
+    "password."
+)
+SERVICE = "did_registration"
+
+
+def did_price(request: Request) -> tuple[str, str]:
+    """The DID-LLM's price, from the configuration: ("25.00", "USD")."""
+    service = request.app.state.registry.services.get(SERVICE)
+    if service is None:
+        return "25.00", "USD"
+    price = service.commercial_price
+    return f"{price.amount:.2f}", price.currency
+
+
+def _image(settings: Settings) -> str:
+    if settings.app_host:  # the app's icon, on its own address
+        return f"https://{settings.app_host}/app/icon-512.png?v={ICON_VERSION}"
+    return f"{settings.public_base_url.rstrip('/')}/logo.png?v=2"
+
+
+def structured_data(settings: Settings, price: tuple[str, str]) -> list[dict[str, Any]]:
+    """schema.org JSON-LD: the DID-LLM (Product and Offer), DebitMyData, the site."""
+    url = page_url(settings)
+    organization = {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "@id": f"{ORGANIZATION_URL}#organization",
+        "name": ORGANIZATION,
+        "url": ORGANIZATION_URL,
+        "logo": f"{settings.public_base_url.rstrip('/')}/logo.png?v=2",
+        "email": brand.CONTACT,
+        "sameAs": list(ORGANIZATION_PROFILES),
+    }
+    product = {
+        "@context": "https://schema.org",
+        "@type": "Product",
+        "@id": f"{url}#did-llm",
+        "name": PRODUCT_NAME,
+        "description": PRODUCT_DESCRIPTION,
+        "image": _image(settings),
+        "url": url,
+        "category": "Digital identity",
+        "brand": {"@type": "Brand", "name": ORGANIZATION},
+        "offers": {
+            "@type": "Offer",
+            "price": price[0],
+            "priceCurrency": price[1],
+            "availability": "https://schema.org/InStock",
+            "url": f"{url}#start",
+            "seller": {"@id": f"{ORGANIZATION_URL}#organization"},
+            "description": "Paid once, not a subscription: by card, or from your own crypto "
+            "wallet.",
+        },
+    }
+    website = {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "DID-LLM by DebitMyData",
+        "url": url,
+        "description": DESCRIPTION,
+        "publisher": {"@id": f"{ORGANIZATION_URL}#organization"},
+    }
+    return [product, organization, website]
+
+
+def head_tags(settings: Settings, price: tuple[str, str]) -> str:
+    """The structured data and the Open Graph tags, for the page's head."""
+    data = json.dumps(structured_data(settings, price), separators=(",", ":"))
+    data = data.replace("<", "\\u003c")  # never ends the script element early
+    url = escape(page_url(settings), quote=True)
+    image = escape(_image(settings), quote=True)
+    return (
+        f'<link rel=canonical href="{url}">'
+        '<meta property="og:type" content="product">'
+        f'<meta property="og:title" content="Get your {PRODUCT_NAME}">'
+        f'<meta property="og:description" content="{escape(DESCRIPTION, quote=True)}">'
+        f'<meta property="og:url" content="{url}">'
+        f'<meta property="og:image" content="{image}">'
+        f'<meta property="og:site_name" content="{ORGANIZATION}">'
+        f'<meta property="product:price:amount" content="{price[0]}">'
+        f'<meta property="product:price:currency" content="{price[1]}">'
+        f'<script type="application/ld+json">{data}</script>'
+    )
+
+
+def page_html(
+    staging: bool,
+    app: bool = False,
+    mcp_url: str = MCP_PATH,
+    card: bool = False,
+    head: str = "",
+) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
         f'<link rel=manifest href="{MANIFEST_PATH}">'
@@ -537,7 +645,7 @@ def page_html(staging: bool, app: bool = False, mcp_url: str = MCP_PATH, card: b
         "<title>Get your DID-LLM · DebitMyData</title>"
         f'<meta name=description content="{DESCRIPTION}">'
         '<link rel=icon href="/favicon.png">'
-        f"{installable}"
+        f"{head}{installable}"
         f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head>"
         f"<body>{_body(staging, app, mcp_url, card)}"
         f'<script type="application/json" id="page-config">{config}</script>'
@@ -557,12 +665,44 @@ def mcp_url(settings: Settings) -> str:
     return settings.mcp_url or f"{settings.public_base_url.rstrip('/')}{MCP_PATH}"
 
 
-def _render(request: Request, app: bool) -> HTMLResponse:
+def wants_markdown(accept: str) -> bool:
+    """Whether the client prefers Markdown to HTML (``Accept: text/markdown``): a higher
+    quality, or the same one with Markdown named first. Browsers ask for HTML."""
+    found: dict[str, tuple[float, int]] = {}
+    for index, part in enumerate(accept.split(",")):
+        kind, *params = (piece.strip() for piece in part.split(";"))
+        quality = 1.0
+        for param in params:
+            name, _, value = param.partition("=")
+            if name.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+        found.setdefault(kind.lower(), (quality, index))
+    markdown, html = found.get("text/markdown"), found.get("text/html")
+    if markdown is None or markdown[0] <= 0:
+        return False
+    if html is None:
+        return True
+    return markdown[0] > html[0] or (markdown[0] == html[0] and markdown[1] < html[1])
+
+
+def _render(request: Request, app: bool) -> Response:
+    from dmd_gateway.api.llms import llms_txt  # llms.py reads this module's addresses
+    from dmd_gateway.api.site_files import link_header
+
     settings = request.app.state.settings
+    headers = {**HEADERS, "Link": link_header(settings), "Vary": "Accept"}
+    if wants_markdown(request.headers.get("accept", "")):
+        return Response(
+            llms_txt(request), media_type="text/markdown; charset=utf-8", headers=headers
+        )
     staging = bool(settings.staging_test_tools)
     rails = request.app.state.registry.enabled_rails(DID_REGISTRATION)
     card = any(rail.protocol == STRIPE_CHECKOUT for _, rail in rails)
-    return HTMLResponse(page_html(staging, app, mcp_url(settings), card), headers=HEADERS)
+    head = head_tags(settings, did_price(request))
+    return HTMLResponse(page_html(staging, app, mcp_url(settings), card, head), headers=headers)
 
 
 def _page(request: Request) -> Response:

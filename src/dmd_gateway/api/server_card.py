@@ -142,11 +142,14 @@ def registry_entry(settings: Settings) -> dict[str, Any]:
 
 def ai_catalog(settings: Settings) -> dict[str, Any]:
     local_name = server_name(settings).split("/", 1)[1]
+    identity = _identity(settings)
     return {
         "specVersion": "1.0",
         "entries": [
             {
                 "identifier": f"urn:air:{DOMAIN}:mcp:{local_name}",
+                "displayName": identity["title"],
+                "description": identity["description"],
                 "type": CARD_TYPE,
                 "url": card_url(settings),
             }
@@ -183,9 +186,22 @@ def runbook_card(
     settings: Settings, tools: list[dict[str, Any]], *, sign_in: bool = False
 ) -> dict[str, Any]:
     """``/.well-known/mcp/server-card.json``: the card in the runbook's format, with the tools
-    the MCP server lists (``tools``: name, title and description of each)."""
+    the MCP server lists (``tools``: name, title and description of each). It also carries
+    the fields other readers of this address look for: the server's name, title and
+    description at the top (as in the Server Card) and ``serverInfo``, ``protocolVersion`` and
+    ``transport`` (as in SEP-1649)."""
     identity = _identity(settings)
     return {
+        "name": identity["name"],
+        "title": identity["title"],
+        "description": identity["description"],
+        "serverInfo": {
+            "name": identity["name"],
+            "title": identity["title"],
+            "version": __version__,
+        },
+        "protocolVersion": LATEST_PROTOCOL_VERSION,
+        "transport": {"type": "streamable-http", "endpoint": mcp_url(settings)},
         "mcp_version": LATEST_PROTOCOL_VERSION,
         "server_info": {
             "name": identity["title"],

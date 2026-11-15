@@ -386,6 +386,27 @@ The app's service worker keeps the page, the font and the icons for opening with
 Its cache is named after those files' content and it fetches them past the browser's own cache,
 so a new icon or logo reaches people who already opened the page, with nothing to raise by hand.
 
+What search engines, AI assistants and agents read (`api/site_files.py`). Each name has a
+`robots.txt` that welcomes them, with Content Signals (`search=yes, ai-input=yes, ai-train=yes`:
+being known to agents and the models behind them is what a DID-LLM is for) and its sitemap
+(`/sitemap.xml`, the pages at that name), and `/.well-known/api-catalog` (RFC 9727) lists the
+REST API and the MCP server. The page itself describes the DID-LLM for them: schema.org
+structured data (the DID-LLM as a Product with its price and image, DebitMyData, the site),
+Open Graph tags for link previews, a `Link` header to the API catalog, the OpenAPI description
+and `llms.txt`, and the same text in Markdown for an agent that asks for it
+(`Accept: text/markdown`). Staging's `robots.txt` asks crawlers to stay away, with no sitemap.
+
+Cloudflare's **Bot Preference Sync** (Security settings, Bot traffic, "AI Crawler and Agent
+access policies") must stay off for debitmydata.io: it puts Cloudflare's own lines in front of
+the gateway's `robots.txt`, which say `ai-train=no` and turn away AI crawlers such as GPTBot and
+ClaudeBot. Check from your computer:
+
+```bash
+curl -s https://id.debitmydata.io/robots.txt | head -n 3
+```
+
+The first line should be `# DebitMyData: search engines, AI assistants and agents are welcome.`
+
 The app's identity is its address: once people have installed it, the host must not change.
 
 1. **Cloudflare, DNS:** add a record `id`, the same type and target as `api` (the server's

@@ -137,6 +137,10 @@ place; the application logic comes with the related phase.
 - [x] Verifying an agent by its DID-LLM (`dmd_verify_agent`, `POST /v1/dids/verifications`,
   the runbook's `verify_agent`): status, credential checked against the issuer key, and a
   proof of control by the owner's key or wallet over a challenge (0.41.0)
+- [x] What search engines, AI assistants and agents read about the site: `robots.txt` with
+  Content Signals, `sitemap.xml`, the API catalog (RFC 9727), and on Get a DID-LLM schema.org
+  structured data (Product, Offer, Organization, WebSite), Open Graph, a `Link` header and a
+  Markdown version (0.42.0)
 
 ## Phase 7 – x402 / USDC on Base
 

@@ -92,6 +92,10 @@ def test_the_ai_catalog_points_to_the_card(client: TestClient) -> None:
     (entry,) = catalog["entries"]
     assert entry == {
         "identifier": "urn:air:debitmydata.io:mcp:agenticsuperhighway-development",
+        # What readers of Agentic Resource Discovery (ARD) catalogs show
+        "displayName": "DebitMyData Agentic Superhighway (development)",
+        "description": "Test server of the Agentic Superhighway: test networks and test "
+        "DID-LLMs only.",
         "type": "application/mcp-server-card+json",
         "url": f"http://localhost:8000{CARD}",
     }
@@ -130,6 +134,18 @@ def test_the_runbooks_card_lists_the_tools_the_server_lists(client: TestClient) 
     assert [tool["name"] for tool in card["tools"]] == [tool.name for tool in live]
     assert "dmd_create_did_payment_quote" in {tool["name"] for tool in card["tools"]}
     assert all(tool["description"] for tool in card["tools"])
+    # The fields other readers of this address look for (Server Card, SEP-1649), the same
+    # server: a card without a name is "not valid" to them.
+    standard = client.get(CARD).json()
+    assert (card["name"], card["title"]) == (standard["name"], standard["title"])
+    assert card["serverInfo"] == {
+        "name": standard["name"],
+        "title": standard["title"],
+        "version": __version__,
+    }
+    assert card["description"] == standard["description"]
+    assert card["transport"] == {"type": "streamable-http", "endpoint": MCP}
+    assert card["protocolVersion"] == card["mcp_version"]
 
 
 def test_the_mcp_server_itself_is_unchanged(client: TestClient) -> None:

@@ -41,6 +41,7 @@ from dmd_gateway.api import (
     quotes,
     registrations,
     server_card,
+    site_files,
     staging,
     try_page,
 )
@@ -194,6 +195,7 @@ def create_app(
     app.include_router(mcp_auth.router)  # the MCP server as an OAuth protected resource
     app.include_router(oauth_browser.router)  # people sign in to apps (OAuth phase 2)
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
+    app.include_router(site_files.router)  # robots.txt, sitemap.xml, the API catalog
     if settings.staging_test_tools:
         app.include_router(staging.router)
         app.include_router(try_page.router)  # /docs is the guided test, /docs/advanced Swagger

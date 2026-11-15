@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse
 
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
-from dmd_gateway.api.get_did_page import mcp_url, page_url
+from dmd_gateway.api.get_did_page import did_price, mcp_url, page_url
 from dmd_gateway.api.mcp_auth import main_resource, metadata_url
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
@@ -61,11 +61,8 @@ def _option(rail_id: str, rail: RailConfig) -> str:
 
 
 def _price(request: Request) -> str:
-    service = request.app.state.registry.services.get(SERVICE)
-    if service is None:
-        return "25.00 USD"
-    price = service.commercial_price
-    return f"{price.amount:.2f} {price.currency}"
+    amount, currency = did_price(request)
+    return f"{amount} {currency}"
 
 
 def _sign_in(request: Request) -> str:
