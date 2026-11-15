@@ -40,7 +40,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.45.0`). The whole registration flow (quote,
+This is an early development release (`0.46.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end on test networks,
 through REST and through MCP, paid either in native DMD (private regtest chain) or in USDC
 through x402 (Base Sepolia); nothing accepts real payments yet:
@@ -113,6 +113,7 @@ through x402 (Base Sepolia); nothing accepts real payments yet:
 | One price text, word for word, wherever an agent looks: `$25.00 USD, paid once` on Get a DID-LLM (written by the server from the configuration, and again by the page's script), in `llms.txt` and its Markdown version, in `/v1/discovery` and in the MCP tools. The product comes first for agents that use the MCP server: the server's instructions (before any tool call), `dmd_discover` and `dmd_get_did_registration_offer` give its name, price, page and picture first, and how to buy it; `/v1/discovery`'s DID-LLM offer and `dmd_catalog` start with `name`, `price_text`, `product_url` and `image_url` | done |
 | Agents open the checkout without buying anything: `dmd_open_checkout` (read-only, no arguments, creates and charges nothing) gives the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options enabled now and the steps for an agent paying by itself; the server's instructions and `dmd_discover` point to it (`checkout_url`). The page at the MCP server's address also says what is sold there, with the same price text and structured data as Get a DID-LLM | done |
 | Get a DID-LLM's buy button says what it does: **Continue to payment** (it fixes the exact amount and opens step 2, Pay), not "Get my quote", which reads as a request for a price | done |
+| `dmd_open_checkout` ends with the purchase step, ready to fill in (`next_step`: `dmd_create_did_payment_quote` and its arguments), so an agent that opened the checkout knows what to call to buy | done |
 | Native DMD wallet proofs (DEC-07), controller rotation and revocation | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

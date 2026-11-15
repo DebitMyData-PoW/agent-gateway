@@ -285,10 +285,27 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         creates nothing, charges nothing and needs no personal details."""
         item = product(app)
         options = (await payment_options(DID_REGISTRATION))["supported_payment_options"]
+        first = options[0]["id"] if options else "<an id from payment_options>"
         return {
             "checkout_url": item["checkout_url"],
             "product": item,
             "payment_options": [{"id": o["id"], "name": o["name"]} for o in options],
+            # The purchase step itself, ready to fill in: what an agent that buys calls next.
+            "next_step": {
+                "tool": "dmd_create_did_payment_quote",
+                "what_it_does": (
+                    "The purchase step: it fixes the exact amount, where to pay and until when "
+                    "(a quote). It charges nothing by itself: you then pay from your own wallet, "
+                    "or a person pays by card on the payment page it returns."
+                ),
+                "arguments": {
+                    "display_name": "<your agent's public name>",
+                    "participant_type": "ai_agent",
+                    "preferred_payment_option": first,
+                    "controller_public_key": "<ed25519:z6Mk... (the DID-LLM's owner key)>",
+                    "controller_wallet_address": "<or 0x... (the owner wallet)>",
+                },
+            },
             "for_a_person": (
                 "Open checkout_url: say what the DID-LLM is for and which wallet or key will own "
                 "it, choose how to pay, press Continue to payment, pay "

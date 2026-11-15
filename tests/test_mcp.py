@@ -199,6 +199,15 @@ async def test_an_agent_opens_the_checkout_without_buying_anything(app: FastAPI)
     assert checkout["payment_options"] == []  # every rail is off here
     assert "$25.00 USD, paid once" in checkout["for_a_person"]
     assert "dmd_create_did_payment_quote" in checkout["for_an_agent"]
+    # The purchase step, ready to fill in, with arguments the purchase tool accepts.
+    step = checkout["next_step"]
+    assert step["tool"] == "dmd_create_did_payment_quote"
+    assert "charges nothing by itself" in step["what_it_does"]
+    schema = tools["dmd_create_did_payment_quote"].input_schema
+    assert set(step["arguments"]) <= set(schema["properties"])
+    assert set(schema["required"]) <= set(step["arguments"])
+    assert step["arguments"]["participant_type"] == "ai_agent"
+    assert step["arguments"]["preferred_payment_option"] == "<an id from payment_options>"
     assert "dmd_open_checkout" in product["how_to_buy"]
     assert "To buy it: dmd_open_checkout opens the checkout" in instructions
 
