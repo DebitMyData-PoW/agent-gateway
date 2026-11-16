@@ -147,13 +147,20 @@ which cannot read the server's dumps: install `postgresql-client-16` from Postgr
 apt repository there.)
 
 1. Copy the newest pair from the server (it keeps the last 7 nights in
-   `/var/backups/dmd-gateway`, readable by root). `SERVER` is how you log in (`root@<address>`;
-   the SSH port goes after `-p` for `ssh` and after `-P` for `scp`):
+   `/var/backups/dmd-gateway`, readable by root) with the computer you already log in to the
+   server from, then to the VM as you bring other files there. The VM itself never connects
+   to the server, and the files are useless without the key. On the server, the newest
+   `<time>`:
 
    ```bash
-   mkdir -p ~/restore-test && cd ~/restore-test
-   ssh SERVER 'ls -1 /var/backups/dmd-gateway | grep db- | tail -n 1'   # the newest <time>
-   scp 'SERVER:/var/backups/dmd-gateway/agent-gateway-*-<time>.*.age' .
+   ls -1 /var/backups/dmd-gateway | grep db- | tail -n 1
+   ```
+
+   On your computer (Windows PowerShell, macOS or Linux; WinSCP works too), then to the VM's
+   `~/restore-test`:
+
+   ```bash
+   scp -P <SSH port> "root@<server address>:/var/backups/dmd-gateway/agent-gateway-*-<time>.*.age" .
    ```
 
 2. Run the test from the repository, and paste the key's `AGE-SECRET-KEY-1...` line from the
@@ -169,7 +176,8 @@ apt repository there.)
    PASSED` and the command that counts the DID-LLMs on the server: the server has the same
    number, or more if DID-LLMs were registered after the backup.
 
-3. Delete the copies (`rm -r ~/restore-test`), and note the date of the test.
+3. Delete the copies (`rm -r ~/restore-test` on the VM, and on your computer), and note the
+   date of the test.
 
 The key line it shows (`Backup key: age1...`) is the backup key's public half: it is the one
 in `DMD_BACKUP_AGE_RECIPIENT` on the server (`grep RECIPIENT /etc/dmd-gateway/backup.env`).

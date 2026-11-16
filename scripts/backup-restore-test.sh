@@ -27,6 +27,25 @@ fail() {
     exit 1
 }
 
+# Decrypts $1 with the key into the command that follows, which may stop reading before the
+# end (pg_restore --list, tar -t): the rest is read and dropped, so that age is not cut off
+# mid-file (SIGPIPE) and taken for a failed decryption. Errors: $private/age.err and
+# $private/tool.err.
+decrypt_into() {
+    local file="$1"
+    shift
+    age --decrypt --identity "$key_file" "$file" 2>"$private/age.err" | (
+        status=0
+        "$@" 2>"$private/tool.err" || status=$?
+        cat >/dev/null
+        exit "$status"
+    )
+}
+
+errors() {
+    cat "$private/age.err" "$private/tool.err" 2>/dev/null | tr '\n' ' '
+}
+
 key_file=""
 args=()
 while [ $# -gt 0 ]; do
@@ -107,8 +126,8 @@ echo "  (the server encrypts to DMD_BACKUP_AGE_RECIPIENT in /etc/dmd-gateway/bac
 echo
 echo "SETTINGS AND KEYS ($(basename "$config"))"
 names="$private/names.txt"
-age --decrypt --identity "$key_file" "$config" 2>"$private/age.err" | tar -tf - >"$names" ||
-    fail "the settings archive cannot be read: $(cat "$private/age.err")"
+decrypt_into "$config" tar -tf - >"$names" ||
+    fail "the settings archive cannot be read: $(errors)"
 sed 's/^/  /' "$names"
 missing=0
 for needed in etc/dmd-gateway/gateway.env etc/dmd-signer/signer.env etc/dmd-signer/issuer-key.pem; do
@@ -123,16 +142,16 @@ echo "  ok: the settings, the signer's settings and the issuer key are there"
 # ------------------------------------------------------------------ the database
 echo
 echo "DATABASE ($(basename "$db"))"
-age --decrypt --identity "$key_file" "$db" 2>"$private/age.err" | pg_restore --list >"$private/toc.txt" ||
-    fail "the database dump cannot be read: $(cat "$private/age.err") (pg_restore must be at least the server's PostgreSQL version, 16; this one: $(pg_restore --version))"
+decrypt_into "$db" pg_restore --list >"$private/toc.txt" ||
+    fail "the database dump cannot be read: $(errors)(pg_restore must be at least the server's PostgreSQL version, 16; this one: $(pg_restore --version))"
 grep -E '^; +(Archive created at |dbname:|Dumped from database version:)' "$private/toc.txt" |
     sed 's/^; */  /'
-age --decrypt --identity "$key_file" "$db" | pg_restore --data-only --file=- |
+decrypt_into "$db" pg_restore --data-only --file=- |
     awk '
         /^COPY / { table = $2; sub(/^public\./, "", table); rows = 0; inside = 1; next }
         inside && /^\\\.$/ { printf "  %-26s %d\n", table, rows; inside = 0; next }
         inside { rows++ }
-    ' >"$private/rows.txt" || fail "the database's rows cannot be read"
+    ' >"$private/rows.txt" || fail "the database's rows cannot be read: $(errors)"
 [ -s "$private/rows.txt" ] || fail "the dump holds no table"
 grep -q '^  identities ' "$private/rows.txt" || fail "the dump has no identities table"
 echo "  rows per table:"

@@ -164,3 +164,31 @@ def test_what_cannot_be_restored_is_said(backups: tuple[Path, str, str], tmp_pat
     assert "lacks what a new server needs" in partial.stderr
 
     assert run().returncode == 2  # no backup named: how to use it
+
+
+def test_a_real_size_dump_is_read_to_its_end(
+    backups: tuple[Path, str, str],
+    engine: Engine,  # noqa: F811
+) -> None:
+    """pg_restore --list stops reading once it has the list: the rest of the decrypted dump is
+    read and dropped, so that age is not cut off mid-file (which failed every dump larger
+    than a pipe's buffer, 64 KiB: production's first one was 520 KB)."""
+    folder, public, secret = backups
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO monitor_state (key, value, updated_at) "
+                "SELECT 'bulk-' || n, jsonb_build_object('x', "
+                "(SELECT string_agg(md5(random()::text || n || k), '') "
+                "FROM generate_series(1, 12) k)), now() FROM generate_series(1, 3000) n"
+            )
+        )
+    url = TEST_DATABASE_URL.replace("postgresql+psycopg://", "postgresql://")
+    target = folder / f"agent-gateway-db-{STAMP}.dump.age"
+    encrypt(tool("pg_dump", "--format=custom", url).stdout, public, target)
+    assert target.stat().st_size > 512 * 1024
+
+    result = run(folder, stdin=secret + "\n")
+    assert result.returncode == 0, result.stderr
+    assert "monitor_state" in result.stdout and " 3002\n" in result.stdout
+    assert "RESTORE TEST PASSED" in result.stdout
