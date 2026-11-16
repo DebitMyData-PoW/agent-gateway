@@ -7,6 +7,7 @@ PayPal itself is replaced by tests/paypal_fakes.py: nothing here reaches the net
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -352,6 +353,19 @@ def test_an_order_being_approved_again_is_waited_for() -> None:
     assert len(adapter.observe(_expected(destination)).outputs) == 1
 
 
+def test_an_order_of_a_replaced_app_is_nothing_paid() -> None:
+    paypal = FakePayPal()
+    adapter, destination = _quoted(paypal)
+    order_id = destination.payment_reference or ""
+    del paypal.orders[order_id]  # the app was replaced: PayPal answers 404 for its orders
+    gone = adapter.observe(_expected(destination))
+    assert gone.outputs == () and "knows no such order" in gone.notes[0]
+    # A payment already seen is never given up that way: PayPal is asked again later.
+    seen = dataclasses.replace(_expected(destination), known_transactions=("9C000001TESTCAPTURE",))
+    with pytest.raises(AdapterUnavailable, match="HTTP 404"):
+        adapter.observe(seen)
+
+
 def test_a_held_capture_counts_once_paypal_completes_it() -> None:
     paypal = FakePayPal()
     adapter, destination = _quoted(paypal)
@@ -582,6 +596,23 @@ def test_a_paypal_approval_after_the_quote_ended_takes_nothing(
     _pass(paypal_client, datetime.now(UTC))
     assert _status(engine, quote["payment_intent_id"]) == "expired"
     assert PAYPAL.capture_requests() == []
+
+
+@needs_db
+def test_an_order_paypal_does_not_know_expires_with_its_quote(
+    paypal_client: TestClient, engine: Engine
+) -> None:
+    quote = _paypal_quote(paypal_client)
+    del PAYPAL.orders[quote["selected_payment_option"]["payment_reference"]]
+    _pass(paypal_client, datetime.now(UTC))
+    assert _status(engine, quote["payment_intent_id"]) == "awaiting_payment"
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE payment_intents SET quote_expires_at = :at WHERE id = :id"),
+            {"at": datetime.now(UTC) - timedelta(minutes=1), "id": quote["payment_intent_id"]},
+        )
+    _pass(paypal_client, datetime.now(UTC))
+    assert _status(engine, quote["payment_intent_id"]) == "expired"
 
 
 @needs_db

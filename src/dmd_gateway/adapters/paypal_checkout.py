@@ -251,7 +251,21 @@ class PayPalCheckoutAdapter(PaymentAdapter):
         order_id = expected.destination.payment_reference or ""
         if expected.destination.recipient_kind != HOSTED_PAYMENT_PAGE or not order_id:
             raise AdapterUnavailable(f"{payment_id} has no PayPal payment page")
-        order = self._order(order_id, expected)
+        try:
+            order = self._order(order_id, expected)
+        except AdapterUnavailable as exc:
+            cause = exc.__cause__
+            if (
+                isinstance(cause, PayPalUnavailable)
+                and cause.status == 404
+                and not expected.known_transactions
+            ):
+                # PayPal has no such order for this app: made with other credentials (the
+                # app was replaced). Nobody can take it for DebitMyData, so nothing is paid,
+                # and the payment expires with its quote.
+                note = f"{order_id}: PayPal knows no such order for this app: nothing taken"
+                return PaymentObservation(payment_id, self.name, now, notes=(note,))
+            raise
 
         if order.get("status") == "APPROVED":
             ends = expected.quote_expires_at

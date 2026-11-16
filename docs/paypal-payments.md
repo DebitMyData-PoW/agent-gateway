@@ -47,6 +47,9 @@ The gateway uses one PayPal **REST app** of DebitMyData's PayPal business accoun
 production a **Live** app. The gateway refuses to start the PayPal option without both, and
 says which one is missing, never its value.
 
+Replacing the app by another one (another PayPal account) leaves the payments still open
+with orders the new app cannot see: they expire with their quote, and nothing is taken.
+
 The secret is a secret: it goes **only** in the server's settings file
 (`/etc/dmd-gateway/gateway.env`, root only, mode 600). Never in a repository, a chat, an email
 or a ticket. If it may have leaked, generate a new secret on the app's page in PayPal's
