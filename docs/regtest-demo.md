@@ -174,9 +174,9 @@ The gateway also serves the directive's MCP tools at `http://localhost:8000/agen
 
 ```bash
 python scripts/demo_agent.py mcp-tools
-python scripts/demo_agent.py mcp-call dmd_get_did_registration_offer | jq '.offer.commercial_price'
+python scripts/demo_agent.py mcp-call debitmydata_get_did_registration_offer | jq '.offer.commercial_price'
 
-QUOTE=$(python scripts/demo_agent.py mcp-call dmd_create_did_payment_quote \
+QUOTE=$(python scripts/demo_agent.py mcp-call debitmydata_create_did_payment_quote \
   "$(jq -nc --arg key "$AGENT_KEY" '{display_name: "McpAgent-01", participant_type: "ai_agent",
         controller_public_key: $key, preferred_payment_option: "dmd_pow_native"}')")
 REG=$(echo "$QUOTE" | jq -r .registration_intent_id)
@@ -188,24 +188,24 @@ AMOUNT=$(echo "$QUOTE" | jq -r .selected_payment_option.amount)
 ```bash
 # Pay, report the transaction (a hint only), confirm, check the status
 TXID=$(debitmydata-cli -rpcwallet=payer-test sendtoaddress $ADDR $AMOUNT)
-python scripts/demo_agent.py mcp-call dmd_submit_payment_reference \
+python scripts/demo_agent.py mcp-call debitmydata_submit_payment_reference \
   "$(jq -nc --arg pay "$PAY" --arg tx "$TXID" '{payment_intent_id: $pay, transaction_reference: $tx}')"
 debitmydata-cli generatetoaddress 6 $(debitmydata-cli -rpcwallet=payer-test getnewaddress)
 sleep 12
-python scripts/demo_agent.py mcp-call dmd_get_payment_status \
+python scripts/demo_agent.py mcp-call debitmydata_get_payment_status \
   "$(jq -nc --arg pay "$PAY" '{payment_intent_id: $pay}')" | jq '{status, next_action}'
 ```
 
 ```bash
 # Prove control of the key (two calls), then register
-CHALLENGE=$(python scripts/demo_agent.py mcp-call dmd_prove_wallet_control \
+CHALLENGE=$(python scripts/demo_agent.py mcp-call debitmydata_prove_wallet_control \
   "$(jq -nc --arg reg "$REG" '{registration_intent_id: $reg}')")
 SIG=$(echo "$CHALLENGE" | python scripts/demo_agent.py sign agent-key.pem)
 CID=$(echo "$CHALLENGE" | jq -r .challenge_id)
-python scripts/demo_agent.py mcp-call dmd_prove_wallet_control \
+python scripts/demo_agent.py mcp-call debitmydata_prove_wallet_control \
   "$(jq -nc --arg reg "$REG" --arg cid "$CID" --arg sig "$SIG" \
      '{registration_intent_id: $reg, challenge_id: $cid, signature: $sig}')" | jq '{status, next_action}'
-python scripts/demo_agent.py mcp-call dmd_register_did \
+python scripts/demo_agent.py mcp-call debitmydata_register_did \
   "$(jq -nc --arg reg "$REG" '{registration_intent_id: $reg}')" > /tmp/registration-mcp.json
 jq '{did, entitlements}' /tmp/registration-mcp.json
 python scripts/demo_agent.py verify-credential /tmp/registration-mcp.json

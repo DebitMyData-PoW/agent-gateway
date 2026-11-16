@@ -43,18 +43,18 @@ pytestmark = pytest.mark.anyio
 
 BASE = "http://localhost:8000"
 DIRECTIVE_TOOLS = {
-    "dmd_discover",
-    "dmd_get_did_registration_offer",
-    "dmd_list_supported_payment_options",
-    "dmd_create_did_payment_quote",
-    "dmd_submit_payment_reference",
-    "dmd_get_payment_status",
-    "dmd_prove_wallet_control",
-    "dmd_register_did",
-    "dmd_catalog",
-    "dmd_get_purchase_quote",
-    "dmd_purchase",
-    "dmd_marketplace_provider_requirements",
+    "debitmydata_discover",
+    "debitmydata_get_did_registration_offer",
+    "debitmydata_list_supported_payment_options",
+    "debitmydata_create_did_payment_quote",
+    "debitmydata_submit_payment_reference",
+    "debitmydata_get_payment_status",
+    "debitmydata_prove_wallet_control",
+    "debitmydata_register_did",
+    "debitmydata_catalog",
+    "debitmydata_get_purchase_quote",
+    "debitmydata_purchase",
+    "debitmydata_marketplace_provider_requirements",
 }
 needs_db = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL not set")
 
@@ -103,9 +103,9 @@ async def test_tools_cover_the_directive(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
         tools = {tool.name: tool for tool in (await mcp.list_tools()).tools}
     assert DIRECTIVE_TOOLS <= set(tools)
-    assert tools["dmd_discover"].annotations.read_only_hint is True
-    assert tools["dmd_register_did"].annotations.idempotent_hint is True
-    schema = tools["dmd_create_did_payment_quote"].input_schema
+    assert tools["debitmydata_discover"].annotations.read_only_hint is True
+    assert tools["debitmydata_register_did"].annotations.idempotent_hint is True
+    schema = tools["debitmydata_create_did_payment_quote"].input_schema
     assert set(schema["required"]) == {
         "display_name",
         "participant_type",
@@ -136,10 +136,10 @@ def test_tool_descriptions_lose_the_codes_indentation() -> None:
 
 async def test_discovery_tools(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
-        discovery = await call(mcp, "dmd_discover")
-        offer = await call(mcp, "dmd_get_did_registration_offer")
-        catalog = await call(mcp, "dmd_catalog")
-        marketplace = await call(mcp, "dmd_marketplace_provider_requirements")
+        discovery = await call(mcp, "debitmydata_discover")
+        offer = await call(mcp, "debitmydata_get_did_registration_offer")
+        catalog = await call(mcp, "debitmydata_catalog")
+        marketplace = await call(mcp, "debitmydata_marketplace_provider_requirements")
     assert "DebitMyData Proof-of-Work blockchain" in discovery["about"]
     assert discovery["mcp_url"] == f"{BASE}/agenticsuperhighway"
     assert offer["offer"]["commercial_price"] == {"currency": "USD", "amount": "25.00"}
@@ -158,14 +158,14 @@ async def test_discovery_tools(app: FastAPI) -> None:
 
 async def test_an_agent_finds_the_product_before_any_tool_call(app: FastAPI) -> None:
     """What DebitMyData sells comes first: in the server's instructions (before any tool
-    call), then in dmd_discover, the first tool, with its page and picture. The price text is
-    word for word the one on the page and in llms.txt (test_site_files.py)."""
+    call), then in debitmydata_discover, the first tool, with its page and picture. The price
+    text is word for word the one on the page and in llms.txt (test_site_files.py)."""
     text = "$25.00 USD, paid once"
     async with mcp_client(app) as mcp:
         instructions = mcp.instructions
-        discovery = await call(mcp, "dmd_discover")
-        offered = await call(mcp, "dmd_get_did_registration_offer")
-        catalog = (await call(mcp, "dmd_catalog"))["products"][0]
+        discovery = await call(mcp, "debitmydata_discover")
+        offered = await call(mcp, "debitmydata_get_did_registration_offer")
+        catalog = (await call(mcp, "debitmydata_catalog"))["products"][0]
     assert instructions.startswith(
         "DebitMyData sells the DebitMyData DID-LLM. A verifiable identity"
     )
@@ -180,7 +180,7 @@ async def test_an_agent_finds_the_product_before_any_tool_call(app: FastAPI) -> 
     assert item["price_text"] == text
     assert item["product_url"] == f"{BASE}/get-did"
     assert item["image_url"] == f"{BASE}/logo.png?v=2"
-    assert "dmd_create_did_payment_quote" in item["how_to_buy"]
+    assert "debitmydata_create_did_payment_quote" in item["how_to_buy"]
     # The other tools an agent may call first give the same, first.
     assert list(offered)[0] == "product" and offered["product"] == item
     offer = offered["offer"]
@@ -201,14 +201,14 @@ async def test_an_agent_finds_the_product_before_any_tool_call(app: FastAPI) -> 
 
 
 async def test_an_agent_opens_the_checkout_without_buying_anything(app: FastAPI) -> None:
-    """dmd_open_checkout: read-only, no arguments, nothing created or charged; the checkout
+    """debitmydata_open_checkout: read-only, no arguments, nothing created or charged; the checkout
     page for a person and the steps for an agent paying by itself."""
     async with mcp_client(app) as mcp:
         tools = {tool.name: tool for tool in (await mcp.list_tools()).tools}
         instructions = mcp.instructions
-        checkout = await call(mcp, "dmd_open_checkout")
-        product = (await call(mcp, "dmd_discover"))["product"]
-    tool = tools["dmd_open_checkout"]
+        checkout = await call(mcp, "debitmydata_open_checkout")
+        product = (await call(mcp, "debitmydata_discover"))["product"]
+    tool = tools["debitmydata_open_checkout"]
     assert tool.annotations.read_only_hint is True
     assert not tool.input_schema.get("properties")
     assert "creates nothing, charges nothing" in tool.description
@@ -216,25 +216,25 @@ async def test_an_agent_opens_the_checkout_without_buying_anything(app: FastAPI)
     assert checkout["product"] == product and product["checkout_url"] == checkout["checkout_url"]
     assert checkout["payment_options"] == []  # every rail is off here
     assert "$25.00 USD, paid once" in checkout["for_a_person"]
-    assert "dmd_create_did_payment_quote" in checkout["for_an_agent"]
+    assert "debitmydata_create_did_payment_quote" in checkout["for_an_agent"]
     # The purchase step, ready to fill in, with arguments the purchase tool accepts.
     step = checkout["next_step"]
-    assert step["tool"] == "dmd_create_did_payment_quote"
+    assert step["tool"] == "debitmydata_create_did_payment_quote"
     assert "charges nothing by itself" in step["what_it_does"]
-    schema = tools["dmd_create_did_payment_quote"].input_schema
+    schema = tools["debitmydata_create_did_payment_quote"].input_schema
     assert set(step["arguments"]) <= set(schema["properties"])
     assert set(schema["required"]) <= set(step["arguments"])
     assert step["arguments"]["participant_type"] == "ai_agent"
     assert step["arguments"]["preferred_payment_option"] == "<an id from payment_options>"
-    assert "dmd_open_checkout" in product["how_to_buy"]
-    assert "To buy it: dmd_open_checkout opens the checkout" in instructions
+    assert "debitmydata_open_checkout" in product["how_to_buy"]
+    assert "To buy it: debitmydata_open_checkout opens the checkout" in instructions
 
 
 async def test_errors_carry_the_rest_error_code(app: FastAPI) -> None:
     async with mcp_client(app) as mcp:
         unavailable = await call_error(
             mcp,
-            "dmd_create_did_payment_quote",
+            "debitmydata_create_did_payment_quote",
             display_name="McpAgent",
             participant_type="ai_agent",
             controller_public_key=AGENT_CONTROLLER,
@@ -242,18 +242,18 @@ async def test_errors_carry_the_rest_error_code(app: FastAPI) -> None:
         )
         bad_key = await call_error(
             mcp,
-            "dmd_create_did_payment_quote",
+            "debitmydata_create_did_payment_quote",
             display_name="McpAgent",
             participant_type="ai_agent",
             controller_public_key="ed25519:not-a-key",
             preferred_payment_option="dmd_pow_native",
         )
         unknown = await call_error(
-            mcp, "dmd_purchase", product_id="nft", preferred_payment_option="x", details={}
+            mcp, "debitmydata_purchase", product_id="nft", preferred_payment_option="x", details={}
         )
         half_proof = await call_error(
             mcp,
-            "dmd_prove_wallet_control",
+            "debitmydata_prove_wallet_control",
             registration_intent_id="dmd_did_intent_" + "0" * 26,
             challenge_id="dmd_challenge_" + "0" * 26,
         )
@@ -283,7 +283,7 @@ def test_older_protocol_handshake_and_host_check(client: TestClient, path: str) 
     result = response.json()["result"]
     assert result["protocolVersion"] == "2025-06-18"
     assert result["serverInfo"]["name"] == "debitmydata-agent-gateway"
-    assert "dmd_create_did_payment_quote" in result["instructions"]
+    assert "debitmydata_create_did_payment_quote" in result["instructions"]
 
     # DNS-rebinding protection: an unexpected Host or Origin is refused.
     assert client.post(path, json=initialize, headers={**headers, "Host": "evil.example"}).is_error
@@ -319,13 +319,13 @@ async def test_registration_through_mcp_only(
     issuer = IssuerKey(Ed25519PrivateKey.generate(), issuer_did(BASE))
     app = _app_client(ready_registry, engine, issuer_key=issuer).app
     async with mcp_client(app) as mcp:
-        offer = await call(mcp, "dmd_get_did_registration_offer")
+        offer = await call(mcp, "debitmydata_get_did_registration_offer")
         options = [o["id"] for o in offer["payment_options"]["supported_payment_options"]]
         assert "dmd_pow_native" in options
 
         quote = await call(
             mcp,
-            "dmd_create_did_payment_quote",
+            "debitmydata_create_did_payment_quote",
             display_name="McpAgent-01",
             participant_type="ai_agent",
             controller_public_key=AGENT_CONTROLLER,
@@ -339,7 +339,10 @@ async def test_registration_through_mcp_only(
         # The agent pays from its wallet and reports the transaction (a hint only).
         txid = "9f" * 32
         reference = await call(
-            mcp, "dmd_submit_payment_reference", payment_intent_id=pid, transaction_reference=txid
+            mcp,
+            "debitmydata_submit_payment_reference",
+            payment_intent_id=pid,
+            transaction_reference=txid,
         )
         assert reference["status"] == "recorded"
         SCRIPTED.pay(pid, units, txid=txid)
@@ -347,23 +350,23 @@ async def test_registration_through_mcp_only(
         assert txid in SCRIPTED.expected[pid].known_transactions
         SCRIPTED.confirm(pid, 6)
         tick(app)
-        payment = await call(mcp, "dmd_get_payment_status", payment_intent_id=pid)
+        payment = await call(mcp, "debitmydata_get_payment_status", payment_intent_id=pid)
         assert (payment["status"], payment["next_action"]) == ("settled", "prove_wallet_control")
 
-        challenge = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
+        challenge = await call(mcp, "debitmydata_prove_wallet_control", registration_intent_id=rid)
         assert challenge["step"] == "sign_challenge"
         proof = await call(
             mcp,
-            "dmd_prove_wallet_control",
+            "debitmydata_prove_wallet_control",
             registration_intent_id=rid,
             challenge_id=challenge["challenge_id"],
             signature=sign_challenge(challenge["message"]),
         )
         assert (proof["status"], proof["next_action"]) == ("verified", "register_did")
 
-        issued = await call(mcp, "dmd_register_did", registration_intent_id=rid)
-        again = await call(mcp, "dmd_register_did", registration_intent_id=rid)
-        status = await call(mcp, "dmd_get_registration_status", registration_intent_id=rid)
+        issued = await call(mcp, "debitmydata_register_did", registration_intent_id=rid)
+        again = await call(mcp, "debitmydata_register_did", registration_intent_id=rid)
+        status = await call(mcp, "debitmydata_get_registration_status", registration_intent_id=rid)
 
     assert issued["did"].startswith("did:web:localhost%3A8000:agents:")
     assert issued["entitlements"] == ["dmd_did_holder"]
@@ -382,7 +385,7 @@ async def test_a_wallet_proves_control_through_mcp(
     async with mcp_client(app) as mcp:
         quote = await call(
             mcp,
-            "dmd_create_did_payment_quote",
+            "debitmydata_create_did_payment_quote",
             display_name="McpWallet-01",
             participant_type="ai_agent",
             controller_public_key=AGENT_CONTROLLER,
@@ -392,23 +395,26 @@ async def test_a_wallet_proves_control_through_mcp(
         )
         rid = quote["registration_intent_id"]
         challenge = await call(
-            mcp, "dmd_prove_wallet_control", registration_intent_id=rid, controller_type="eip155"
+            mcp,
+            "debitmydata_prove_wallet_control",
+            registration_intent_id=rid,
+            controller_type="eip155",
         )
         assert challenge["controller"] == f"eip155:8453:{owner.address}"
         assert "personal_sign" in challenge["how_to_answer"]
         signed = owner.sign_message(encode_defunct(text=challenge["message"]))
         proof = await call(
             mcp,
-            "dmd_prove_wallet_control",
+            "debitmydata_prove_wallet_control",
             registration_intent_id=rid,
             challenge_id=challenge["challenge_id"],
             signature="0x" + bytes(signed.signature).hex(),
         )
         assert proof["status"] == "verified"
-        status = await call(mcp, "dmd_get_registration_status", registration_intent_id=rid)
+        status = await call(mcp, "debitmydata_get_registration_status", registration_intent_id=rid)
         assert status["controller"]["still_to_prove"] == ["ed25519"]
         # The next challenge, by default, is for the key still to prove.
-        nxt = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
+        nxt = await call(mcp, "debitmydata_prove_wallet_control", registration_intent_id=rid)
         assert nxt["controller"] == AGENT_CONTROLLER
         assert "Ed25519" in nxt["how_to_answer"]
 
@@ -416,7 +422,7 @@ async def test_a_wallet_proves_control_through_mcp(
 async def _issued_through_mcp(mcp: Client, app: FastAPI, name: str, txid: str) -> str:
     quote = await call(
         mcp,
-        "dmd_create_did_payment_quote",
+        "debitmydata_create_did_payment_quote",
         display_name=name,
         participant_type="ai_agent",
         controller_public_key=AGENT_CONTROLLER,
@@ -426,15 +432,15 @@ async def _issued_through_mcp(mcp: Client, app: FastAPI, name: str, txid: str) -
     SCRIPTED.pay(pid, int(quote["selected_payment_option"]["amount_base_units"]), txid=txid)
     SCRIPTED.confirm(pid, 6)
     tick(app)
-    challenge = await call(mcp, "dmd_prove_wallet_control", registration_intent_id=rid)
+    challenge = await call(mcp, "debitmydata_prove_wallet_control", registration_intent_id=rid)
     await call(
         mcp,
-        "dmd_prove_wallet_control",
+        "debitmydata_prove_wallet_control",
         registration_intent_id=rid,
         challenge_id=challenge["challenge_id"],
         signature=sign_challenge(challenge["message"]),
     )
-    return (await call(mcp, "dmd_register_did", registration_intent_id=rid))["did"]
+    return (await call(mcp, "debitmydata_register_did", registration_intent_id=rid))["did"]
 
 
 @needs_db
@@ -451,19 +457,19 @@ async def test_an_add_on_is_bought_through_mcp_only(
     app = _app_client(ready_registry, engine, issuer_key=issuer, environ=environ).app
     async with mcp_client(app) as mcp:
         did = await _issued_through_mcp(mcp, app, "McpAddOn-01", "5d" * 32)
-        catalog = await call(mcp, "dmd_catalog")
+        catalog = await call(mcp, "debitmydata_catalog")
         add_ons = {p["product_id"]: p for p in catalog["products"] if p["kind"] == "add_on"}
         assert list(add_ons) == ["bottybotty_entry", "bottybotty_standard", "bottybotty_premium"]
         add_on = add_ons["bottybotty_entry"]
         assert (add_on["period_days"], add_on["payment_options"]) == (None, ["dmd_pow_native"])
         assert add_on["tier"] == {"group": "bottybotty", "rank": 1, "name": "Entry"}
         assert "active DebitMyData DID" in add_on["requires"]
-        offer = await call(mcp, "dmd_get_purchase_quote", product_id="bottybotty_entry")
+        offer = await call(mcp, "debitmydata_get_purchase_quote", product_id="bottybotty_entry")
         assert offer["payment_options"] == ["dmd_pow_native"]
 
         unknown = await call_error(
             mcp,
-            "dmd_purchase",
+            "debitmydata_purchase",
             product_id="bottybotty_entry",
             preferred_payment_option="dmd_pow_native",
             details={"did": "did:web:localhost%3A8000:agents:" + "0" * 26},
@@ -472,22 +478,22 @@ async def test_an_add_on_is_bought_through_mcp_only(
 
         quote = await call(
             mcp,
-            "dmd_purchase",
+            "debitmydata_purchase",
             product_id="bottybotty_entry",
             preferred_payment_option="dmd_pow_native",
             details={"did": did},
         )
         purchase_id, pid = quote["purchase_id"], quote["payment_intent_id"]
-        early = await call_error(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
+        early = await call_error(mcp, "debitmydata_complete_purchase", purchase_id=purchase_id)
         assert early["error"]["code"] == "purchase_not_ready"
         units = int(quote["selected_payment_option"]["amount_base_units"])
         SCRIPTED.pay(pid, units, txid="6e" * 32)
         SCRIPTED.confirm(pid, 6)
         tick(app)
-        payment = await call(mcp, "dmd_get_payment_status", payment_intent_id=pid)
+        payment = await call(mcp, "debitmydata_get_payment_status", payment_intent_id=pid)
         assert (payment["status"], payment["next_action"]) == ("settled", "complete_purchase")
-        done = await call(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
-        again = await call(mcp, "dmd_complete_purchase", purchase_id=purchase_id)
+        done = await call(mcp, "debitmydata_complete_purchase", purchase_id=purchase_id)
+        again = await call(mcp, "debitmydata_complete_purchase", purchase_id=purchase_id)
 
     assert (done["status"], done["did"]) == ("completed", did)
     assert done["entitlement"] == "bottybotty_entry"
@@ -511,20 +517,20 @@ async def test_a_did_llm_is_listed_in_the_directory_through_mcp(
             "specialty": "Reasoning engine",
             "description": "Answers hard questions step by step, and says when it is unsure.",
         }
-        step = await call(mcp, "dmd_list_in_directory", did=did, profile=profile)
+        step = await call(mcp, "debitmydata_list_in_directory", did=did, profile=profile)
         assert step["step"] == "sign_listing" and step["controller"] == AGENT_CONTROLLER
         assert "Type: Sentient" in step["message"]
         listed = await call(
             mcp,
-            "dmd_list_in_directory",
+            "debitmydata_list_in_directory",
             did=did,
             challenge_id=step["challenge_id"],
             signature=sign_challenge(step["message"]),
         )
         assert (listed["listed"], listed["shown"]) == (True, True)
-        found = await call(mcp, "dmd_search_directory", q="unsure", entity_type="sentient")
+        found = await call(mcp, "debitmydata_search_directory", q="unsure", entity_type="sentient")
         assert [entry["name"] for entry in found["entries"]] == ["McpListed-01"]
         refused = await call_error(
-            mcp, "dmd_list_in_directory", did=did, profile={**profile, "description": "x"}
+            mcp, "debitmydata_list_in_directory", did=did, profile={**profile, "description": "x"}
         )
         assert refused["error"]["code"] == "invalid_profile"

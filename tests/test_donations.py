@@ -539,14 +539,16 @@ async def test_donating_through_mcp(registry: Path, engine: Engine, way: str) ->
         "details": details,
     }
     async with mcp_client(app) as mcp:
-        catalog = (await mcp.call_tool("dmd_catalog", {})).structured_content
+        catalog = (await mcp.call_tool("debitmydata_catalog", {})).structured_content
         donation = next(p for p in catalog["products"] if p["kind"] == "donation")
         assert donation["accepting_payments"] is True
         assert donation["payment_options"] == ["x402_usdc_base"]
-        quote = await mcp.call_tool("dmd_get_purchase_quote", {"product_id": "inference_donation"})
+        quote = await mcp.call_tool(
+            "debitmydata_get_purchase_quote", {"product_id": "inference_donation"}
+        )
         assert not quote.is_error, quote.content[0].text
 
-        refused = await mcp.call_tool("dmd_purchase", arguments)
+        refused = await mcp.call_tool("debitmydata_purchase", arguments)
         assert refused.is_error
         required = json.loads(refused.content[0].text)  # the x402 PaymentRequired itself
         assert refused.structured_content == required
@@ -555,11 +557,15 @@ async def test_donating_through_mcp(registry: Path, engine: Engine, way: str) ->
 
         payload = TestPayer().payload(required)
         if way == "argument":
-            result = await mcp.call_tool("dmd_purchase", {**arguments, "x402_payment": payload})
+            result = await mcp.call_tool(
+                "debitmydata_purchase", {**arguments, "x402_payment": payload}
+            )
         else:
-            result = await mcp.call_tool("dmd_purchase", arguments, meta={"x402/payment": payload})
+            result = await mcp.call_tool(
+                "debitmydata_purchase", arguments, meta={"x402/payment": payload}
+            )
         wrong_option = await mcp.call_tool(
-            "dmd_purchase", {**arguments, "preferred_payment_option": "dmd_pow_native"}
+            "debitmydata_purchase", {**arguments, "preferred_payment_option": "dmd_pow_native"}
         )
     assert not result.is_error, result.content[0].text
     paid = result.structured_content

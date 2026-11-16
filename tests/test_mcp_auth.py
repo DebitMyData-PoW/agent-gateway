@@ -1,5 +1,5 @@
 """The MCP server as an OAuth protected resource (api/mcp_auth.py), against PostgreSQL: its
-metadata, signing in with an access token from the authorization server, ``dmd_whoami``, and
+metadata, signing in with an access token from the authorization server, ``debitmydata_whoami``, and
 every refusal. Without a token, everything works as before.
 """
 
@@ -74,7 +74,9 @@ def rpc(
 
 
 def whoami(client: TestClient, token: str | None = None, **kwargs: Any) -> Any:
-    return rpc(client, "tools/call", {"name": "dmd_whoami", "arguments": {}}, token, **kwargs)
+    return rpc(
+        client, "tools/call", {"name": "debitmydata_whoami", "arguments": {}}, token, **kwargs
+    )
 
 
 def sign_in(client: TestClient, did: str, **fields: str) -> str:
@@ -143,18 +145,36 @@ def test_without_a_token_everything_works_as_before(gateway: TestClient) -> None
     listed = rpc(gateway, "tools/list", {})
     assert listed.status_code == 200, listed.text
     names = {tool["name"] for tool in listed.json()["result"]["tools"]}
-    assert {"dmd_whoami", "dmd_discover", "dmd_create_did_payment_quote"} <= names
-    discover = rpc(gateway, "tools/call", {"name": "dmd_discover", "arguments": {}})
+    assert {
+        "debitmydata_whoami",
+        "debitmydata_discover",
+        "debitmydata_create_did_payment_quote",
+    } <= names
+    discover = rpc(gateway, "tools/call", {"name": "debitmydata_discover", "arguments": {}})
     assert not discover.json()["result"].get("isError")
 
-    whoami_tool = next(t for t in listed.json()["result"]["tools"] if t["name"] == "dmd_whoami")
+    whoami_tool = next(
+        t for t in listed.json()["result"]["tools"] if t["name"] == "debitmydata_whoami"
+    )
     assert whoami_tool["_meta"]["securitySchemes"] == [{"type": "oauth2", "scopes": ["did:read"]}]
 
     # A tool that needs a signed-in DID-LLM, called without a token: HTTP 401 with the
     # challenge, before the MCP server runs (what makes MCP clients offer the sign-in).
     for body in (
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "dmd_whoami"}},
-        [{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "dmd_whoami"}}],
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "debitmydata_whoami"},
+        },
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": "debitmydata_whoami"},
+            }
+        ],
     ):
         refused = gateway.post("/agenticsuperhighway", json=body, headers=HOST)
         assert refused.status_code == 401, refused.text
@@ -162,6 +182,40 @@ def test_without_a_token_everything_works_as_before(gateway: TestClient) -> None
         assert challenge.startswith("Bearer resource_metadata=")  # no token: no error named
         assert f'resource_metadata="http://localhost:8000{METADATA}"' in challenge
         assert challenge.endswith('scope="did:read"')
+
+
+def test_tools_answer_to_their_earlier_names_but_list_only_the_new_ones(
+    gateway: TestClient,
+) -> None:
+    """Every tool's name starts with debitmydata_ (0.50.0). A call by its earlier name (dmd_)
+    still works, with the same sign-in checks, but tools/list gives only the new names."""
+    listed = rpc(gateway, "tools/list", {}).json()["result"]["tools"]
+    assert listed and all(tool["name"].startswith("debitmydata_") for tool in listed)
+
+    answers = []
+    for name in ("debitmydata_discover", "dmd_discover"):
+        answer = rpc(gateway, "tools/call", {"name": name, "arguments": {}})
+        assert answer.status_code == 200, answer.text
+        assert not answer.json()["result"].get("isError"), answer.text
+        answers.append(answer.json()["result"]["structuredContent"])
+    assert answers[0] == answers[1]
+
+    # The earlier name of a tool that needs a signed-in DID-LLM: the same 401 as the new one,
+    # alone or in a batch.
+    call = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "dmd_whoami"}}
+    for body in (call, [call]):
+        refused = gateway.post("/agenticsuperhighway", json=body, headers=HOST)
+        assert refused.status_code == 401, refused.text
+        assert refused.headers["www-authenticate"].endswith('scope="did:read"')
+    did = issue(gateway)["did"]
+    token = sign_in(gateway, did)
+    answer = rpc(gateway, "tools/call", {"name": "dmd_whoami", "arguments": {}}, token)
+    assert answer.json()["result"]["structuredContent"]["signed_in_as"] == did
+
+    # Only the tools' own earlier names: anything else is left as it is.
+    unknown = rpc(gateway, "tools/call", {"name": "dmd_nothing", "arguments": {}})
+    assert unknown.status_code == 200
+    assert "dmd_nothing" in unknown.text and "debitmydata_nothing" not in unknown.text
 
 
 def test_a_token_without_the_scope_is_told_what_it_needs(
@@ -232,7 +286,7 @@ def test_discovery_files_offer_oauth_once_sign_in_is_open(gateway: TestClient) -
         document = gateway.get(path).json()
         assert document["endpoints"][0]["authentication"] == ["oauth2.1", "wallet-signature"]
     card = gateway.get("/.well-known/mcp/server-card.json").json()
-    assert "dmd_whoami" in {tool["name"] for tool in card["tools"]}
+    assert "debitmydata_whoami" in {tool["name"] for tool in card["tools"]}
     llms = gateway.get("/llms.txt").text
     assert "## Signing in with your DID-LLM (OAuth, optional)" in llms
     assert f"`aud` `{ISS}/token`" in llms and f"`resource={MCP}`" in llms
@@ -248,7 +302,7 @@ def test_tokens_are_ignored_while_sign_in_is_closed(
         listed = rpc(closed, "tools/list", {}, "anything")
         assert listed.status_code == 200, listed.text
         names = {tool["name"] for tool in listed.json()["result"]["tools"]}
-        assert "dmd_whoami" not in names and "dmd_discover" in names
+        assert "debitmydata_whoami" not in names and "debitmydata_discover" in names
         manifest = closed.get("/.well-known/mcp").json()
         assert manifest["endpoints"][0]["authentication"] == []
         assert "Signing in" not in closed.get("/llms.txt").text
@@ -300,7 +354,7 @@ def test_the_owner_key_tool_signs_in_end_to_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The tool's whole sign-in against the real gateway: the DID document, the authorization
-    server's metadata, the signed request, the token, and the MCP server's dmd_whoami."""
+    server's metadata, the signed request, the token, and the MCP server's debitmydata_whoami."""
     did = issue(gateway)["did"]
     key_file = tmp_path / "agent.key"
     key_file.write_bytes(

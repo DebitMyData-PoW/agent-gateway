@@ -1,5 +1,5 @@
 """Controller challenges and proofs (ID-03, ID-04, ID-06, ID-08; directive tool
-dmd_prove_wallet_control).
+debitmydata_prove_wallet_control).
 
 The agent proves it controls each controller named in its quote, an Ed25519 public key
 and/or an EVM wallet:

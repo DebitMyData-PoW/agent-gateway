@@ -274,12 +274,12 @@ route registry:
    the receipt, or `202` with `status_url` (`GET /v1/donations/{purchase_id}`) while
    confirming.
 
-An authorization already received returns the same donation (`200`) and is never settled
-again; one used for another amount is refused. A call without `amount_usd` (Coinbase's
-validator posts an empty body first) answers `402` with the terms of an example amount and
-can never be paid. A payment refused by the facilitator closes its donation at once; if a
-completed donation's payment is later reorganized out of the chain, an alert is recorded in
-the audit trail. Through MCP, `dmd_catalog` lists the donation and `dmd_purchase` pays it.
+An authorization already received returns the same donation (`200`) and is never settled again;
+one used for another amount is refused. A call without `amount_usd` (Coinbase's validator posts
+an empty body first) answers `402` with the terms of an example amount and can never be paid. A
+payment refused by the facilitator closes its donation at once; if a completed donation's
+payment is later reorganized out of the chain, an alert is recorded in the audit trail. Through
+MCP, `debitmydata_catalog` lists the donation and `debitmydata_purchase` pays it.
 
 ## Products for a DID (BottyBotty)
 
@@ -321,18 +321,18 @@ The steps:
    Buying again before the end extends the period from its end.
 
 The entitlement follows its DID (suspended, reactivated and revoked with it) and is no longer
-active once its period ends; `GET /v1/entitlements/<DID>` shows it as `expired`. A
-purchase that could give nothing is refused before payment: an unknown or inactive DID, an
-entitlement already held with no end, or one revoked on its own (which never comes back).
-x402 rails are refused for products (they are paid in answer to the completion, not built
-yet). The signer checks the purchase, the DID and the settled payment before signing a
-receipt. Through MCP, `dmd_catalog` lists products as `kind: "add_on"`, `dmd_purchase` with
-`details.did` returns the quote, and `dmd_complete_purchase` returns the receipt. The daily
-report counts products apart from donations, per product. What BottyBotty does for an
+active once its period ends; `GET /v1/entitlements/<DID>` shows it as `expired`. A purchase that
+could give nothing is refused before payment: an unknown or inactive DID, an entitlement already
+held with no end, or one revoked on its own (which never comes back). x402 rails are refused for
+products (they are paid in answer to the completion, not built yet). The signer checks the
+purchase, the DID and the settled payment before signing a receipt. Through MCP,
+`debitmydata_catalog` lists products as `kind: "add_on"`, `debitmydata_purchase` with
+`details.did` returns the quote, and `debitmydata_complete_purchase` returns the receipt. The
+daily report counts products apart from donations, per product. What BottyBotty does for an
 Agentic is up to BottyBotty: it can check the receipt with the issuer DID document alone, or the
 entitlement at `GET /v1/entitlements/<DID>`. The public records (`/v1/dids/...`,
-`/v1/entitlements/...`) take the DID itself or its identity ID (`dmd_identity_...`); a DID
-with another host than this gateway's is unknown there, even with the same ending.
+`/v1/entitlements/...`) take the DID itself or its identity ID (`dmd_identity_...`); a DID with
+another host than this gateway's is unknown there, even with the same ending.
 
 ## Controller proof
 
@@ -388,22 +388,22 @@ reach it through another public address).
 
 | Tool | REST call |
 | --- | --- |
-| `dmd_discover` | `GET /v1/discovery`, plus a short description of DebitMyData and DMD |
-| `dmd_get_did_registration_offer` | the DID offer and `GET /v1/payment-options` |
-| `dmd_open_checkout` | read-only: the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options from `GET /v1/payment-options` and the steps for an agent; creates and charges nothing |
-| `dmd_list_supported_payment_options` | `GET /v1/payment-options` |
-| `dmd_create_did_payment_quote` | `POST /v1/dids/registration-quotes` |
-| `dmd_submit_payment_reference` | `POST /v1/payments/{id}/references` |
-| `dmd_get_payment_status` | `GET /v1/payments/{id}` |
-| `dmd_prove_wallet_control` | first call: `POST .../controller-challenges`; second call with the signature: `POST .../controller-proofs` |
-| `dmd_register_did` | `POST /v1/dids/registrations` |
-| `dmd_get_registration_status` | `GET /v1/dids/registrations/{id}` (added to the directive's list) |
-| `dmd_catalog`, `dmd_get_purchase_quote` | the offers and donations, and their enabled payment options |
-| `dmd_purchase` | for `did_registration`, the same as creating a quote; for `inference_donation`, `POST /v1/donations/inference` (the x402 payment in `x402_payment` or `_meta["x402/payment"]`) |
-| `dmd_marketplace_provider_requirements` | states that provider onboarding is not open yet |
-| `dmd_change_owner` | `POST /v1/dids/{did}/owner-changes`, then each signed message to `.../owner-changes/{change_id}/signatures`; with `change_id` alone, `GET` it |
-| `dmd_revoke_did` | `POST /v1/dids/{did}/revocations`, then the signed message to `.../revocations/{challenge_id}/signature` |
-| `dmd_verify_agent` | `POST /v1/dids/verifications` (the discovery runbook's `verify_agent`): first call the DID-LLM's status, credential and a challenge; second call with the signature: the proof of control |
+| `debitmydata_discover` | `GET /v1/discovery`, plus a short description of DebitMyData and DMD |
+| `debitmydata_get_did_registration_offer` | the DID offer and `GET /v1/payment-options` |
+| `debitmydata_open_checkout` | read-only: the checkout page where a person buys a DID-LLM (Get a DID-LLM's form), the payment options from `GET /v1/payment-options` and the steps for an agent; creates and charges nothing |
+| `debitmydata_list_supported_payment_options` | `GET /v1/payment-options` |
+| `debitmydata_create_did_payment_quote` | `POST /v1/dids/registration-quotes` |
+| `debitmydata_submit_payment_reference` | `POST /v1/payments/{id}/references` |
+| `debitmydata_get_payment_status` | `GET /v1/payments/{id}` |
+| `debitmydata_prove_wallet_control` | first call: `POST .../controller-challenges`; second call with the signature: `POST .../controller-proofs` |
+| `debitmydata_register_did` | `POST /v1/dids/registrations` |
+| `debitmydata_get_registration_status` | `GET /v1/dids/registrations/{id}` (added to the directive's list) |
+| `debitmydata_catalog`, `debitmydata_get_purchase_quote` | the offers and donations, and their enabled payment options |
+| `debitmydata_purchase` | for `did_registration`, the same as creating a quote; for `inference_donation`, `POST /v1/donations/inference` (the x402 payment in `x402_payment` or `_meta["x402/payment"]`) |
+| `debitmydata_marketplace_provider_requirements` | states that provider onboarding is not open yet |
+| `debitmydata_change_owner` | `POST /v1/dids/{did}/owner-changes`, then each signed message to `.../owner-changes/{change_id}/signatures`; with `change_id` alone, `GET` it |
+| `debitmydata_revoke_did` | `POST /v1/dids/{did}/revocations`, then the signed message to `.../revocations/{challenge_id}/signature` |
+| `debitmydata_verify_agent` | `POST /v1/dids/verifications` (the discovery runbook's `verify_agent`): first call the DID-LLM's status, credential and a challenge; second call with the signature: the proof of control |
 
 Failed calls return the REST error body (`http_status`, `error.code`, details) as a tool
 error. Requests whose `Host` or `Origin` is not the gateway's own address are refused
@@ -411,15 +411,15 @@ error. Requests whose `Host` or `Origin` is not the gateway's own address are re
 sign challenges themselves: no tool takes or returns a private key.
 
 **The identity endpoint**, `/agenticsuperhighway/identity`, is a second MCP server
-(`build_identity_server`), served while sign-in is open, for apps that need only the
-signed-in DID-LLM (a Google Connected App, for one). It has three read-only tools and nothing
-else, so nothing can be bought, registered or changed through it: `dmd_whoami`,
-`dmd_get_profile` (`GET /v1/dids/{id}`, `/v1/entitlements/{id}` and `/v1/directory/{id}` for
-the signed-in DID-LLM) and `dmd_verify_agent` with the DID only (no challenge). Every request
-there needs a `did:read` token issued for this endpoint (`aud`), from `initialize` on: without
-one the endpoint answers 401 with its `WWW-Authenticate` (the plain MCP authorization flow:
-the client signs in as it connects), and the two endpoints refuse each other's tokens
-(`api/mcp_auth.py`).
+(`build_identity_server`), served while sign-in is open, for apps that need only the signed-in
+DID-LLM (a Google Connected App, for one). It has three read-only tools and nothing else, so
+nothing can be bought, registered or changed through it: `debitmydata_whoami`,
+`debitmydata_get_profile` (`GET /v1/dids/{id}`, `/v1/entitlements/{id}` and `/v1/directory/{id}`
+for the signed-in DID-LLM) and `debitmydata_verify_agent` with the DID only (no challenge).
+Every request there needs a `did:read` token issued for this endpoint (`aud`), from `initialize`
+on: without one the endpoint answers 401 with its `WWW-Authenticate` (the plain MCP
+authorization flow: the client signs in as it connects), and the two endpoints refuse each
+other's tokens (`api/mcp_auth.py`).
 
 ## Identity issuance rule
 

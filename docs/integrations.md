@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.49.1). Technical owner: Tyler
+here is live on production and on staging (gateway 0.50.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -58,7 +58,7 @@ a message signed by that owner.
   `agenticbot`, `claw`, `digital_twin`, `human`, `organization`, `approved_digital_entity`.
 
 Buying one: the REST steps are on `/docs` and in [staging.md](staging.md); the MCP tools
-(`dmd_open_checkout`, then quote, pay, prove, register) are described by the server itself
+(`debitmydata_open_checkout`, then quote, pay, prove, register) are described by the server itself
 (`tools/list`) and in `llms.txt`. Payment options: DMD, card (Stripe), USDC on Base (x402,
 staging only until the Coinbase key arrives).
 
@@ -198,16 +198,21 @@ immediate effect on its access tokens.
 
 It is a **bearer** token, bound to its audience: only that endpoint accepts it, and it checks
 everything on every request (signature, issuer, audience, expiry, the DID-LLM still active with
-the same owners, and for an app, its sign-in not ended). So a call needs the token only, **not a fresh signature**; a fresh
-signature is needed at each sign-in and for each owner action (section 3). Without a token every
-tool works except `dmd_whoami`, which answers 401 with a `WWW-Authenticate: Bearer` header
-naming the resource metadata and `scope="did:read"`: what makes MCP clients show their Connect
-button. A wrong or expired token is answered 401 `invalid_token`.
+the same owners, and for an app, its sign-in not ended). So a call needs the token only, **not a
+fresh signature**; a fresh signature is needed at each sign-in and for each owner action
+(section 3). Without a token every tool works except `debitmydata_whoami`, which answers 401
+with a `WWW-Authenticate: Bearer` header naming the resource metadata and `scope="did:read"`:
+what makes MCP clients show their Connect button. A wrong or expired token is answered 401
+`invalid_token`.
 
-`dmd_whoami` says which DID-LLM the request is signed in as, with its status. Your own service
-can check our tokens the same way: verify against the JWKS, and require our `iss`, the `aud`
-you expect, and `exp`. Today only the two MCP endpoints are audiences; tell Tyler if your
+`debitmydata_whoami` says which DID-LLM the request is signed in as, with its status. Your own
+service can check our tokens the same way: verify against the JWKS, and require our `iss`, the
+`aud` you expect, and `exp`. Today only the two MCP endpoints are audiences; tell Tyler if your
 service needs to be one.
+
+**Tool names.** Every tool's name starts with `debitmydata_` (since 0.50.0). Until then they
+started with `dmd_`: a call by such a name still works on both endpoints, but only the new
+names are listed, so use the new ones in new code.
 
 **The identity endpoint** (`/agenticsuperhighway/identity`, since 0.49.0) is a separate MCP
 server for apps that only need the signed-in DID-LLM, such as a Google Connected App. It has
@@ -216,9 +221,9 @@ changed through it.
 
 | Tool | Answers |
 | --- | --- |
-| `dmd_whoami` | the DID-LLM the request is signed in as, its record and entitlements |
-| `dmd_get_profile` | the signed-in DID-LLM's profile: `did`, `identity_id`, `display_name`, `participant_type`, `status`, `created_at`, `owners` (`key` and/or `wallet`), `owner_changed_at`, `did_document_url`, `credentials`, `entitlements`, `directory_listing` (null when not listed) |
-| `dmd_verify_agent` | another DID-LLM's public record (`did` only): the same answer as below, without the challenge |
+| `debitmydata_whoami` | the DID-LLM the request is signed in as, its record and entitlements |
+| `debitmydata_get_profile` | the signed-in DID-LLM's profile: `did`, `identity_id`, `display_name`, `participant_type`, `status`, `created_at`, `owners` (`key` and/or `wallet`), `owner_changed_at`, `did_document_url`, `credentials`, `entitlements`, `directory_listing` (null when not listed) |
+| `debitmydata_verify_agent` | another DID-LLM's public record (`did` only): the same answer as below, without the challenge |
 
 Every request needs a `did:read` token issued for this endpoint (`resource=` its address),
 from the first one (`initialize`, `tools/list`): without one, the endpoint answers 401 with
@@ -228,7 +233,7 @@ the other way round). `identity_id` and the DID
 never change and are never reused: an owner change keeps both.
 
 **Checking an agent you meet** (any service, no sign-in): `POST /v1/dids/verifications`, or
-the MCP tool `dmd_verify_agent`.
+the MCP tool `debitmydata_verify_agent`.
 
 1. `{"did": "...", "audience": "your service's name"}` returns the DID-LLM's status, its
    credential checked against the issuer key, its owners, its entitlements and a `challenge`:
@@ -246,8 +251,8 @@ accept each nonce once. That is what makes the proof fresh and meant for you.
 ## 7. Ownership: changing owners and revoking
 
 Since 0.48.0 owners do this themselves, with signed messages (REST below; MCP:
-`dmd_change_owner`, `dmd_revoke_did`; the tool: `did-owner-key.py change-owner` and `revoke`).
-`{identity}` is the DID-LLM or its `dmd_identity_...` ID.
+`debitmydata_change_owner`, `debitmydata_revoke_did`; the tool: `did-owner-key.py change-owner`
+and `revoke`). `{identity}` is the DID-LLM or its `dmd_identity_...` ID.
 
 | Request | What |
 | --- | --- |
@@ -282,8 +287,8 @@ No account, no key from us. Staging's coins and test USDC have no value.
 - A DID-LLM to sign in with: make it on <https://staging-api.debitmydata.io/get-did> with your
   own key (`did-owner-key.py new`) or wallet. One made on the guided page has a throwaway key
   nobody can sign with afterwards.
-- MCP clients: add `https://staging-api.debitmydata.io/agenticsuperhighway`, run `dmd_whoami`,
-  sign in on the page it opens.
+- MCP clients: add `https://staging-api.debitmydata.io/agenticsuperhighway`, run
+  `debitmydata_whoami`, sign in on the page it opens.
 - Limits per address: reads 20 a second; quotes, challenges, proofs and registrations 60 a
   minute; MCP 5 a second; staging test tools 10 a minute; at most 5 unpaid quotes per owner
   key. Above them: 429 `rate_limited` with `Retry-After`. Test coins are limited: no load tests

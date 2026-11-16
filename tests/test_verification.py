@@ -1,4 +1,4 @@
-"""Verifying an agent by its DID-LLM (POST /v1/dids/verifications, MCP dmd_verify_agent,
+"""Verifying an agent by its DID-LLM (POST /v1/dids/verifications, MCP debitmydata_verify_agent,
 services/verification.py): status and signed credential, the challenge and the proof of
 control by the owner's key or wallet, and everything that makes a DID-LLM not verified."""
 
@@ -215,11 +215,13 @@ def test_a_wallet_owner_proves_it_with_the_wallet(gateway: TestClient) -> None: 
 @needs_db
 def test_agents_verify_each_other_over_mcp(gateway: TestClient) -> None:  # noqa: F811
     did = issue(gateway)["did"]
-    call = {"name": "dmd_verify_agent", "arguments": {"did": did, "audience": "Agent B"}}
+    call = {"name": "debitmydata_verify_agent", "arguments": {"did": did, "audience": "Agent B"}}
     first = rpc(gateway, "tools/call", call).json()["result"]["structuredContent"]
     assert first["verified"] is True
     message = first["challenge"]["message"]
     arguments = {"did": did, "message": message, "signature": sign_challenge(message)}
-    second = rpc(gateway, "tools/call", {"name": "dmd_verify_agent", "arguments": arguments})
+    second = rpc(
+        gateway, "tools/call", {"name": "debitmydata_verify_agent", "arguments": arguments}
+    )
     answer = second.json()["result"]["structuredContent"]
     assert answer["proof"]["signature_valid"] is True and answer["verified"] is True

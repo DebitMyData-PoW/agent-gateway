@@ -82,7 +82,10 @@ def test_the_sign_in_negotiation_completes(signing_in: TestClient) -> None:
     report = Handshake(BASE, signing_in).run()
     assert not report.failed and not report.warnings, report.text()
     details = {result.step: result.detail for result in report.results}
-    assert details["sign-in: 401 challenge without a token"] == "dmd_whoami: 401, scope did:read"
+    assert (
+        details["sign-in: 401 challenge without a token"]
+        == "debitmydata_whoami: 401, scope did:read"
+    )
     assert details["sign-in: protected resource metadata"] == f"sign-in server https://{AUTH}"
     assert "authorization_code" in details["sign-in: authorization server metadata"]
     assert details["sign-in: token keys (JWKS)"] == "1 RSA key(s)"

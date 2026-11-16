@@ -75,7 +75,7 @@ def test_the_page_says_what_is_sold_here_with_the_price_word_for_word(client: Te
     assert "<h2>Sold here</h2>" in body
     assert "<strong>DebitMyData DID-LLM</strong>: <span class=price>$25.00 USD, paid once" in body
     assert 'href="http://localhost:8000/get-did#start">Buy a DID-LLM</a>' in body
-    assert "<code>dmd_open_checkout</code>" in body
+    assert "<code>debitmydata_open_checkout</code>" in body
     found = re.search(r'<script type="application/ld\+json">(.*?)</script>', body, re.S)
     product, organization = json.loads(found.group(1))
     assert (product["@type"], product["name"]) == ("Product", "DebitMyData DID-LLM")

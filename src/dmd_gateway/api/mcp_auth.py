@@ -18,7 +18,7 @@ need no token: the DID-LLM is the login, so a token cannot be needed to get one.
 that carries a token has it checked in full, every time (signature by the authorization
 server's key, issuer, audience = this MCP server, expiry, and the DID-LLM still active), and
 is refused with 401 and a ``WWW-Authenticate`` header pointing to the metadata above if any
-check fails. Tools that need a signed-in agent (``dmd_whoami``) find its token with
+check fails. Tools that need a signed-in agent (``debitmydata_whoami``) find its token with
 ``signed_in``.
 """
 
@@ -239,7 +239,7 @@ async def _refuse(
 # Tools that need a signed-in DID-LLM. Called without a token, they are answered with HTTP
 # 401 and a WWW-Authenticate challenge before the MCP server runs: what makes MCP clients such
 # as Claude offer the sign-in ("lazy authentication"); a tool result cannot do it.
-PROTECTED_TOOLS = frozenset({"dmd_whoami"})
+PROTECTED_TOOLS = frozenset({"debitmydata_whoami"})
 MAX_PEEK_BYTES = 1024 * 1024
 
 
@@ -260,7 +260,7 @@ def _calls_protected_tool(body: bytes) -> str | None:
     return None
 
 
-async def _peek(receive: Receive) -> tuple[bytes, Receive]:
+async def peek(receive: Receive) -> tuple[bytes, Receive]:
     """The request's body (up to MAX_PEEK_BYTES), and a ``receive`` that gives it again."""
     chunks: list[bytes] = []
     size, more = 0, True
@@ -320,7 +320,7 @@ class BearerTokens:
                 )
                 return
             if scope.get("method") == "POST":
-                body, receive = await _peek(receive)
+                body, receive = await peek(receive)
                 needed = _calls_protected_tool(body)
                 if needed:
                     await _refuse(

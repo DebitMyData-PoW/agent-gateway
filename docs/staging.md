@@ -356,7 +356,7 @@ Through MCP, the same as section 5 of [regtest-demo.md](regtest-demo.md) with
 
 ```bash
 $PY scripts/demo_agent.py mcp-tools --url $GW/agenticsuperhighway
-$PY scripts/demo_agent.py mcp-call dmd_get_did_registration_offer --url $GW/agenticsuperhighway | jq .offer.commercial_price
+$PY scripts/demo_agent.py mcp-call debitmydata_get_did_registration_offer --url $GW/agenticsuperhighway | jq .offer.commercial_price
 ```
 
 Any MCP client can connect to `https://staging-api.debitmydata.io/agenticsuperhighway`
@@ -484,7 +484,7 @@ optional: without a token every tool works as before (a DID-LLM is the login, so
 cannot need a token). A request with a token has every claim checked: the signature by this
 server's key, the issuer, the audience (the MCP server's address), the expiry, and the DID-LLM
 still active. Any failure is refused with 401 and a `WWW-Authenticate` header pointing to the
-metadata, without saying what was expected. The tool `dmd_whoami` answers which DID-LLM the
+metadata, without saying what was expected. The tool `debitmydata_whoami` answers which DID-LLM the
 request is signed in as. The runbook's files (`/.well-known/mcp` and its `server-card.json`)
 then list `"authentication": ["oauth2.1"]`, and `llms.txt` explains the sign-in to agents.
 
@@ -580,8 +580,8 @@ How it goes:
    asks the person to sign in again. Suspending the DID-LLM ends it too. The app can end it
    itself (`/revoke`, with the refresh token or an access token): its access tokens stop at
    once, not when they expire (they carry their sign-in, `sid`, checked on every request).
-4. With the token, the app's MCP requests are the person's: `dmd_whoami` answers who. Called
-   without one, `dmd_whoami` is answered with HTTP 401 and a `WWW-Authenticate` challenge
+4. With the token, the app's MCP requests are the person's: `debitmydata_whoami` answers who. Called
+   without one, `debitmydata_whoami` is answered with HTTP 401 and a `WWW-Authenticate` challenge
    (`scope="did:read"`) before the MCP server runs: what makes apps such as Claude show their
    **Connect** button ("lazy authentication"); every other tool stays open to all. The tool
    also says so in its description (`securitySchemes`, which ChatGPT reads).
@@ -593,19 +593,19 @@ The page names where the person goes back to, with a warning for an app on their
 
 **Try it** in an MCP client that supports OAuth sign-in (ChatGPT's developer mode, Claude's
 custom connectors, the MCP Inspector): add the MCP server
-`https://staging-api.debitmydata.io/agenticsuperhighway`, ask it to run `dmd_whoami`, sign in
-on the page it opens with a staging DID-LLM of your own (wallet or key), and run `dmd_whoami`
-again: it answers with your DID-LLM. If the app says it cannot reach the server or sign in,
-look at Cloudflare's Security Events for `staging-api` and `staging-auth`: the apps' own
-servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do.
+`https://staging-api.debitmydata.io/agenticsuperhighway`, ask it to run `debitmydata_whoami`,
+sign in on the page it opens with a staging DID-LLM of your own (wallet or key), and run
+`debitmydata_whoami` again: it answers with your DID-LLM. If the app says it cannot reach the
+server or sign in, look at Cloudflare's Security Events for `staging-api` and `staging-auth`:
+the apps' own servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do.
 
 **The identity endpoint**, `https://staging-api.debitmydata.io/agenticsuperhighway/identity`,
-works the same way with its three tools only (`dmd_whoami`, `dmd_get_profile`,
-`dmd_verify_agent`), every one needing the sign-in. Add that address as the MCP server in the
-app instead: the app opens the sign-in as it connects (every request there needs it, from the
-first), and its token is for that endpoint only. An agent asks for one with
-`resource=https://staging-api.debitmydata.io/agenticsuperhighway/identity`; with the
-owner-key tool, `whoami` (or `token`) with `--identity`:
+works the same way with its three tools only (`debitmydata_whoami`, `debitmydata_get_profile`,
+`debitmydata_verify_agent`), every one needing the sign-in. Add that address as the MCP server
+in the app instead: the app opens the sign-in as it connects (every request there needs it, from
+the first), and its token is for that endpoint only. An agent asks for one with
+`resource=https://staging-api.debitmydata.io/agenticsuperhighway/identity`; with the owner-key
+tool, `whoami` (or `token`) with `--identity`:
 
 ```bash
 DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:... --identity
@@ -627,7 +627,7 @@ what any agent does to find and use the Agentic Superhighway. The gateway has it
    described in plain words, with a JSON Schema), and the JSON-RPC errors the specification
    gives: -32700 for a parse error, -32601 for an unknown method, -32602 for invalid params,
    and a tool's error that names a wrong argument.
-3. **Sign-in negotiation**, when the files offer `oauth2.1`: `dmd_whoami` without a token
+3. **Sign-in negotiation**, when the files offer `oauth2.1`: `debitmydata_whoami` without a token
    answers 401 with its `WWW-Authenticate` challenge; the protected resource metadata names
    exactly this MCP address and its sign-in server, whose metadata and keys answer; a wrong
    token is refused (401 `invalid_token`); with `wallet-signature`, the wallet's challenge and

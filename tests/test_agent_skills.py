@@ -50,7 +50,7 @@ def test_the_skill_is_the_gateways_own_text(app_client: TestClient) -> None:  # 
     assert meta == {"name": "debitmydata-did-llm", "description": index["skills"][0]["description"]}
     assert "$25.00 USD, paid once" in meta["description"]
     assert body.lstrip().startswith("# DebitMyData DID-LLM\n\nUse this skill when you")
-    assert "`dmd_open_checkout`" in body and "`dmd_verify_agent`" in body
+    assert "`debitmydata_open_checkout`" in body and "`debitmydata_verify_agent`" in body
     assert "http://localhost:8000/agenticsuperhighway" in body
     assert agent_skills.SHARED_SKILL in body
     # llms.txt, below the skill's own title: its headings one level down.

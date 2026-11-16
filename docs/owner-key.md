@@ -97,7 +97,7 @@ python3 did-owner-key.py change-owner ~/did-keys did:web:api.debitmydata.io:agen
 - Once applied, only the new owners can sign for the DID-LLM; every sign-in made before ends
   (agents and apps sign in again). Its credential, entitlements and directory listing stay.
 - Everything happens within 15 minutes; a change not finished by then expires. Through the MCP
-  server, the tool is `dmd_change_owner`.
+  server, the tool is `debitmydata_change_owner`.
 - With no owner key or wallet left that can sign, nothing can be changed: keep a backup of the
   key file.
 
@@ -111,7 +111,7 @@ python3 did-owner-key.py revoke ~/did-keys did:web:api.debitmydata.io:agents:...
 ```
 
 The tool shows the message and asks you to type `REVOKE`. It cannot be undone: the DID-LLM, its
-credential and its entitlements stop working forever (MCP: `dmd_revoke_did`).
+credential and its entitlements stop working forever (MCP: `debitmydata_revoke_did`).
 
 ## Sign in as the DID-LLM (OAuth)
 

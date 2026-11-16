@@ -656,7 +656,7 @@ async def test_paying_through_mcp(registry: Path, engine: Engine, way: str) -> N
     q, _ = ready(TestClient(app))  # REST without starting the app; MCP starts it below
     rid = q["registration_intent_id"]
     async with mcp_client(app) as mcp:
-        refused = await mcp.call_tool("dmd_register_did", {"registration_intent_id": rid})
+        refused = await mcp.call_tool("debitmydata_register_did", {"registration_intent_id": rid})
         assert refused.is_error
         required = json.loads(refused.content[0].text)  # the x402 PaymentRequired itself
         assert refused.structured_content == required
@@ -665,11 +665,11 @@ async def test_paying_through_mcp(registry: Path, engine: Engine, way: str) -> N
         payload = TestPayer().payload(required)
         if way == "argument":
             result = await mcp.call_tool(
-                "dmd_register_did", {"registration_intent_id": rid, "x402_payment": payload}
+                "debitmydata_register_did", {"registration_intent_id": rid, "x402_payment": payload}
             )
         else:
             result = await mcp.call_tool(
-                "dmd_register_did",
+                "debitmydata_register_did",
                 {"registration_intent_id": rid},
                 meta={"x402/payment": payload},
             )

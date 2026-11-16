@@ -11,7 +11,7 @@ source for the Agentic Hub's directory.
 - Owners list their DID-LLM at `/directory/list`; "Get a DID-LLM" offers it once a DID-LLM is
   issued (**List it in the directory**).
 - Software: `GET /v1/directory` (open to every site: CORS), and the MCP tools
-  `dmd_search_directory` and `dmd_list_in_directory`.
+  `debitmydata_search_directory` and `debitmydata_list_in_directory`.
 
 ## The rules
 

@@ -1,7 +1,7 @@
 """GET /v1/payments/{payment_intent_id}: payment status for the paying agent.
 
 Returns the normalized status plus confirmation, settlement and refund details
-(directive MCP tool ``dmd_get_payment_status``). The payment-intent ID is random and only
+(directive MCP tool ``debitmydata_get_payment_status``). The payment-intent ID is random and only
 known to whoever requested the quote.
 """
 

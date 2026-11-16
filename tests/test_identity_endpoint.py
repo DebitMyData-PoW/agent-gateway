@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL
 IDENTITY = f"{MCP}/identity"
 IDENTITY_PATH = "/agenticsuperhighway/identity"
 METADATA = "/.well-known/oauth-protected-resource/agenticsuperhighway/identity"
-TOOLS = {"dmd_whoami", "dmd_get_profile", "dmd_verify_agent"}
+TOOLS = {"debitmydata_whoami", "debitmydata_get_profile", "debitmydata_verify_agent"}
 
 
 def call(client: TestClient, name: str, token: str | None, **arguments: Any) -> Any:
@@ -80,7 +80,10 @@ def test_only_three_read_only_tools_and_its_own_metadata(gateway: TestClient) ->
             },
         ),
         ("tools/list", {}),
-        *(("tools/call", {"name": name, "arguments": {}}) for name in (*TOOLS, "dmd_register_did")),
+        *(
+            ("tools/call", {"name": name, "arguments": {}})
+            for name in (*TOOLS, "debitmydata_register_did")
+        ),
     ):
         refused = rpc(gateway, method, params, path=IDENTITY_PATH)
         assert refused.status_code == 401, (method, params, refused.text)
@@ -100,7 +103,7 @@ def test_only_three_read_only_tools_and_its_own_metadata(gateway: TestClient) ->
     for tool in tools:
         assert tool["annotations"]["readOnlyHint"] is True
         assert tool["_meta"]["securitySchemes"] == [{"type": "oauth2", "scopes": ["did:read"]}]
-    verify = next(tool for tool in tools if tool["name"] == "dmd_verify_agent")
+    verify = next(tool for tool in tools if tool["name"] == "debitmydata_verify_agent")
     assert set(verify["inputSchema"]["properties"]) == {"did"}  # nothing to sign here
 
 
@@ -110,16 +113,16 @@ def test_tokens_are_for_one_endpoint_or_the_other(gateway: TestClient) -> None: 
     superhighway = sign_in(gateway, did)  # no resource: the Agentic Superhighway
     identity = sign_in(gateway, did, resource=IDENTITY)
 
-    refused = call(gateway, "dmd_whoami", superhighway)
+    refused = call(gateway, "debitmydata_whoami", superhighway)
     assert refused.status_code == 401
     assert "not valid for this server" in refused.json()["error_description"]
     assert whoami(gateway, identity).status_code == 401
     assert whoami(gateway, superhighway).status_code == 200
 
-    me = result(call(gateway, "dmd_whoami", identity))
+    me = result(call(gateway, "debitmydata_whoami", identity))
     assert me["signed_in_as"] == did and me["scope"] == "did:read"
 
-    profile = result(call(gateway, "dmd_get_profile", identity))
+    profile = result(call(gateway, "debitmydata_get_profile", identity))
     assert profile["did"] == did and profile["identity_id"] == issued["identity_id"]
     assert profile["status"] == "active" and profile["owner_changed_at"] is None
     public = (
@@ -130,16 +133,16 @@ def test_tokens_are_for_one_endpoint_or_the_other(gateway: TestClient) -> None: 
     assert profile["directory_listing"] is None
     assert profile["credentials"] == [issued["credential_url"]]
 
-    checked = result(call(gateway, "dmd_verify_agent", identity, did=did))
+    checked = result(call(gateway, "debitmydata_verify_agent", identity, did=did))
     assert checked["verified"] is True and checked["credential"]["signature_valid"] is True
     assert "challenge" not in checked
     unknown = result(
-        call(gateway, "dmd_verify_agent", identity, did=did.rsplit(":", 1)[0] + ":01NOPE")
+        call(gateway, "debitmydata_verify_agent", identity, did=did.rsplit(":", 1)[0] + ":01NOPE")
     )
     assert unknown["verified"] is False and unknown["found"] is False
 
     # Nothing else exists here, even signed in.
-    other = call(gateway, "dmd_register_did", identity, registration_intent_id="x")
+    other = call(gateway, "debitmydata_register_did", identity, registration_intent_id="x")
     assert other.status_code == 200
     assert other.json()["result"]["isError"] is True
     assert "Unknown tool" in other.json()["result"]["content"][0]["text"]
@@ -185,10 +188,10 @@ def test_ending_an_apps_sign_in_ends_its_access_tokens_at_once(gateway: TestClie
 
     # Revoking the access token itself ends the whole sign-in: the refresh token too.
     tokens = signed_in(resource=IDENTITY)
-    assert call(gateway, "dmd_get_profile", tokens["access_token"]).status_code == 200
+    assert call(gateway, "debitmydata_get_profile", tokens["access_token"]).status_code == 200
     by_access = {"token": tokens["access_token"], "client_id": APP}
     assert at_auth(gateway, "POST", "/revoke", data=by_access).status_code == 200
-    assert call(gateway, "dmd_get_profile", tokens["access_token"]).status_code == 401
+    assert call(gateway, "debitmydata_get_profile", tokens["access_token"]).status_code == 401
     after = token(gateway, grant_type="refresh_token", refresh_token=tokens["refresh_token"])
     assert after.json()["error"] == "invalid_grant"
 
@@ -213,7 +216,11 @@ def test_agents_tokens_for_the_identity_endpoint(gateway: TestClient) -> None:  
     public = keys.load_private_key(gateway.key_path).public_key()  # type: ignore[attr-defined]
     claims = verify_token(access, public, issuer=ISS, audiences=[IDENTITY], now=datetime.now(UTC))
     assert claims["client_id"] == did and "sid" not in claims
+    assert result(call(gateway, "debitmydata_whoami", access))["signed_in_as"] == did
+    # The tools' earlier names (before 0.50.0) still work here too, with the token only.
     assert result(call(gateway, "dmd_whoami", access))["signed_in_as"] == did
+    assert result(call(gateway, "dmd_get_profile", access))["did"] == did
+    assert call(gateway, "dmd_whoami", None).status_code == 401
 
 
 def test_no_identity_endpoint_while_sign_in_is_closed(

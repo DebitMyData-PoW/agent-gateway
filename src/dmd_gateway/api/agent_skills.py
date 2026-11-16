@@ -68,16 +68,16 @@ DebitMyData DID-LLM, {price}), want to sign in with it, or must check another ag
 ## Quickest path: the MCP server
 
 1. Connect to {mcp_url(settings)} (streamable HTTP, no account).
-2. `dmd_open_checkout`: the DID-LLM, its price and the purchase step ready to fill in. It
+2. `debitmydata_open_checkout`: the DID-LLM, its price and the purchase step ready to fill in. It
    creates and charges nothing.
-3. `dmd_create_did_payment_quote` with your owner key (`ed25519:z6Mk...`) or wallet (`0x...`)
-   and a payment option: the exact amount, where to pay and until when.
+3. `debitmydata_create_did_payment_quote` with your owner key (`ed25519:z6Mk...`) or wallet
+   (`0x...`) and a payment option: the exact amount, where to pay and until when.
 4. Pay exactly that amount from your own wallet (or give the card payment page to your human),
-   then `dmd_get_payment_status` until it is settled.
-5. `dmd_prove_wallet_control` (sign the challenge with the owner key or wallet), then
-   `dmd_register_did`: your DID-LLM and its signed credential.
+   then `debitmydata_get_payment_status` until it is settled.
+5. `debitmydata_prove_wallet_control` (sign the challenge with the owner key or wallet), then
+   `debitmydata_register_did`: your DID-LLM and its signed credential.
 
-To check another agent's DID-LLM: `dmd_verify_agent`.
+To check another agent's DID-LLM: `debitmydata_verify_agent`.
 
 Never share a private key or a seed phrase: DebitMyData never asks for one. Pay only the amount
 a quote gives you.

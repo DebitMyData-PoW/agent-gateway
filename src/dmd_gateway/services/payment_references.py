@@ -1,4 +1,5 @@
-"""Payer-submitted transaction references (DMD-12; directive tool dmd_submit_payment_reference).
+"""Payer-submitted transaction references (DMD-12; directive tool
+debitmydata_submit_payment_reference).
 
 After broadcasting a payment, a payer may tell the gateway its transaction reference. The
 reference is only a hint for where to look: the payment adapter still verifies the asset,

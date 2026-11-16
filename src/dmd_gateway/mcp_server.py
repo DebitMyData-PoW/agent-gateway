@@ -15,16 +15,21 @@ names to block DNS-rebinding attacks.
 
 A second, separate MCP server, the identity endpoint (``/agenticsuperhighway/identity``,
 ``build_identity_server``), has only three read-only tools, all for a signed-in DID-LLM:
-dmd_whoami, dmd_get_profile and dmd_verify_agent. Nothing else exists there, so nothing can be
-bought, registered or changed through it, for apps that need nothing more (such as a Google
-Connected App). It is served while agents can sign in, and tokens are issued for one endpoint
-or the other (api/mcp_auth.py).
+debitmydata_whoami, debitmydata_get_profile and debitmydata_verify_agent. Nothing else exists
+there, so nothing can be bought, registered or changed through it, for apps that need nothing
+more (such as a Google Connected App). It is served while agents can sign in, and tokens are
+issued for one endpoint or the other (api/mcp_auth.py).
+
+Every tool's name starts with ``debitmydata_`` (the company's name in full). Until 0.50.0 they
+started with ``dmd_``: a call by such a name still works on both endpoints, but only the new
+names are listed (``_EarlierToolNames``), so apps and scripts written before then keep working.
 """
 
 from __future__ import annotations
 
 import inspect
 import json
+import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
@@ -51,49 +56,52 @@ from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
 from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
 from dmd_gateway.settings import Settings
 
+log = logging.getLogger(__name__)
+
 _INTERNAL_BASE = "http://gateway.internal"
+TOOL_PREFIX = "debitmydata_"
+EARLIER_TOOL_PREFIX = "dmd_"  # the tools' names before 0.50.0
 
 INSTRUCTIONS = """\
 DebitMyData Agent Gateway: register a DebitMyData DID-LLM for an agent. The commercial fee is \
 fixed at 25.00 USD and is paid in an approved asset of the agent's choice.
 
-1. dmd_get_did_registration_offer (or dmd_list_supported_payment_options): the fee and the \
-payment options that are enabled right now.
-2. dmd_create_did_payment_quote: send the controller of your DID-LLM, your Ed25519 public key \
-(ed25519:z6Mk...) and/or your EVM wallet address (0x..., on Base by default), and the \
-payment option you chose. The quote gives the exact amount, the destination and the expiry. \
-Never pay an amount that was not quoted.
-3. Pay exactly that amount to that destination from your own wallet before the quote \
-expires. Optionally report the transaction with dmd_submit_payment_reference.
-4. dmd_get_payment_status until the status is "settled".
-   x402 payment options (USDC on Base) work differently: skip 3 and 4, do step 5 first, \
-then call dmd_register_did; it answers with the x402 payment requirements, which you sign \
-and send back with dmd_register_did (x402_payment).
-   The card payment option (card_stripe) is paid by a person: instead of step 3, give the \
-quote's payment_url (a Stripe payment page) to your human, then do step 4.
-5. dmd_prove_wallet_control: call it once to get a challenge, sign the challenge message \
+1. debitmydata_get_did_registration_offer (or debitmydata_list_supported_payment_options): the fee \
+and the payment options that are enabled right now.
+2. debitmydata_create_did_payment_quote: send the controller of your DID-LLM, your Ed25519 public \
+key (ed25519:z6Mk...) and/or your EVM wallet address (0x..., on Base by default), and the payment \
+option you chose. The quote gives the exact amount, the destination and the expiry. Never pay an \
+amount that was not quoted.
+3. Pay exactly that amount to that destination from your own wallet before the quote expires. \
+Optionally report the transaction with debitmydata_submit_payment_reference.
+4. debitmydata_get_payment_status until the status is "settled".
+   x402 payment options (USDC on Base) work differently: skip 3 and 4, do step 5 first, then call \
+debitmydata_register_did; it answers with the x402 payment requirements, which you sign and send \
+back with debitmydata_register_did (x402_payment).
+   The card payment option (card_stripe) is paid by a person: instead of step 3, give the quote's \
+payment_url (a Stripe payment page) to your human, then do step 4.
+5. debitmydata_prove_wallet_control: call it once to get a challenge, sign the challenge message \
 with the controller it names (Ed25519 key: its exact UTF-8 bytes; wallet: personal_sign / \
-signMessage, smart wallets included), then call it again with the challenge_id and the \
-signature. With both a key and a wallet, prove each one. This can also be done before the \
-payment settles.
-6. dmd_register_did: receive your DID-LLM, a signed credential (also your receipt) and your \
-entitlements. dmd_get_registration_status shows what is still missing at any time.
+signMessage, smart wallets included), then call it again with the challenge_id and the signature. \
+With both a key and a wallet, prove each one. This can also be done before the payment settles.
+6. debitmydata_register_did: receive your DID-LLM, a signed credential (also your receipt) and \
+your entitlements. debitmydata_get_registration_status shows what is still missing at any time.
 
-Add-ons for a DID-LLM you have (dmd_catalog, kind "add_on", such as BottyBotty in three tiers: \
-bottybotty_entry, bottybotty_standard, bottybotty_premium): dmd_purchase with details \
-{"did": ...} gives a quote; pay it like the DID-LLM; when dmd_get_payment_status says \
-"settled", dmd_complete_purchase returns the receipt signed by DebitMyData, and the add-on's \
-entitlement is on your DID-LLM (a BottyBotty tier for good: a higher tier later costs only the \
-difference in price).
+Add-ons for a DID-LLM you have (debitmydata_catalog, kind "add_on", such as BottyBotty in three \
+tiers: bottybotty_entry, bottybotty_standard, bottybotty_premium): debitmydata_purchase with \
+details {"did": ...} gives a quote; pay it like the DID-LLM; when debitmydata_get_payment_status \
+says "settled", debitmydata_complete_purchase returns the receipt signed by DebitMyData, and the \
+add-on's entitlement is on your DID-LLM (a BottyBotty tier for good: a higher tier later costs \
+only the difference in price).
 
-The DID-LLM directory (optional, public, free): dmd_search_directory finds the DID-LLMs whose \
-owners chose to be listed. To list yours, call dmd_list_in_directory with your DID-LLM and a \
-profile, sign the message it returns with your controller (as in step 5), then call it again \
-with the challenge_id and the signature. listed=false removes the listing the same way.
+The DID-LLM directory (optional, public, free): debitmydata_search_directory finds the DID-LLMs \
+whose owners chose to be listed. To list yours, call debitmydata_list_in_directory with your \
+DID-LLM and a profile, sign the message it returns with your controller (as in step 5), then call \
+it again with the challenge_id and the signature. listed=false removes the listing the same way.
 
-Owners (signed by them): dmd_change_owner moves a DID-LLM to a new owner key and/or wallet (one \
-current owner approves, each new owner accepts; earlier sign-ins end); dmd_revoke_did revokes \
-it for good.
+Owners (signed by them): debitmydata_change_owner moves a DID-LLM to a new owner key and/or wallet \
+(one current owner approves, each new owner accepts; earlier sign-ins end); debitmydata_revoke_did \
+revokes it for good.
 
 DebitMyData never asks for private keys, seed phrases or wallet access."""
 
@@ -207,7 +215,7 @@ def _meta_payment(ctx: Context) -> dict[str, Any] | None:
 def product(app: FastAPI) -> dict[str, Any]:
     """What DebitMyData sells, as its page shows it: the name, the price word for word, the
     page and the picture. An agent gets it before any tool call (the server's instructions)
-    and from the first tool (dmd_discover), so that it does not have to look for it."""
+    and from the first tool (debitmydata_discover), so that it does not have to look for it."""
     settings: Settings = app.state.settings
     amount, currency = get_did_page.configured_price(app.state.registry)
     return {
@@ -220,10 +228,10 @@ def product(app: FastAPI) -> dict[str, Any]:
         "image_url": get_did_page.product_image(settings),
         "checkout_url": get_did_page.checkout_url(settings),
         "how_to_buy": (
-            "dmd_open_checkout opens the checkout (it creates and charges nothing): the page "
-            "where a person buys it, and the steps for an agent paying by itself "
-            "(dmd_create_did_payment_quote, pay the quoted amount, dmd_prove_wallet_control, "
-            "dmd_register_did)"
+            "debitmydata_open_checkout opens the checkout (it creates and charges nothing): the "
+            "page where a person buys it, and the steps for an agent paying by itself "
+            "(debitmydata_create_did_payment_quote, pay the quoted amount, "
+            "debitmydata_prove_wallet_control, debitmydata_register_did)"
         ),
     }
 
@@ -234,7 +242,7 @@ def instructions(app: FastAPI) -> str:
     return (
         f"DebitMyData sells the {item['name']}. {item['description']} "
         f"Price: {item['price_text']}. Product page: {item['product_url']} "
-        f"(picture: {item['image_url']}). To buy it: dmd_open_checkout opens the checkout, "
+        f"(picture: {item['image_url']}). To buy it: debitmydata_open_checkout opens the checkout, "
         "creating and charging nothing: the page where a person buys it, and the steps below "
         f"for an agent that pays by itself.\n\n{INSTRUCTIONS}"
     )
@@ -275,7 +283,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     # ------------------------------------------------------------------ discovery
 
     @server.tool(title="Discover DebitMyData", annotations=READ_ONLY)
-    async def dmd_discover() -> dict[str, Any]:
+    async def debitmydata_discover() -> dict[str, Any]:
         """Start here. What DebitMyData sells (product: the DebitMyData DID-LLM, $25.00 USD,
         paid once, with its page, its picture and how to buy it), then DebitMyData, its
         Proof-of-Work chain and DMD coin, the offers, the enabled payment methods, the policies
@@ -284,7 +292,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         return {"product": product(app), "about": ABOUT, **discovery}
 
     @server.tool(title="DID-LLM registration offer", annotations=READ_ONLY)
-    async def dmd_get_did_registration_offer() -> dict[str, Any]:
+    async def debitmydata_get_did_registration_offer() -> dict[str, Any]:
         """The DebitMyData DID-LLM: $25.00 USD, paid once (its name, price, page and picture),
         and every payment option that is enabled right now."""
         offer = next(o for o in await offers() if o["id"] == DID_REGISTRATION)
@@ -294,7 +302,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     @server.tool(
         title="Open the checkout (creates nothing, charges nothing)", annotations=READ_ONLY
     )
-    async def dmd_open_checkout() -> dict[str, Any]:
+    async def debitmydata_open_checkout() -> dict[str, Any]:
         """Open the checkout for the DebitMyData DID-LLM ($25.00 USD, paid once): the checkout
         page where a person buys it (by card or from their own wallet), the payment options
         enabled right now, and the steps an agent follows to buy it by itself. Read-only: it
@@ -308,7 +316,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             "payment_options": [{"id": o["id"], "name": o["name"]} for o in options],
             # The purchase step itself, ready to fill in: what an agent that buys calls next.
             "next_step": {
-                "tool": "dmd_create_did_payment_quote",
+                "tool": "debitmydata_create_did_payment_quote",
                 "what_it_does": (
                     "The purchase step: it fixes the exact amount, where to pay and until when "
                     "(a quote). It charges nothing by itself: you then pay from your own wallet, "
@@ -329,16 +337,17 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                 "prove it is yours. Nothing is charged before you pay."
             ),
             "for_an_agent": (
-                "1. dmd_create_did_payment_quote (your DID-LLM's owner key or wallet and a "
+                "1. debitmydata_create_did_payment_quote (your DID-LLM's owner key or wallet and a "
                 "payment option above): the exact amount and where to pay. 2. Pay it from your "
                 "own wallet (or give the card payment page to your human). 3. "
-                "dmd_get_payment_status until settled. 4. dmd_prove_wallet_control. 5. "
-                "dmd_register_did: your DID-LLM and its signed credential."
+                "debitmydata_get_payment_status until settled. 4. "
+                "debitmydata_prove_wallet_control. 5. debitmydata_register_did: your DID-LLM "
+                "and its signed credential."
             ),
         }
 
     @server.tool(title="Supported payment options", annotations=READ_ONLY)
-    async def dmd_list_supported_payment_options(
+    async def debitmydata_list_supported_payment_options(
         service: Annotated[str, Field(description="Service ID, e.g. did_registration")] = (
             DID_REGISTRATION
         ),
@@ -350,7 +359,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     # ------------------------------------------------------------------ quote and payment
 
     @server.tool(title="Create a DID-LLM payment quote", annotations=CREATES)
-    async def dmd_create_did_payment_quote(
+    async def debitmydata_create_did_payment_quote(
         display_name: Annotated[str, Field(description="Public name of the agent", max_length=100)],
         participant_type: Annotated[ParticipantType, Field(description="What kind of participant")],
         preferred_payment_option: Annotated[
@@ -410,7 +419,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         return await create_quote(body, idempotency_key)
 
     @server.tool(title="Submit a payment reference", annotations=IDEMPOTENT)
-    async def dmd_submit_payment_reference(
+    async def debitmydata_submit_payment_reference(
         payment_intent_id: PaymentId,
         transaction_reference: Annotated[
             str, Field(description="Transaction ID / hash of the payment you broadcast")
@@ -425,7 +434,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         )
 
     @server.tool(title="Payment status", annotations=READ_ONLY)
-    async def dmd_get_payment_status(payment_intent_id: PaymentId) -> dict[str, Any]:
+    async def debitmydata_get_payment_status(payment_intent_id: PaymentId) -> dict[str, Any]:
         """Detection, confirmations, settlement, failure, reorganization and refund status
         of a payment, with the next action to take."""
         return await api.call("GET", f"/v1/payments/{payment_intent_id}")
@@ -433,7 +442,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     # ------------------------------------------------------------------ identity
 
     @server.tool(title="Prove control of the controller key or wallet", annotations=CREATES)
-    async def dmd_prove_wallet_control(
+    async def debitmydata_prove_wallet_control(
         registration_intent_id: RegistrationId,
         challenge_id: Annotated[
             str | None, Field(description="Leave empty to get a new challenge")
@@ -468,13 +477,13 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                 how = (
                     "Sign `message` exactly as given with the wallet named in `controller`, "
                     "the way wallets sign text (personal_sign / signMessage, EIP-191; smart "
-                    "wallets sign as usual), then call dmd_prove_wallet_control again with "
+                    "wallets sign as usual), then call debitmydata_prove_wallet_control again with "
                     "this challenge_id and the signature (0x...) before expires_at."
                 )
             else:
                 how = (
                     "Sign `message` exactly as given (UTF-8) with the Ed25519 private key of "
-                    "`controller`, then call dmd_prove_wallet_control again with this "
+                    "`controller`, then call debitmydata_prove_wallet_control again with this "
                     "challenge_id and the signature (base64url) before expires_at."
                 )
             return {"step": "sign_challenge", **challenge, "how_to_answer": how}
@@ -497,7 +506,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         )
 
     @server.tool(title="Register the DID-LLM", annotations=IDEMPOTENT)
-    async def dmd_register_did(
+    async def debitmydata_register_did(
         registration_intent_id: RegistrationId,
         ctx: Context,
         x402_payment: Annotated[
@@ -540,13 +549,15 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         )
 
     @server.tool(title="Registration status", annotations=READ_ONLY)
-    async def dmd_get_registration_status(registration_intent_id: RegistrationId) -> dict[str, Any]:
+    async def debitmydata_get_registration_status(
+        registration_intent_id: RegistrationId,
+    ) -> dict[str, Any]:
         """Progress of a registration: payment, controller proof, what is still missing
         and the next action."""
         return await api.call("GET", f"/v1/dids/registrations/{registration_intent_id}")
 
     @server.tool(title="Verify an agent", annotations=READ_ONLY)
-    async def dmd_verify_agent(
+    async def debitmydata_verify_agent(
         did: Annotated[
             str, Field(description="The DID-LLM to verify (did:web:api.debitmydata.io:agents:...)")
         ],
@@ -574,7 +585,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     # ------------------------------------------------------------------ directory
 
     @server.tool(title="Search the DID-LLM directory", annotations=READ_ONLY)
-    async def dmd_search_directory(
+    async def debitmydata_search_directory(
         q: Annotated[
             str | None,
             Field(description="Words to find (name, specialty, description, owner, place)"),
@@ -590,7 +601,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         return await api.call("GET", "/v1/directory", params={k: v for k, v in params.items() if v})
 
     @server.tool(title="List a DID-LLM in the directory", annotations=CREATES)
-    async def dmd_list_in_directory(
+    async def debitmydata_list_in_directory(
         did: DidLlm,
         profile: Annotated[
             dict[str, Any] | None,
@@ -609,7 +620,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         ] = None,
         signature: Annotated[
             str | None,
-            Field(description="Signature of the message, as for dmd_prove_wallet_control"),
+            Field(description="Signature of the message, as for debitmydata_prove_wallet_control"),
         ] = None,
         controller_type: Annotated[
             Literal["ed25519", "eip155"] | None,
@@ -631,7 +642,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             how = (
                 "Sign `message` exactly as given with the controller named in `controller` "
                 "(Ed25519 key: its UTF-8 bytes, base64url; wallet: personal_sign), then call "
-                "dmd_list_in_directory again with this did, challenge_id and the signature "
+                "debitmydata_list_in_directory again with this did, challenge_id and the signature "
                 "before expires_at."
             )
             return {"step": "sign_listing", **challenge, "how_to_answer": how}
@@ -670,7 +681,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             )
 
     @server.tool(title="Change a DID-LLM's owners", annotations=DESTRUCTIVE)
-    async def dmd_change_owner(
+    async def debitmydata_change_owner(
         did: DidLlm,
         new_controller_public_key: Annotated[
             str | None,
@@ -695,7 +706,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         ] = None,
         signature: Annotated[
             str | None,
-            Field(description="Its signature, as for dmd_prove_wallet_control"),
+            Field(description="Its signature, as for debitmydata_prove_wallet_control"),
         ] = None,
     ) -> dict[str, Any]:
         """Move a DID-LLM to new owners (a new key and/or wallet), signed by its owners. First
@@ -719,8 +730,9 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             how = (
                 "Sign each message in `messages` that is yours, exactly as given, with its "
                 "`signer` (Ed25519 key: its UTF-8 bytes, base64url; wallet: personal_sign), then "
-                "call dmd_change_owner with did, change_id, challenge_id and signature for each, "
-                "before expires_at. One approve message is enough; every accept message is needed."
+                "call debitmydata_change_owner with did, change_id, challenge_id and signature "
+                "for each, before expires_at. One approve message is enough; every accept "
+                "message is needed."
             )
             return {"step": "sign_owner_change", **change, "how_to_answer": how}
         _both_or_neither(challenge_id, signature, "challenge_id and signature")
@@ -733,7 +745,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         )
 
     @server.tool(title="Revoke a DID-LLM for good", annotations=DESTRUCTIVE)
-    async def dmd_revoke_did(
+    async def debitmydata_revoke_did(
         did: DidLlm,
         reason: Annotated[
             str | None, Field(description="Optional, kept with the revocation")
@@ -747,7 +759,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         ] = None,
         signature: Annotated[
             str | None,
-            Field(description="Signature of the message, as for dmd_prove_wallet_control"),
+            Field(description="Signature of the message, as for debitmydata_prove_wallet_control"),
         ] = None,
     ) -> dict[str, Any]:
         """Revoke a DID-LLM for good, signed by its owner: it cannot be undone. The DID-LLM, its
@@ -765,8 +777,8 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             challenge = await api.call("POST", base, json_body=body)
             how = (
                 "This revokes the DID-LLM for good. If that is what its owner wants, sign "
-                "`message` exactly as given with `controller`, then call dmd_revoke_did again "
-                "with did, challenge_id and signature before expires_at."
+                "`message` exactly as given with `controller`, then call debitmydata_revoke_did "
+                "again with did, challenge_id and signature before expires_at."
             )
             return {"step": "sign_revocation", **challenge, "how_to_answer": how}
         _both_or_neither(challenge_id, signature, "challenge_id and signature")
@@ -777,7 +789,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     # ------------------------------------------------------------------ catalog
 
     @server.tool(title="Catalog", annotations=READ_ONLY)
-    async def dmd_catalog() -> dict[str, Any]:
+    async def debitmydata_catalog() -> dict[str, Any]:
         """DebitMyData products and services available through this gateway, with their
         commercial price (or, for a donation, the amount range the donor chooses from) and
         the payment options accepted right now."""
@@ -823,7 +835,9 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                     "period_days": add_on["period_days"],
                     "tier": add_on.get("tier"),
                     "entitlement": add_on["entitlement"],
-                    "requires": "an active DebitMyData DID-LLM (details.did in dmd_purchase)",
+                    "requires": (
+                        "an active DebitMyData DID-LLM (details.did in debitmydata_purchase)"
+                    ),
                     "accepting_payments": bool(add_on["payment_options"]),
                     "payment_options": add_on["payment_options"],
                 }
@@ -831,11 +845,11 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         return {"products": products}
 
     @server.tool(title="Purchase quote options", annotations=READ_ONLY)
-    async def dmd_get_purchase_quote(
-        product_id: Annotated[str, Field(description="Product ID from dmd_catalog")],
+    async def debitmydata_get_purchase_quote(
+        product_id: Annotated[str, Field(description="Product ID from debitmydata_catalog")],
     ) -> dict[str, Any]:
         """The commercial price (or a donation's amount range) and the supported currencies
-        and wallets for one product. Use dmd_purchase to buy it or to donate."""
+        and wallets for one product. Use debitmydata_purchase to buy it or to donate."""
         offer = next((o for o in await offers() if o["id"] == product_id), None)
         if offer is None:
             offer = next((d for d in await donations() if d["id"] == product_id), None)
@@ -845,13 +859,15 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                 return {"offer": add_on, "payment_options": add_on["payment_options"]}
         if offer is None:
             raise ToolError(
-                json.dumps({"error": {"code": "unknown_product", "message": "See dmd_catalog."}})
+                json.dumps(
+                    {"error": {"code": "unknown_product", "message": "See debitmydata_catalog."}}
+                )
             )
         return {"offer": offer, "payment_options": await payment_options(product_id)}
 
     @server.tool(title="Purchase", annotations=CREATES)
-    async def dmd_purchase(
-        product_id: Annotated[str, Field(description="Product ID from dmd_catalog")],
+    async def debitmydata_purchase(
+        product_id: Annotated[str, Field(description="Product ID from debitmydata_catalog")],
         preferred_payment_option: Annotated[str, Field(description="Payment option ID")],
         details: Annotated[
             dict[str, Any],
@@ -883,12 +899,14 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     ) -> CallToolResult:
         """Start a purchase with the chosen payment option.
 
-        did_registration: returns a payable quote (the same as dmd_create_did_payment_quote).
+        did_registration: returns a payable quote (the same as
+        debitmydata_create_did_payment_quote).
 
         Add-ons for a DID-LLM (bottybotty_entry, bottybotty_standard, bottybotty_premium): returns
         a payable quote for details.did; for a higher BottyBotty tier than the one owned, it
         charges the difference.
-        Pay it, wait for dmd_get_payment_status to say "settled", then dmd_complete_purchase.
+        Pay it, wait for debitmydata_get_payment_status to say "settled", then
+        debitmydata_complete_purchase.
 
         Donations (inference_donation, USDC on Base through x402): call with the amount; it
         fails with the x402 payment requirements. Sign them with your wallet and call again
@@ -918,7 +936,9 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         donation = next((d for d in await donations() if d["id"] == product_id), None)
         if donation is None:
             raise ToolError(
-                json.dumps({"error": {"code": "unknown_product", "message": "See dmd_catalog."}})
+                json.dumps(
+                    {"error": {"code": "unknown_product", "message": "See debitmydata_catalog."}}
+                )
             )
         accepted = [
             o["id"] for o in (await payment_options(product_id))["supported_payment_options"]
@@ -962,11 +982,13 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         )
 
     @server.tool(title="Complete a purchase", annotations=CREATES)
-    async def dmd_complete_purchase(
+    async def debitmydata_complete_purchase(
         purchase_id: Annotated[
             str,
             Field(
-                description="purchase_id from dmd_purchase (an add-on such as a BottyBotty tier)",
+                description=(
+                    "purchase_id from debitmydata_purchase (an add-on such as a BottyBotty tier)"
+                ),
                 pattern=r"^dmd_purchase_[0-9A-HJKMNP-TV-Z]{26}$",
             ),
         ],
@@ -1003,7 +1025,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
         signed_in_only = {"securitySchemes": [{"type": "oauth2", "scopes": ["did:read"]}]}
 
         @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=signed_in_only)
-        async def dmd_whoami() -> dict[str, Any]:
+        async def debitmydata_whoami() -> dict[str, Any]:
             """The DID-LLM this request is signed in as, with its record and entitlements. Sign
             in first. An agent: get an access token from DebitMyData's authorization server
             (OAuth client credentials, with a JWT signed by your DID-LLM's key, see llms.txt) and
@@ -1027,7 +1049,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             return await _whoami(api, token)
 
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)
-    async def dmd_marketplace_provider_requirements() -> dict[str, Any]:
+    async def debitmydata_marketplace_provider_requirements() -> dict[str, Any]:
         """What an agent needs in order to sell through DebitMyData."""
         discovery = await api.call("GET", "/v1/discovery")
         return {
@@ -1045,7 +1067,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
 
 
 async def _whoami(api: GatewayApi, token: AccessToken) -> dict[str, Any]:
-    """dmd_whoami's answer, on either endpoint."""
+    """debitmydata_whoami's answer, on either endpoint."""
     identity_id = (token.claims or {})["identity_id"]
     return {
         "signed_in_as": token.subject,
@@ -1057,19 +1079,19 @@ async def _whoami(api: GatewayApi, token: AccessToken) -> dict[str, Any]:
 
 
 IDENTITY_INSTRUCTIONS = """\
-DebitMyData DID-LLM identity: read-only, for a signed-in DID-LLM. Every tool needs an access \
-token from DebitMyData's authorization server with the did:read scope, issued for this \
-endpoint: a person signs in with their DID-LLM in the browser (OAuth authorization code), an \
-agent with a request signed by its own key (OAuth client credentials).
+DebitMyData DID-LLM identity: read-only, for a signed-in DID-LLM. Every tool needs an access token \
+from DebitMyData's authorization server with the did:read scope, issued for this endpoint: a \
+person signs in with their DID-LLM in the browser (OAuth authorization code), an agent with a \
+request signed by its own key (OAuth client credentials).
 
-- dmd_whoami: the DID-LLM this request is signed in as.
-- dmd_get_profile: that DID-LLM's profile: its record, owners, credentials, entitlements and \
-directory listing.
-- dmd_verify_agent: check another DID-LLM: issued by DebitMyData and active, its credential \
-signed by DebitMyData, its owners and entitlements.
+- debitmydata_whoami: the DID-LLM this request is signed in as.
+- debitmydata_get_profile: that DID-LLM's profile: its record, owners, credentials, entitlements \
+and directory listing.
+- debitmydata_verify_agent: check another DID-LLM: issued by DebitMyData and active, its \
+credential signed by DebitMyData, its owners and entitlements.
 
-Nothing here buys, registers or changes anything. DebitMyData never asks for private keys, \
-seed phrases or wallet access."""
+Nothing here buys, registers or changes anything. DebitMyData never asks for private keys, seed \
+phrases or wallet access."""
 
 SIGNED_IN_ONLY = {"securitySchemes": [{"type": "oauth2", "scopes": ["did:read"]}]}
 
@@ -1113,12 +1135,12 @@ def build_identity_server(app: FastAPI) -> MCPServer:
         return token
 
     @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
-    async def dmd_whoami() -> dict[str, Any]:
+    async def debitmydata_whoami() -> dict[str, Any]:
         """The DID-LLM this request is signed in as, with its record and entitlements."""
         return await _whoami(api, signed_in())
 
     @server.tool(title="My DID-LLM profile", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
-    async def dmd_get_profile() -> dict[str, Any]:
+    async def debitmydata_get_profile() -> dict[str, Any]:
         """The signed-in DID-LLM's profile: its DID and identity ID (both stable: never
         reassigned, and kept when its owners change), name, participant type and status, its
         owner key and/or wallet, its credentials, its entitlements and its directory listing
@@ -1148,7 +1170,7 @@ def build_identity_server(app: FastAPI) -> MCPServer:
         }
 
     @server.tool(title="Verify an agent", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
-    async def dmd_verify_agent(
+    async def debitmydata_verify_agent(
         did: Annotated[
             str, Field(description="The DID-LLM to check (did:web:api.debitmydata.io:agents:...)")
         ],
@@ -1209,6 +1231,70 @@ class _BrowserPage:
         await self.endpoint(scope, receive, send)
 
 
+class _EarlierToolNames:
+    """The MCP endpoint, where a ``tools/call`` may name a tool as it was named before 0.50.0
+    (``dmd_whoami`` for ``debitmydata_whoami``): the name is changed to the tool's name before
+    anything else sees the request, so the sign-in checks (api/mcp_auth.py) and the tool are
+    the same either way. tools/list gives only the new names."""
+
+    def __init__(self, endpoint: ASGIApp, tool_names: Iterable[str]) -> None:
+        self.endpoint = endpoint
+        self.renamed = {
+            EARLIER_TOOL_PREFIX + name.removeprefix(TOOL_PREFIX): name
+            for name in tool_names
+            if name.startswith(TOOL_PREFIX)
+        }
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("method") == "POST":
+            body, receive = await mcp_auth.peek(receive)
+            renamed = self._renamed(body)
+            if renamed is not None:
+                receive = _body_once(renamed, receive)
+                headers = [(k, v) for k, v in scope["headers"] if k != b"content-length"]
+                headers.append((b"content-length", str(len(renamed)).encode()))
+                scope = {**scope, "headers": headers}
+        await self.endpoint(scope, receive, send)
+
+    def _renamed(self, body: bytes) -> bytes | None:
+        """The body with the earlier tool names changed, or None when it has none."""
+        if EARLIER_TOOL_PREFIX.encode() not in body:
+            return None
+        try:
+            parsed = json.loads(body)
+        except (ValueError, RecursionError):
+            return None
+        changed = False
+        for message in parsed if isinstance(parsed, list) else [parsed]:
+            if not isinstance(message, dict) or message.get("method") != "tools/call":
+                continue
+            params = message.get("params")
+            if isinstance(params, dict) and params.get("name") in self.renamed:
+                log.info("mcp tool called by its earlier name: %s", params["name"])
+                params["name"] = self.renamed[params["name"]]
+                changed = True
+        return json.dumps(parsed).encode() if changed else None
+
+
+def _body_once(body: bytes, receive: Receive) -> Receive:
+    """A ``receive`` that gives ``body`` as the whole request body, then the connection's."""
+    given = False
+
+    async def replay() -> Any:
+        nonlocal given
+        if not given:
+            given = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await receive()
+
+    return replay
+
+
+def tool_names(server: MCPServer) -> list[str]:
+    """The names of the server's tools."""
+    return [tool.name for tool in server._tool_manager.list_tools()]  # noqa: SLF001
+
+
 def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
     """Serve the MCP endpoint from the gateway app. Run ``server.session_manager.run()``
     in the app's lifespan."""
@@ -1227,7 +1313,7 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
             # Signed in when the request carries a valid access token (api/mcp_auth.py).
             price = get_did_page.configured_price(app.state.registry)
             page = _BrowserPage(route.endpoint, settings, price)
-            endpoint = mcp_auth.BearerTokens(page, settings)
+            endpoint = _EarlierToolNames(mcp_auth.BearerTokens(page, settings), tool_names(server))
             routes += [Route(path, endpoint=endpoint) for path in (MCP_PATH, *MCP_OLD_PATHS)]
         else:
             routes.append(route)
@@ -1249,6 +1335,8 @@ def mount_identity(app: FastAPI, settings: Settings) -> MCPServer | None:
     )
     for route in mcp_app.routes:
         if isinstance(route, Route) and route.path == IDENTITY_MCP_PATH:
-            endpoint = mcp_auth.BearerTokens(route.endpoint, settings, identity=True)
+            endpoint = _EarlierToolNames(
+                mcp_auth.BearerTokens(route.endpoint, settings, identity=True), tool_names(server)
+            )
             app.router.routes.append(Route(IDENTITY_MCP_PATH, endpoint=endpoint))
     return server

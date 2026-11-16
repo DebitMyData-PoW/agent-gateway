@@ -470,7 +470,7 @@ def test_llms_txt_explains_the_registration_for_agents(client: TestClient) -> No
     assert "(https://agenticssocialspaces.debitmydata.com/)" in text and "social pages" in text
     assert "/v1/dids/registration-quotes" in text and "/controller-proofs" in text
     assert "## Payment options open now" in text
-    assert "dmd_register_did" in text  # the MCP steps
+    assert "debitmydata_register_did" in text  # the MCP steps
     assert "never asks for a private key" in text
     assert "/llms.txt" not in client.get("/openapi.json").text  # not an API endpoint
 

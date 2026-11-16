@@ -493,18 +493,18 @@ def tool(client: TestClient, name: str, **arguments: Any) -> dict[str, Any]:
 def test_owners_change_and_revoke_over_mcp(gateway: TestClient) -> None:  # noqa: F811
     tools = rpc(gateway, "tools/list", {}).json()["result"]["tools"]
     annotations = {t["name"]: t.get("annotations", {}) for t in tools}
-    for name in ("dmd_change_owner", "dmd_revoke_did"):
+    for name in ("debitmydata_change_owner", "debitmydata_revoke_did"):
         assert annotations[name]["destructiveHint"] is True
         assert annotations[name]["readOnlyHint"] is False
 
     did = issue(gateway)["did"]
     key2, owner2 = new_key()
-    change = tool(gateway, "dmd_change_owner", did=did, new_controller_public_key=owner2)
+    change = tool(gateway, "debitmydata_change_owner", did=did, new_controller_public_key=owner2)
     assert change["step"] == "sign_owner_change" and "how_to_answer" in change
     approve, accept = item(change, "approve", AGENT_CONTROLLER), item(change, "accept", owner2)
     tool(
         gateway,
-        "dmd_change_owner",
+        "debitmydata_change_owner",
         did=did,
         change_id=change["change_id"],
         challenge_id=approve["challenge_id"],
@@ -512,20 +512,20 @@ def test_owners_change_and_revoke_over_mcp(gateway: TestClient) -> None:  # noqa
     )
     applied = tool(
         gateway,
-        "dmd_change_owner",
+        "debitmydata_change_owner",
         did=did,
         change_id=change["change_id"],
         challenge_id=accept["challenge_id"],
         signature=sign(key2, accept["message"]),
     )
     assert applied["status"] == "applied"
-    status = tool(gateway, "dmd_change_owner", did=did, change_id=change["change_id"])
+    status = tool(gateway, "debitmydata_change_owner", did=did, change_id=change["change_id"])
     assert status["status"] == "applied"
     half = rpc(
         gateway,
         "tools/call",
         {
-            "name": "dmd_change_owner",
+            "name": "debitmydata_change_owner",
             "arguments": {
                 "did": did,
                 "change_id": change["change_id"],
@@ -535,11 +535,11 @@ def test_owners_change_and_revoke_over_mcp(gateway: TestClient) -> None:  # noqa
     ).json()["result"]
     assert half["isError"] is True
 
-    asked = tool(gateway, "dmd_revoke_did", did=did, reason="Retired agent")
+    asked = tool(gateway, "debitmydata_revoke_did", did=did, reason="Retired agent")
     assert asked["step"] == "sign_revocation" and asked["controller"] == owner2
     revoked = tool(
         gateway,
-        "dmd_revoke_did",
+        "debitmydata_revoke_did",
         did=did,
         challenge_id=asked["challenge_id"],
         signature=sign(key2, asked["message"]),

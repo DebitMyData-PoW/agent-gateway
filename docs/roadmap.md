@@ -83,7 +83,7 @@ place; the application logic comes with the related phase.
 - [x] DMD-09 Double-spend / conflict / replacement detection
 - [x] DMD-10 Deterministic underpaid/overpaid handling
 - [x] DMD-11 One output credited to at most one intent
-- [x] DMD-12 Payer-submitted reference treated as a hint only (`POST /v1/payments/{id}/references`, MCP `dmd_submit_payment_reference`)
+- [x] DMD-12 Payer-submitted reference treated as a hint only (`POST /v1/payments/{id}/references`, MCP `debitmydata_submit_payment_reference`)
 - [x] DMD-13 Periodic reconciliation against the chain: daily report, with every payment settled in the last 30 days checked again on chain and the database checked against itself
 - [ ] DMD-14 Node failover / second verification node
 - [x] DMD-15 Address reuse prevention and treasury separation (watch-only gateway wallet)
@@ -111,8 +111,8 @@ place; the application logic comes with the related phase.
   signed `DebitMyDataProductReceipt` and the entitlement; BottyBotty Entry 49.00, Standard
   99.00 and Premium 199.00 USD, owned for good, one tier per DID, a higher tier for the
   difference in price; products with a period too (extended when bought again, expired
-  after); REST (`/v1/products`), MCP (`dmd_catalog` add-ons, `dmd_purchase`,
-  `dmd_complete_purchase`), daily report, terms and refund policy (2026-11-03); the
+  after); REST (`/v1/products`), MCP (`debitmydata_catalog` add-ons, `debitmydata_purchase`,
+  `debitmydata_complete_purchase`), daily report, terms and refund policy (2026-11-03); the
   entitlements looked up by the DID itself (`GET /v1/entitlements/<DID>`). Open: what each
   tier includes and BottyBotty's activation API (Suyash), USDC through x402
 - [x] Get a DID: the DMD payment as a QR code and an "Open in my DMD wallet" link
@@ -122,11 +122,13 @@ place; the application logic comes with the related phase.
 ## Phase 6 – MCP server
 
 - [x] MCP server at `/agenticsuperhighway`, the Agentic Superhighway (official MCP SDK, Streamable HTTP, stateless, DNS-rebinding protection); `/mcp`, its first address, still served
-- [x] All twelve directive tools: `dmd_discover`, `dmd_get_did_registration_offer`,
-  `dmd_list_supported_payment_options`, `dmd_create_did_payment_quote`,
-  `dmd_submit_payment_reference`, `dmd_get_payment_status`, `dmd_prove_wallet_control`,
-  `dmd_register_did`, `dmd_catalog`, `dmd_get_purchase_quote`, `dmd_purchase`,
-  `dmd_marketplace_provider_requirements`, plus `dmd_get_registration_status`; all call the REST API in-process
+- [x] All twelve directive tools: `debitmydata_discover`,
+  `debitmydata_get_did_registration_offer`, `debitmydata_list_supported_payment_options`,
+  `debitmydata_create_did_payment_quote`, `debitmydata_submit_payment_reference`,
+  `debitmydata_get_payment_status`, `debitmydata_prove_wallet_control`,
+  `debitmydata_register_did`, `debitmydata_catalog`, `debitmydata_get_purchase_quote`,
+  `debitmydata_purchase`, `debitmydata_marketplace_provider_requirements`, plus
+  `debitmydata_get_registration_status`; all call the REST API in-process
 - [x] Public MCP address on staging: `https://staging-api.debitmydata.io/agenticsuperhighway`
 - [x] Public MCP address in production: `https://api.debitmydata.io/agenticsuperhighway`
 - [ ] Marketplace provider requirements: publish them, then return them from the tool
@@ -134,7 +136,7 @@ place; the application logic comes with the related phase.
 - [x] The discovery runbook's Day 5 handshake check (`dmd-gateway-handshake`): run by every
   update (which fails if a check fails) and by the daily report through Cloudflare, with the
   MCP Registry's listing in production (0.39.0)
-- [x] Verifying an agent by its DID-LLM (`dmd_verify_agent`, `POST /v1/dids/verifications`,
+- [x] Verifying an agent by its DID-LLM (`debitmydata_verify_agent`, `POST /v1/dids/verifications`,
   the runbook's `verify_agent`): status, credential checked against the issuer key, and a
   proof of control by the owner's key or wallet over a challenge (0.41.0)
 - [x] What search engines, AI assistants and agents read about the site: `robots.txt` with
@@ -142,18 +144,20 @@ place; the application logic comes with the related phase.
   structured data (Product, Offer, Organization, WebSite), Open Graph, a `Link` header and a
   Markdown version (0.42.0)
 - [x] The same price text everywhere an agent looks (page, llms.txt, API, MCP), and the product
-  (name, price, page, picture) first in the MCP server's instructions and `dmd_discover`
+  (name, price, page, picture) first in the MCP server's instructions and `debitmydata_discover`
   (0.43.0)
-- [x] `dmd_open_checkout`: agents open the checkout without buying anything; the MCP server's
-  page says what is sold there, with its price (0.44.0)
+- [x] `debitmydata_open_checkout`: agents open the checkout without buying anything; the MCP
+  server's page says what is sold there, with its price (0.44.0)
 - [x] Get a DID-LLM's buy button: **Continue to payment**, not "Get my quote" (0.45.0)
-- [x] `dmd_open_checkout` gives the purchase step ready to fill in (`next_step`) (0.46.0)
+- [x] `debitmydata_open_checkout` gives the purchase step ready to fill in (`next_step`) (0.46.0)
 - [x] An Agent Skill to install: `/.well-known/agent-skills/index.json` and the
   `debitmydata-did-llm` SKILL.md, written from llms.txt (0.47.0)
-- [x] The identity endpoint (`/agenticsuperhighway/identity`): `dmd_whoami`,
-  `dmd_get_profile` and `dmd_verify_agent` only, each for a signed-in DID-LLM, with tokens of
-  its own; ending an app's sign-in ends its access tokens at once; Google's domain-verification
-  file (0.49.0)
+- [x] The identity endpoint (`/agenticsuperhighway/identity`): `debitmydata_whoami`,
+  `debitmydata_get_profile` and `debitmydata_verify_agent` only, each for a signed-in DID-LLM,
+  with tokens of its own; ending an app's sign-in ends its access tokens at once; Google's
+  domain-verification file (0.49.0)
+- [x] Tool names start with `debitmydata_`; the earlier `dmd_` names still answer, unlisted
+  (0.50.0)
 - [ ] Google Connected Apps (Gemini, Search): sign-in for Google's console (a registration
   endpoint for Google's return addresses), then the app in Google's console, once DebitMyData
   has access to it
@@ -180,7 +184,7 @@ place; the application logic comes with the related phase.
 - [x] X402-08 Idempotent fulfilment: one live authorization per intent, an authorization
   never counts for two intents, a settled payment is never charged again, 202 while confirming
 - [x] X402-09 Bazaar description (`bazaar` extension and service metadata) in the 402 of the
-  enabled route only; MCP payments (`dmd_register_did` with `x402_payment` or
+  enabled route only; MCP payments (`debitmydata_register_did` with `x402_payment` or
   `_meta["x402/payment"]`)
 - [ ] X402-10 Production validation on Base mainnet: `scripts/validate_bazaar.py` against the
   production server, then one real registration paid from a DebitMyData wallet (it also
@@ -195,13 +199,13 @@ place; the application logic comes with the related phase.
   rather than instructs, request schema with an example, PNG icon; a call without a quote
   (empty body) or with the reserved example `registration_intent_id` answers 402 with the
   real terms, as Coinbase's validator requires, and can never be paid
-- [x] X402-14 Inference donations for agents (Preska Thomas, October 2026: people keep
-  donating on the site, agents must be able to donate too): `POST /v1/donations/inference`,
-  an amount the agent chooses (0.50 to 1,000.00 USD) paid in USDC through x402 to the
-  "AgenticInference Pay" wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`), checked on chain like a
-  DID payment, answered with a signed receipt; MCP (`dmd_catalog`, `dmd_purchase`), Bazaar
-  description, staging test payer. Open: the production address in the production
-  environment, and the Bazaar validation of the route on production (X402-10)
+- [x] X402-14 Inference donations for agents (Preska Thomas, October 2026: people keep donating
+  on the site, agents must be able to donate too): `POST /v1/donations/inference`, an amount the
+  agent chooses (0.50 to 1,000.00 USD) paid in USDC through x402 to the "AgenticInference Pay"
+  wallet (`DMD_USDC_BASE_INFERENCE_ADDRESS`), checked on chain like a DID payment, answered with
+  a signed receipt; MCP (`debitmydata_catalog`, `debitmydata_purchase`), Bazaar description,
+  staging test payer. Open: the production address in the production environment, and the Bazaar
+  validation of the route on production (X402-10)
 
 ## Phases 8–13
 

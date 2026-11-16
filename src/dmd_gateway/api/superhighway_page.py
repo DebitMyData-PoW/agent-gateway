@@ -82,7 +82,7 @@ def page_html(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> 
         "with a credential signed by DebitMyData. No account, no password.</p>"
         f'<p><a href="{escape(checkout_url(settings))}">Buy a DID-LLM</a> (people) · '
         f'<a href="{escape(page_url(settings))}">its page</a> · agents: the tool '
-        "<code>dmd_open_checkout</code></p>"
+        "<code>debitmydata_open_checkout</code></p>"
     )
     note = (
         "<p class=note><strong>Test server.</strong> Payments here use test networks whose "

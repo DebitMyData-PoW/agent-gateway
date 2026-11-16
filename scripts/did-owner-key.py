@@ -479,7 +479,7 @@ def whoami(path: str, did: str, identity_endpoint: bool = False) -> None:
     """Signs in, then asks the MCP server who it is signed in as: the whole sign-in, checked."""
     resource, answer = sign_in(path, did, identity_endpoint)
     print(f"Signed in as {did}; asking {resource} who that is...")
-    status, reply = mcp_call(resource, answer["access_token"], "dmd_whoami")
+    status, reply = mcp_call(resource, answer["access_token"], "debitmydata_whoami")
     if status != 200:
         reason = reply.get("error_description") or problem(reply)
         sys.exit(f"The MCP server refused the token (HTTP {status}): {reason}")
@@ -634,7 +634,7 @@ def change_owner(path: str, did: str, values: list[str], confirm=input, paste=in
     sys.exit(
         "Not applied yet: still needed: " + ", ".join(missing) + f". The change "
         f"{change['change_id']} waits until {change['expires_at']} (the MCP tool "
-        "dmd_change_owner takes the other signatures)."
+        "debitmydata_change_owner takes the other signatures)."
     )
 
 

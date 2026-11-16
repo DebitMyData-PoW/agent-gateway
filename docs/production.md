@@ -289,7 +289,7 @@ identity ID (`dmd_identity_...`) or its registration ID (`dmd_did_intent_...`).
   (the database refuses to edit or delete it), and the monitor sends an alert within two
   minutes. `did show` prints the DID's whole history. Never put secrets or personal data in a
   reason: it is kept for good and sent in the alert.
-- The registration status and `dmd_get_registration_status` (MCP) show the DID's status in
+- The registration status and `debitmydata_get_registration_status` (MCP) show the DID's status in
   `did_status`, the identity record in `status`. The payment is not refunded (see the
   [refund policy](https://api.debitmydata.io/policies/refunds)).
 
@@ -406,10 +406,11 @@ page, in `llms.txt`, in `/v1/discovery` and in the MCP tools, all from the confi
 through the API or the MCP server on the product's page: the tools now give that page
 (`product_url`), and the page shows the same text. Agents that use the MCP server get the
 product (name, price, page, picture) before any tool call, in the server's instructions, and
-first from `dmd_discover` and `dmd_get_did_registration_offer`. `dmd_open_checkout` opens the
-checkout without buying anything (read-only: the checkout page and the agent's steps), so an
-agent that may not pay, such as a checker's, can still reach the purchase step; and the page at
-the MCP server's address says what is sold there, with the same price text.
+first from `debitmydata_discover` and `debitmydata_get_did_registration_offer`.
+`debitmydata_open_checkout` opens the checkout without buying anything (read-only: the checkout
+page and the agent's steps), so an agent that may not pay, such as a checker's, can still reach
+the purchase step; and the page at the MCP server's address says what is sold there, with the
+same price text.
 
 Agents that use Agent Skills find one at `/.well-known/agent-skills/index.json`:
 `debitmydata-did-llm`, a SKILL.md the gateway writes itself from llms.txt, so it always has
@@ -614,7 +615,7 @@ opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
    It prints `The Agentic Superhighway says: signed in as did:web:...`.
 6. **An app, end to end:** in Claude (a custom connector) or ChatGPT (developer mode), add
    the MCP server `https://api.debitmydata.io/agenticsuperhighway`, ask it to run
-   `dmd_whoami`, sign in on the page it opens with your DID-LLM (wallet or key), and run it
+   `debitmydata_whoami`, sign in on the page it opens with your DID-LLM (wallet or key), and run it
    again: it answers with your DID-LLM. If the app cannot reach the server or sign in, look at
    Cloudflare's Security Events for `api` and `auth`: the apps' own servers (Anthropic's
    `160.79.104.0/21`, OpenAI's) must get through, as agents do.
@@ -628,9 +629,10 @@ it and run the update) only means agents and people sign in again.
 
 **The identity endpoint** (`https://api.debitmydata.io/agenticsuperhighway/identity`, since
 0.49.0) answers while sign-in is open, with nothing to set: a separate MCP server with three
-read-only tools (`dmd_whoami`, `dmd_get_profile`, `dmd_verify_agent`), each for a signed-in
-DID-LLM, with tokens of its own ([integrations.md](integrations.md#6-the-access-token-the-mcp-server-and-checking-an-agent)).
-To check it after the update:
+read-only tools (`debitmydata_whoami`, `debitmydata_get_profile`, `debitmydata_verify_agent`),
+each for a signed-in DID-LLM, with tokens of its own
+([integrations.md](integrations.md#6-the-access-token-the-mcp-server-and-checking-an-agent)). To
+check it after the update:
 
 ```bash
 curl -s https://api.debitmydata.io/.well-known/oauth-protected-resource/agenticsuperhighway/identity | jq .resource

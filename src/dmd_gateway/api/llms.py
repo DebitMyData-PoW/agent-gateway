@@ -83,7 +83,7 @@ sign in to the MCP server with it: no password, the key is the login.
    `client_assertion_type={ASSERTION_TYPE}`, `client_assertion=<the JWT>`,
    `resource={resource}`, `scope=did:read`. The answer has an `access_token`, valid for
    `expires_in` seconds.
-3. Send it with your MCP requests: `Authorization: Bearer <access_token>`. `dmd_whoami`
+3. Send it with your MCP requests: `Authorization: Bearer <access_token>`. `debitmydata_whoami`
    shows which DID-LLM you are signed in as. Without a token everything else works as before;
    an invalid or expired token is refused with 401.
 
@@ -101,9 +101,9 @@ The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP 
 
 **The identity endpoint**, `{identity}`, is a separate MCP server with three read-only tools,
 for a signed-in DID-LLM only (every request there needs the token, from the first):
-`dmd_whoami`, `dmd_get_profile` (your DID-LLM's record, owners, credentials, entitlements and
-listing) and `dmd_verify_agent` (another DID-LLM's public record). Nothing there buys,
-registers or changes anything. Its tokens are its own: ask for them with
+`debitmydata_whoami`, `debitmydata_get_profile` (your DID-LLM's record, owners, credentials,
+entitlements and listing) and `debitmydata_verify_agent` (another DID-LLM's public record).
+Nothing there buys, registers or changes anything. Its tokens are its own: ask for them with
 `resource={identity}` (metadata: `{metadata_url(identity)}`).
 {_apps(state, auth)}"""
 
@@ -183,7 +183,7 @@ Add-ons for a DID-LLM you have, such as BottyBotty: `GET {base}/v1/products`.
 
 ## Verifying another agent's DID-LLM
 
-Any agent or service can check a DID-LLM it meets (MCP tool `dmd_verify_agent`):
+Any agent or service can check a DID-LLM it meets (MCP tool `debitmydata_verify_agent`):
 `POST {base}/v1/dids/verifications` with `did` (and `audience`, your name) answers whether it
 was issued by DebitMyData and is active, its credential checked against DebitMyData's key, and
 a `challenge`. Ask the agent to sign `challenge.message` with its DID-LLM's key or wallet, then
@@ -196,14 +196,15 @@ you in.
 ## Changing a DID-LLM's owners, or revoking it
 
 A DID-LLM's owners (its owner key and/or wallet) can move it to new ones (MCP tool
-`dmd_change_owner`): `POST {base}/v1/dids/{{did}}/owner-changes` with the owners it will have
-afterwards (`new_controller_public_key` and/or `new_controller_wallet_address`) answers with
-messages: one current owner signs its "approve" message and each new owner its "accept"
+`debitmydata_change_owner`): `POST {base}/v1/dids/{{did}}/owner-changes` with the owners it will
+have afterwards (`new_controller_public_key` and/or `new_controller_wallet_address`) answers
+with messages: one current owner signs its "approve" message and each new owner its "accept"
 message; send each to `signatures_url` with its `challenge_id` (within 15 minutes). With the
 last one needed, only the new owners control it, and every sign-in made before ends. An owner
-can also revoke it for good (`dmd_revoke_did`, `POST {base}/v1/dids/{{did}}/revocations`, then
-the signed message): it cannot be undone. Sign only a "DebitMyData owner change" or
-"DebitMyData revocation" message that names your own DID-LLM and the change you want.
+can also revoke it for good (`debitmydata_revoke_did`, `POST
+{base}/v1/dids/{{did}}/revocations`, then the signed message): it cannot be undone. Sign only a
+"DebitMyData owner change" or "DebitMyData revocation" message that names your own DID-LLM and
+the change you want.
 
 ## The DID-LLM directory
 

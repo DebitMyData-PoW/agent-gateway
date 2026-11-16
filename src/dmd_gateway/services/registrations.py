@@ -1,4 +1,4 @@
-"""DID registration completion (ID-08..ID-11; directive tool dmd_register_did).
+"""DID registration completion (ID-08..ID-11; directive tool debitmydata_register_did).
 
 ``complete_registration`` issues the identity only when the single issuance rule in
 ``domain/issuance.py`` passes:

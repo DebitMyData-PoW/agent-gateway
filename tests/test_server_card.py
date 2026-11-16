@@ -132,7 +132,7 @@ def test_the_runbooks_card_lists_the_tools_the_server_lists(client: TestClient) 
     assert endpoint["authentication"] == []  # agents need no account
     live = asyncio.run(client.app.state.mcp.list_tools())
     assert [tool["name"] for tool in card["tools"]] == [tool.name for tool in live]
-    assert "dmd_create_did_payment_quote" in {tool["name"] for tool in card["tools"]}
+    assert "debitmydata_create_did_payment_quote" in {tool["name"] for tool in card["tools"]}
     assert all(tool["description"] for tool in card["tools"])
     # The fields other readers of this address look for (Server Card, SEP-1649), the same
     # server: a card without a name is "not valid" to them.
