@@ -29,6 +29,9 @@ Nightly: database + settings, encrypted with an offline key ──► Vultr Obje
 
 - **Server:** Vultr, DebitMyData's account. Ubuntu 24.04 LTS, 4 vCPU, 8 GB RAM (the same plan
   as staging), automatic backups on. SSH on your own port, allowed in UFW, and UFW active.
+  Logins with a key only: Vultr's Ubuntu image turns password logins on in
+  `/etc/ssh/sshd_config.d/50-cloud-init.conf`, which wins over `sshd_config`. Turn them off
+  with a file read before it ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside)).
 - **DNS:** in Cloudflare, `api.debitmydata.io` points to the new server, proxied (orange
   cloud). At go-live (step 9), remove the temporary rule that redirects
   `api.debitmydata.io/policies` to staging.
@@ -813,7 +816,7 @@ only.
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set
 - [ ] A backup ran and the restore test worked; the backup key is in the password manager
-- [ ] The firewall, checked from outside, lets only SSH answer
+- [ ] The firewall, checked from outside, lets only SSH answer, with keys only
       ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside))
 - [ ] Whoever looks after the server has read [emergencies.md](emergencies.md), and has
       tried a kill switch on staging

@@ -30,11 +30,11 @@ place; the application logic comes with the related phase.
 - [x] SEC-07 Explicit allowed-method list; reject unlock, key export, admin, mining, shutdown
 - [ ] SEC-08 Payment receive/tracking wallet separate from treasury
 - [x] SEC-09 Watch-only / descriptor-based payment tracking (the gateway refuses a wallet that can spend)
-- [ ] SEC-10 Firewall verified from an external host: `scripts/firewall-check.sh`, from the operator's computer, to the server's own address ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside), 0.55.4); open: run against production
+- [x] SEC-10 Firewall verified from an external host: `scripts/firewall-check.sh`, from the operator's computer, to the server's own address, ports and SSH logins (keys only) ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside), 0.55.4, 0.55.12); production checked on 16 November 2026, when password logins were found on and turned off on both servers
 - [ ] SEC-11 Secondary verification node with tip comparison
 - [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DebitMyData node's height with the public explorer ([monitoring.md](monitoring.md))
 - [x] SEC-13 Reorg monitoring and alert thresholds: a payment that leaves the chain after its DID or receipt was issued is a critical alert; payments confirming for more than 2 hours are a warning
-- [ ] SEC-14 Backup and restore test (descriptors, configuration, database): nightly encrypted backup of the database and settings to object storage, monitored; restore procedure in [production.md](production.md#4-backups), with a restore test that needs no database (`scripts/backup-restore-test.sh`, 0.55.3); open: the first restore test with production's backups
+- [x] SEC-14 Backup and restore test (descriptors, configuration, database): nightly encrypted backup of the database and settings to object storage, monitored; restore procedure in [production.md](production.md#4-backups), with a restore test that needs no database (`scripts/backup-restore-test.sh`, 0.55.3, 0.55.11); production's backup restored on 16 November 2026
 - [x] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook: [emergencies.md](emergencies.md) (kill switches, every sale stopped, the DebitMyData node cut off from its peers, attacks, leaked secrets, a compromised server; 0.55.4)
 
 ## Phase 2 – Gateway foundation

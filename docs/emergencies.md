@@ -205,12 +205,33 @@ scripts/firewall-check.sh <server address> <SSH port>
 
 It tries the ports a server like this could expose, all at once (a few seconds). Only the SSH
 port may answer: HTTPS (443) answers Cloudflare's addresses only, and the database, the
-gateway API (8000) and the DebitMyData node's RPC (18557) answer nobody from outside. It ends
-with `FIREWALL CHECK PASSED`. Run it again with the server's IPv6 address if it has one.
+gateway API (8000) and the DebitMyData node's RPC (18557) answer nobody from outside. Then it
+asks the SSH port which logins it accepts, offering none itself (it logs in to nothing):
+`SSH logins: publickey (keys only, as expected)`. It ends with `FIREWALL CHECK PASSED`. Run
+it again with the server's IPv6 address if it has one.
 
 If a port is `OPEN`: on the server, `ufw status numbered` lists the rules; remove the one that
 opens it with `ufw delete <number>`. Port 443 should be open to Cloudflare's ranges only
 (`/opt/agent-gateway/deploy/staging/cloudflare-ips.sh` sets them again).
+
+If SSH accepts a **password** (`publickey,password`): passwords can be guessed. First check,
+in a new window of your usual SSH program, that your key logs you in without a password (so
+the change cannot lock you out); then, on the server:
+
+```bash
+sshd -T | grep -E '^(passwordauthentication|permitrootlogin) '     # what SSH uses now
+grep -rni 'PasswordAuthentication' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/
+printf 'PasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin prohibit-password\n' \
+  > /etc/ssh/sshd_config.d/00-keys-only.conf
+sshd -t && systemctl reload ssh
+sshd -T | grep -E '^(passwordauthentication|kbdinteractiveauthentication|permitrootlogin) '
+```
+
+The last line shows `no`, `no` and `without-password`. On Vultr's Ubuntu image the password
+comes from `/etc/ssh/sshd_config.d/50-cloud-init.conf`, which wins over `sshd_config`:
+SSH keeps the first value it reads, and `00-keys-only.conf` is read before it. Keep the
+session open until a new key login works (Vultr's console gets you in otherwise), then run
+the firewall check again.
 
 ## 9. Afterwards
 

@@ -3,7 +3,8 @@
 # server, and not through Cloudflare. It tries to open a connection to the server's own
 # address on the ports a server like this one could expose. Only SSH must answer: HTTPS
 # (443) answers Cloudflare's addresses only, and the database, the gateway API, the
-# DebitMyData node's RPC and the rest answer nobody from outside.
+# DebitMyData node's RPC and the rest answer nobody from outside. Then it asks the SSH port
+# which logins it accepts, offering none itself: keys only, never a password.
 #
 #   scripts/firewall-check.sh <server address> <SSH port>
 #   --ports "80 443 ..."   other ports to try than the usual ones
@@ -18,7 +19,7 @@ PORTS="21 22 25 80 443 3000 3306 5432 6379 8000 8080 8443 18557 18444 8333"
 TIMEOUT_SECONDS=4
 
 usage() {
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2
+    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' >&2
     exit 2
 }
 
@@ -90,8 +91,41 @@ for port in $ssh_port $PORTS; do
     fi
 done
 
+# The logins the SSH port accepts, as anyone would ask: offering no key and no password, the
+# server answers with the list ("Permission denied (publickey)"). A password can be guessed:
+# only keys must be accepted. Nothing is logged in, and nothing is tried. (FIREWALL_CHECK_SSH:
+# another ssh command, for the tests.)
+ssh_logins() {
+    "${FIREWALL_CHECK_SSH:-ssh}" -p "$ssh_port" -o BatchMode=yes \
+        -o ConnectTimeout="$TIMEOUT_SECONDS" -o PubkeyAuthentication=no \
+        -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+        "root@$host" true 2>&1 </dev/null |
+        sed -n 's/.*Permission denied (\([^)]*\)).*/\1/p' | head -n 1
+}
+
+if [ "$(cat "$results/$ssh_port")" = open ]; then
+    if ! command -v "${FIREWALL_CHECK_SSH:-ssh}" >/dev/null; then
+        echo "  SSH logins: not checked (ssh is not installed here)"
+    else
+        logins="$(ssh_logins || true)"
+        case ",$logins," in
+            ,,)
+                echo "  SSH logins: the server did not say which (check it on the server: sshd -T)"
+                ;;
+            *,password,* | *,keyboard-interactive,*)
+                echo "  SSH logins: $logins  NOT EXPECTED: a password can be guessed, keys only"
+                unexpected=1
+                ;;
+            *)
+                echo "  SSH logins: $logins (keys only, as expected)"
+                ;;
+        esac
+    fi
+fi
+
 if [ "$unexpected" -eq 0 ]; then
-    echo "FIREWALL CHECK PASSED: only SSH answers from outside."
+    echo "FIREWALL CHECK PASSED: only SSH answers from outside, with keys only."
 else
     echo "FIREWALL CHECK FAILED: see the lines above (docs/emergencies.md, the firewall)." >&2
     exit 1

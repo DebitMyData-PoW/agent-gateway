@@ -20,7 +20,10 @@ Internet ── Cloudflare proxy (TLS, WAF) ──► VPS :443, open to Cloudfla
 ## 1. Before you start
 
 **VPS:** Ubuntu 24.04 LTS, 2 vCPU, 4 GB RAM. SSH on your own port, allowed in UFW, and UFW
-active. The setup never changes SSH or other existing UFW rules.
+active. The setup never changes SSH or other existing UFW rules. Logins with a key only:
+Vultr's Ubuntu image turns password logins on in `/etc/ssh/sshd_config.d/50-cloud-init.conf`,
+which wins over `sshd_config`; turn them off with a file read before it
+([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside)).
 
 **Cloudflare** (domain `debitmydata.io`):
 
