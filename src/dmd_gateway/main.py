@@ -30,6 +30,7 @@ from dmd_gateway.api import (
     docs_pages,
     donations,
     get_did_page,
+    head_requests,
     health,
     identities,
     llms,
@@ -194,6 +195,7 @@ def create_app(
         app.add_middleware(FormBodyMiddleware)  # docs page forms; see api/form_bodies.py
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(oauth.AuthHostOnly, settings=settings)  # auth host: OAuth only
+    app.add_middleware(head_requests.HeadAsGet)  # HEAD answered as GET, without the body
     https = settings.public_base_url.startswith("https://")
     app.add_middleware(security_headers.SecurityHeaders, https=https)  # every answer
     app.include_router(health.router)

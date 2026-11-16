@@ -62,7 +62,9 @@ hold keys that can move funds.
 
 Every answer, whatever made it, carries `Strict-Transport-Security: max-age=31536000` when the
 gateway's address is https (browsers then use https only for that name, for a year; not for
-its subdomains) and `X-Content-Type-Options: nosniff` (`api/security_headers.py`). How to
+its subdomains) and `X-Content-Type-Options: nosniff` (`api/security_headers.py`). A `HEAD`
+request gets what a `GET` would, without the body (`api/head_requests.py`), as uptime
+services, link checkers and `curl -I` expect. How to
 report a security problem is at `/.well-known/security.txt` (RFC 9116), at both of the
 gateway's names: DebitMyData's address and the repository's private advisory form, as
 [SECURITY.md](../SECURITY.md) says, with an expiry always about six months ahead. What to do

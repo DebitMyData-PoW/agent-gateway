@@ -179,7 +179,7 @@ place; the application logic comes with the related phase.
   2.15, cryptography 50, python-dotenv 1.2.2), which the next update installs; `pip-audit` in
   CI on every push and every Monday; how to audit a server's own libraries (0.55.2)
 - [x] `/.well-known/security.txt` (RFC 9116) at both names, and HSTS and `nosniff` on every
-  answer (0.55.5)
+  answer (0.55.5); `HEAD` answered as `GET` without the body everywhere (0.55.10)
 
 ## Phase 7 – x402 / USDC on Base
 

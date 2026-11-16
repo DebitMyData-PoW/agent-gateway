@@ -154,7 +154,8 @@ as agents reach it (through Cloudflare), and sends an email when it does not ans
 
 `/readyz` is the address to watch: it answers HTTP 200 with `"status": "ready"` when the
 gateway, its database and (in production) the signing service all work, and HTTP 503 when one
-of them does not. Nothing in it is secret.
+of them does not. Nothing in it is secret. It answers `HEAD` as well as `GET` (many services
+check with `HEAD`; before 0.55.10 that got HTTP 405).
 
 **Which service.** Any uptime-monitoring service with email alerts works. Two notes, as of
 November 2026: UptimeRobot's free plan is for personal, non-commercial use only (since
