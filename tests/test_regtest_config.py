@@ -38,7 +38,7 @@ def _settings(path: Path, environment: str = "development") -> Settings:
     )
 
 
-TEST_RAILS = {"dmd_pow_native", "x402_usdc_base", "card_stripe"}
+TEST_RAILS = {"dmd_pow_native", "x402_usdc_base", "card_stripe", "paypal"}
 ENABLE_USDC = {
     "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
     "DMD_USDC_BASE_MERCHANT_ADDRESS": "0x" + "ab" * 20,
@@ -82,6 +82,14 @@ def test_regtest_registry_differs_only_in_the_test_network_rails() -> None:
         k: v for k, v in main_card.items() if k not in differs
     }
     assert card["checkout"]["secret_key_env"] == main_card["checkout"]["secret_key_env"]
+
+    paypal, main_paypal = regtest["rails"]["paypal"], main["rails"]["paypal"]
+    assert (paypal["network"], main_paypal["network"]) == ("paypal:sandbox", "paypal:live")
+    assert {k: v for k, v in paypal.items() if k not in differs} == {
+        k: v for k, v in main_paypal.items() if k not in differs
+    }
+    for name in ("client_id_env", "secret_key_env"):
+        assert paypal["checkout"][name] == main_paypal["checkout"][name]
 
 
 ENABLE_CARD = {

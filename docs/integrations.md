@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.50.0). Technical owner: Tyler
+here is live on production and on staging (gateway 0.51.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -59,8 +59,9 @@ a message signed by that owner.
 
 Buying one: the REST steps are on `/docs` and in [staging.md](staging.md); the MCP tools
 (`debitmydata_open_checkout`, then quote, pay, prove, register) are described by the server itself
-(`tools/list`) and in `llms.txt`. Payment options: DMD, card (Stripe), USDC on Base (x402,
-staging only until the Coinbase key arrives).
+(`tools/list`) and in `llms.txt`. Payment options: DMD, card (Stripe), PayPal (from 0.51.0,
+once DebitMyData's PayPal app is set), USDC on Base (x402, staging only until the Coinbase
+key arrives). Card and PayPal are paid by a person, on the quote's `payment_url`.
 
 ## 3. Signatures: who signs what
 

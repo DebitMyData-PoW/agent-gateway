@@ -164,7 +164,7 @@ def _directory_gateway(
         controller=controller,
         name="ResearchClaw-01",
         profile=directory.Profile("robot", "Research assistant", "Finds papers. " * 3),
-        terms_version="2026-11-12",
+        terms_version="2026-11-15",
         nonce="n0nce",
         issued_at=now,
         expires_at=now + timedelta(minutes=15),

@@ -78,8 +78,9 @@ Optionally report the transaction with debitmydata_submit_payment_reference.
    x402 payment options (USDC on Base) work differently: skip 3 and 4, do step 5 first, then call \
 debitmydata_register_did; it answers with the x402 payment requirements, which you sign and send \
 back with debitmydata_register_did (x402_payment).
-   The card payment option (card_stripe) is paid by a person: instead of step 3, give the quote's \
-payment_url (a Stripe payment page) to your human, then do step 4.
+   The card and PayPal payment options (card_stripe, paypal) are paid by a person: instead of \
+step 3, give the quote's payment_url (a Stripe or PayPal payment page) to your human, then do \
+step 4.
 5. debitmydata_prove_wallet_control: call it once to get a challenge, sign the challenge message \
 with the controller it names (Ed25519 key: its exact UTF-8 bytes; wallet: personal_sign / \
 signMessage, smart wallets included), then call it again with the challenge_id and the signature. \
@@ -304,9 +305,10 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     )
     async def debitmydata_open_checkout() -> dict[str, Any]:
         """Open the checkout for the DebitMyData DID-LLM ($25.00 USD, paid once): the checkout
-        page where a person buys it (by card or from their own wallet), the payment options
-        enabled right now, and the steps an agent follows to buy it by itself. Read-only: it
-        creates nothing, charges nothing and needs no personal details."""
+        page where a person buys it (by card, with PayPal or from their own wallet, as the
+        payment options allow), the payment options enabled right now, and the steps an agent
+        follows to buy it by itself. Read-only: it creates nothing, charges nothing and needs
+        no personal details."""
         item = product(app)
         options = (await payment_options(DID_REGISTRATION))["supported_payment_options"]
         first = options[0]["id"] if options else "<an id from payment_options>"
@@ -320,7 +322,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                 "what_it_does": (
                     "The purchase step: it fixes the exact amount, where to pay and until when "
                     "(a quote). It charges nothing by itself: you then pay from your own wallet, "
-                    "or a person pays by card on the payment page it returns."
+                    "or a person pays on the card or PayPal payment page it returns."
                 ),
                 "arguments": {
                     "display_name": "<your agent's public name>",
@@ -333,13 +335,13 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             "for_a_person": (
                 "Open checkout_url: say what the DID-LLM is for and which wallet or key will own "
                 "it, choose how to pay, press Continue to payment, pay "
-                f"{item['price_text']} by card or from your own wallet, then sign one message to "
-                "prove it is yours. Nothing is charged before you pay."
+                f"{item['price_text']} {_ways_to_pay(options)}, then sign one message to prove it "
+                "is yours. Nothing is charged before you pay."
             ),
             "for_an_agent": (
                 "1. debitmydata_create_did_payment_quote (your DID-LLM's owner key or wallet and a "
                 "payment option above): the exact amount and where to pay. 2. Pay it from your "
-                "own wallet (or give the card payment page to your human). 3. "
+                "own wallet (or give the card or PayPal payment page to your human). 3. "
                 "debitmydata_get_payment_status until settled. 4. "
                 "debitmydata_prove_wallet_control. 5. debitmydata_register_did: your DID-LLM "
                 "and its signed credential."
@@ -1229,6 +1231,19 @@ class _BrowserPage:
             await superhighway_page.page(self.settings, self.price)(scope, receive, send)
             return
         await self.endpoint(scope, receive, send)
+
+
+def _ways_to_pay(options: list[dict[str, Any]]) -> str:
+    """How a person can pay, from the payment options enabled right now: "by card, with
+    PayPal or from your own wallet"."""
+    protocols = {option.get("payment_protocol") for option in options}
+    ways = [
+        way
+        for protocol, way in (("stripe_checkout", "by card"), ("paypal_checkout", "with PayPal"))
+        if protocol in protocols
+    ]
+    ways.append("from your own wallet")
+    return ", ".join(ways[:-1]) + " or " + ways[-1] if len(ways) > 1 else ways[0]
 
 
 class _EarlierToolNames:

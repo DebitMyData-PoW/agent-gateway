@@ -158,6 +158,9 @@ place; the application logic comes with the related phase.
   domain-verification file (0.49.0)
 - [x] Tool names start with `debitmydata_`; the earlier `dmd_` names still answer, unlisted
   (0.50.0)
+- [x] PayPal payments for DID-LLMs (`paypal`, PayPal Checkout): captured only while the quote
+  is open, refunds and disputes watched for 30 days (0.51.0); live once DebitMyData's PayPal
+  app is set
 - [ ] Google Connected Apps (Gemini, Search): sign-in for Google's console (a registration
   endpoint for Google's return addresses), then the app in Google's console, once DebitMyData
   has access to it

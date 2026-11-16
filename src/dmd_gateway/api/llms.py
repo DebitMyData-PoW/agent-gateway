@@ -24,7 +24,7 @@ from dmd_gateway.api.oauth import (
     sign_in_open,
 )
 from dmd_gateway.api.server_card import card_url
-from dmd_gateway.domain.routes import STRIPE_CHECKOUT, RailConfig
+from dmd_gateway.domain.routes import PAYPAL_CHECKOUT, STRIPE_CHECKOUT, RailConfig
 from dmd_gateway.mcp_server import INSTRUCTIONS
 from dmd_gateway.oauth.assertion import ASSERTION_TYPE
 from dmd_gateway.oauth.wallet_sign_in import CHALLENGE_PATH
@@ -54,6 +54,12 @@ def _option(rail_id: str, rail: RailConfig) -> str:
             f"- {rail.name}: {rail.asset.symbol} by card (payment option `{rail_id}`): the quote's "
             "`payment_url` is a payment page for a person. Give the link to your human; "
             "DebitMyData never sees the card."
+        )
+    if rail.protocol == PAYPAL_CHECKOUT:
+        return (
+            f"- {rail.name}: {rail.asset.symbol} with PayPal (payment option `{rail_id}`): the "
+            "quote's `payment_url` is PayPal's payment page for a person. Give the link to your "
+            "human; DebitMyData never sees their PayPal account or card."
         )
     return (
         f"- {rail.name}: {rail.asset.symbol} on {rail.network} "

@@ -66,6 +66,8 @@ _NETWORKS = {
     "solana:mainnet": "Solana",
     "stripe:live": "Card, through Stripe",
     "stripe:test": "Card, Stripe test mode (no real money)",
+    "paypal:live": "PayPal",
+    "paypal:sandbox": "PayPal sandbox (no real money)",
 }
 
 
@@ -166,7 +168,11 @@ def payment_methods_table(registry: PaymentRouteRegistry) -> str:
         if rail.token_contract:
             contract = f"`{rail.token_contract}`"
         else:
-            contract = "card payment" if rail.asset.asset_type == "fiat" else "native coin"
+            contract = (
+                ("PayPal payment" if rail.network.startswith("paypal:") else "card payment")
+                if rail.asset.asset_type == "fiat"
+                else "native coin"
+            )
         required = rail.confirmation_policy.required_confirmations
         confirmations = str(required) if required is not None else "-"
         rows.append(

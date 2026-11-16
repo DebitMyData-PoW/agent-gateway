@@ -41,7 +41,8 @@ class PaymentDestination:
     # per_intent_address: the address itself identifies the intent.
     # shared_with_reference: a shared address plus a unique payment reference.
     # hosted_payment_page: the recipient is the address of a payment page made for this
-    #   intent alone (a card payment page); the reference is the provider's ID for that page.
+    #   intent alone (a card or PayPal payment page); the reference is the provider's ID for
+    #   that page (a Checkout Session, a PayPal order).
     recipient_kind: str
     payment_reference: str | None = None
 
@@ -93,6 +94,9 @@ class ExpectedPayment:
     payer_reference_hint: str | None = None  # e.g. a txid the payer submitted; a hint only
     # x402 rails: the authorizations submitted for this intent.
     authorizations: tuple[SubmittedAuthorization, ...] = ()
+    # When the quote ends. A rail that takes the payment itself (PayPal captures an approved
+    # order) takes it only before then.
+    quote_expires_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

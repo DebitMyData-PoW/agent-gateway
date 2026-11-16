@@ -72,7 +72,8 @@ DebitMyData DID-LLM, {price}), want to sign in with it, or must check another ag
    creates and charges nothing.
 3. `debitmydata_create_did_payment_quote` with your owner key (`ed25519:z6Mk...`) or wallet
    (`0x...`) and a payment option: the exact amount, where to pay and until when.
-4. Pay exactly that amount from your own wallet (or give the card payment page to your human),
+4. Pay exactly that amount from your own wallet (or give the card or PayPal payment page to
+   your human),
    then `debitmydata_get_payment_status` until it is settled.
 5. `debitmydata_prove_wallet_control` (sign the challenge with the owner key or wallet), then
    `debitmydata_register_did`: your DID-LLM and its signed credential.

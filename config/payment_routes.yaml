@@ -67,11 +67,12 @@ services:
       - dmd_pow_native
       - x402_usdc_base
       - card_stripe
+      - paypal
       - x402_dmd_wrapped_base
       - solana_usdc
     # Version of the terms an agent accepts with each quote: the version of the terms page
     # served at /policies/terms (DEC-09), which the tests keep equal.
-    terms_version: "2026-11-12"
+    terms_version: "2026-11-15"
     # Policy pages. A path is a page served by this gateway (see src/dmd_gateway/policies);
     # a full https URL points elsewhere.
     policy_urls:
@@ -104,7 +105,7 @@ donations:
     # Donations go to their own wallet ("AgenticInference Pay"), not the DID payment wallet.
     recipients:
       x402_usdc_base: DMD_USDC_BASE_INFERENCE_ADDRESS
-    terms_version: "2026-11-12"
+    terms_version: "2026-11-15"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -139,7 +140,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-12"
+    terms_version: "2026-11-15"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -168,7 +169,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-12"
+    terms_version: "2026-11-15"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -197,7 +198,7 @@ products:
     payment_options:
       - dmd_pow_native
     enable_env: DMD_PRODUCT_BOTTYBOTTY_PROTECTION_ENABLED
-    terms_version: "2026-11-12"
+    terms_version: "2026-11-15"
     policy_urls:
       site: https://agenticssocialspaces.debitmydata.com/
       terms: /policies/terms
@@ -310,6 +311,44 @@ rails:
       - Apple Pay and Google Pay
     enable_env: DMD_RAIL_CARD_STRIPE_ENABLED
     kill_env: DMD_RAIL_CARD_STRIPE_KILL
+
+  # PayPal (PayPal Checkout, Orders v2): a PayPal page made for each quote, where a person
+  # pays with a PayPal account or a card through PayPal. The gateway takes the payment once
+  # it is approved, while the quote is open. Credentials: the client ID and secret of
+  # DebitMyData's live PayPal REST app (docs/paypal-payments.md).
+  paypal:
+    name: PayPal
+    stage: initial
+    approved: true                   # asked for by DebitMyData (November 2026). Test it on
+                                     # staging (PayPal sandbox) first; still off until a
+                                     # server sets DMD_RAIL_PAYPAL_ENABLED and the app's
+                                     # credentials.
+    asset:
+      symbol: USD
+      decimals: 2                    # amounts in cents
+      asset_type: fiat
+      canonical_id: iso4217:USD
+      usd_denominated: true
+    network: paypal:live
+    protocol: paypal_checkout
+    adapter: PayPalCheckoutAdapter
+    recipient:
+      source: hosted_checkout        # a PayPal order (and its page) made for each quote
+    confirmation_policy:
+      required_confirmations: 1      # a PayPal payment is final when it completes
+      watch_after_settlement_hours: 720     # refunds and disputes noticed for 30 days
+      recheck_after_settlement_minutes: 15  # each check is a request to PayPal
+    quote_ttl_seconds: 1860          # 31 minutes, like a card quote: time to sign in to PayPal
+    checkout:
+      provider: paypal
+      client_id_env: DMD_PAYPAL_CLIENT_ID
+      secret_key_env: DMD_PAYPAL_CLIENT_SECRET  # secret: environment only
+      product_name: DebitMyData DID-LLM registration
+    wallet_compatibility:
+      - PayPal accounts
+      - Cards and bank accounts saved in PayPal
+    enable_env: DMD_RAIL_PAYPAL_ENABLED
+    kill_env: DMD_RAIL_PAYPAL_KILL
 
   # Future rails stay unapproved until they pass their own review (RAIL-01..06).
   # Enable-flag names follow the directive's examples.

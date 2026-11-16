@@ -1,8 +1,8 @@
 ---
 title: Payment methods
-version: 2026-11-12
+version: 2026-11-15
 status: approved
-summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets, networks and cards are accepted.
+summary: How a DebitMyData DID-LLM registration is priced, quoted and paid, and which assets, networks, cards and PayPal are accepted.
 ---
 
 # Payment methods
@@ -19,11 +19,11 @@ Every payment starts with a quote (`POST /v1/dids/registration-quotes`). The quo
 - the asset, the network and, for tokens, the token contract;
 - the **exact amount** to pay in that asset;
 - where to pay: a DMD address made for this quote only, the x402 payment terms, or a card
-  payment page made for this quote only (`payment_url`);
+  or PayPal payment page made for this quote only (`payment_url`);
 - how many confirmations the payment needs;
 - for an asset that is not a US dollar stablecoin, the price used and when it was taken;
 - when the quote expires ({{ quote_minutes }} minutes after it was made; 31 minutes for a
-  card payment, the time Stripe keeps its payment page open);
+  card payment, the time Stripe keeps its payment page open, and for PayPal);
 - the terms version and the links to these policies.
 
 Pay **exactly the quoted amount, in the quoted asset, on the quoted network, before the
@@ -85,6 +85,23 @@ unrelated to other tokens that use the same ticker.
 - An AI agent can request a card quote too: it gives the payment page's link to a person,
   who pays there.
 
+### PayPal
+
+- The quote links to a payment page at PayPal (`www.paypal.com`), made for that quote only.
+  You sign in to PayPal there and pay with your PayPal balance, a bank account or a card
+  saved in PayPal: **your PayPal login and what you pay with go to PayPal, never to
+  DebitMyData**.
+- You pay exactly 25.00 USD. DebitMyData adds no fee. If your PayPal account is in another
+  currency, PayPal converts the amount and may charge its own fee. Payments that take days
+  to arrive (eCheck) are not offered.
+- When you approve the payment on PayPal's page, you come back to the Get a DID-LLM page,
+  and the gateway then takes the payment, within seconds. It takes it only while the quote
+  is still open: after the quote expires, **nothing is taken** from your PayPal account.
+- A PayPal payment counts once PayPal confirms it is completed. If PayPal holds it for a
+  review, it counts once PayPal completes it. PayPal sends you its own receipt.
+- An AI agent can request a PayPal quote too: it gives the payment page's link to a person,
+  who pays there.
+
 ### Not yet available
 
 Wrapped DMD on Base and USDC on Solana are planned. They are not accepted until each one
@@ -112,7 +129,7 @@ the "Inference $" button; that stays as it is.
 ## When a payment counts
 
 A payment counts once it is **settled**: the gateway has seen it itself (on the chain, or
-with Stripe for a card), it pays the quoted amount, and it has the required confirmations. You can follow it at
+with Stripe for a card, with PayPal for PayPal), it pays the quoted amount, and it has the required confirmations. You can follow it at
 `GET /v1/payments/{payment_intent_id}`. A DID-LLM is only issued after the payment is settled
 and every controller named in the quote has proved control.
 
@@ -123,8 +140,8 @@ them.
 ## Test networks
 
 On the staging server, payments use test networks whose coins have no value: a private
-DebitMyData test chain and Base Sepolia, and Stripe's test mode for cards (test card numbers
-only; no real card is charged). Test payments never count on the production service.
+DebitMyData test chain and Base Sepolia, Stripe's test mode for cards (test card numbers
+only; no real card is charged), and PayPal's sandbox (sandbox accounts only; no real money). Test payments never count on the production service.
 
 ## Questions
 

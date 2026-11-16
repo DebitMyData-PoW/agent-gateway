@@ -322,6 +322,10 @@
   // payer back here with ?card=paid (or back) and the payment's ID.
   const CARD = "stripe_checkout";
   const STRIPE_PAGE = /^https:\/\/checkout\.stripe\.com\//;
+  // PayPal: the quote links to PayPal's payment page, which sends the payer back here with
+  // ?paypal=paid (or back) and the payment's ID (PayPal adds its own token and PayerID).
+  const PAYPAL = "paypal_checkout";
+  const PAYPAL_PAGE = /^https:\/\/www\.(sandbox\.)?paypal\.com\//;
 
   // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
   const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
@@ -362,7 +366,9 @@
           ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
           : option.payment_protocol === CARD
             ? "Visa, Mastercard and other cards, or Apple Pay and Google Pay, on Stripe's secure payment page. Your card details go to Stripe only."
-            : `Pay in ${option.asset}.`
+            : option.payment_protocol === PAYPAL
+              ? "Your PayPal account, or a card through PayPal, on PayPal's secure payment page. What you pay with goes to PayPal only."
+              : `Pay in ${option.asset}.`
         : option === USDC_SOON
           ? "The US-dollar stablecoin. Coming to this page soon: for now, pay with DMD."
           : LATER.includes(option)
@@ -459,6 +465,7 @@
         asset: option.asset,
         quoteExpiresAt: quote.expires_at,
         card: option.payment_protocol === CARD,
+        paypal: option.payment_protocol === PAYPAL,
         paymentUrl: option.payment_url || null,
         controller: details.controller,
         walletName: wallet ? wallet.name : null,
@@ -481,19 +488,21 @@
     form.hidden = true;
     const who = state.controller.kind === "wallet" ? `wallet ${short(state.controller.value)}` : `key ${short(state.controller.value)}`;
     body(1).replaceChildren(
-      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · ${state.card ? "paid by card" : `paid in ${state.asset || "DMD"}`}`),
+      element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · ${state.card ? "paid by card" : state.paypal ? "paid with PayPal" : `paid in ${state.asset || "DMD"}`}`),
       element("p", { class: "small" }, "Your registration ID (support can find your registration with it): ", element("code", {}, state.registrationId), " ", copyButton(state.registrationId))
     );
   }
 
   // ------------------------------------------------------------------ step 2: pay
 
-  // note: a line about coming back from the card payment page; paid: Stripe said it is paid.
+  // note: a line about coming back from the card or PayPal payment page; paid: the payer says
+  // it is paid (Stripe or PayPal sent them back as paid).
   function startPayment(note, paid = false) {
     show(2);
     if (state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
     tick();
     if (state.card) return startCardPayment(note, paid);
+    if (state.paypal) return startPayPalPayment(note, paid);
     const status = element("p", { class: "status busy" }, "Waiting for your payment…");
     const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
     check.addEventListener("click", () => checkPayment(status));
@@ -569,6 +578,44 @@
     checkPayment(status);
   }
 
+  // PayPal: one button to PayPal's payment page; the page comes back here once it is approved,
+  // and the gateway then takes the payment (within seconds, while the quote is open).
+  function startPayPalPayment(note, paid) {
+    const status = element("p", { class: "status busy" }, "Waiting for your PayPal payment…");
+    const check = element("button", { type: "button", class: "secondary small act" }, "Check now");
+    check.addEventListener("click", () => checkPayment(status));
+    const page = PAYPAL_PAGE.test(state.paymentUrl || "") ? state.paymentUrl : null;
+    const parts = [];
+    if (note) parts.push(element("p", { class: "small" }, note));
+    if (paid) {
+      parts.push(element("div", { class: "actions" }, status, check));
+      if (page) parts.push(element("p", { class: "small pay-card" }, "Not paid after all, or PayPal asked you to choose another way to pay? ", element("a", { href: page }, "Open PayPal's page again"), "."));
+      body(2).replaceChildren(...parts);
+      return checkPayment(status);
+    }
+    if (page) {
+      parts.push(
+        element("p", {}, "Pay ", element("strong", {}, `$${amountText(state.amount)} USD`), " on PayPal's secure payment page, with your PayPal account or a card. You come back to this page once it is done."),
+        element("div", { class: "actions pay-card" }, element("a", { class: "button", href: page }, `Pay $${amountText(state.amount)} with PayPal`))
+      );
+    } else {
+      parts.push(element("p", { class: "status bad" }, "PayPal's payment page is missing from this quote. Start a new registration, or contact support with your registration ID."));
+    }
+    parts.push(
+      element(
+        "ul",
+        { class: "rules" },
+        element("li", {}, "Your PayPal login and what you pay with go to PayPal only: DebitMyData never sees them."),
+        element("li", {}, "Before the time runs out (see the countdown): after that, nothing is taken from your PayPal account."),
+        element("li", {}, "PayPal sends you its own receipt.")
+      ),
+      element("div", { class: "actions" }, status, check)
+    );
+    if (config.staging) parts.push(element("p", { class: "small" }, "Staging: PayPal sandbox. Sign in on PayPal's page with a PayPal sandbox buyer account (developer.paypal.com, Testing Tools, Sandbox Accounts). No real money moves."));
+    body(2).replaceChildren(...parts);
+    checkPayment(status);
+  }
+
   async function checkPayment(status) {
     clearTimeout(pollTimer);
     let result;
@@ -598,7 +645,7 @@
     switch (payment.status) {
       case "created":
       case "awaiting_payment":
-        status.textContent = state.card ? "Waiting for your card payment… (checked every 10 seconds)" : "Waiting for your payment… (checked every 10 seconds)";
+        status.textContent = state.card ? "Waiting for your card payment… (checked every 10 seconds)" : state.paypal ? "Waiting for your PayPal payment… (checked every 10 seconds)" : "Waiting for your payment… (checked every 10 seconds)";
         return again();
       case "detected":
       case "confirming":
@@ -606,7 +653,7 @@
       case "reorged":
         delete deadlines.quote;
         tick();
-        status.textContent = state.card ? "Card payment received: confirming it with Stripe…" : `Payment received: ${seen} of ${needed || "the needed"} confirmations (about 2.5 minutes each)…`;
+        status.textContent = state.card ? "Card payment received: confirming it with Stripe…" : state.paypal ? "PayPal payment received: confirming it with PayPal…" : `Payment received: ${seen} of ${needed || "the needed"} confirmations (about 2.5 minutes each)…`;
         return again();
       case "overpaid":
         delete deadlines.quote;
@@ -632,7 +679,9 @@
         status.className = "status bad";
         const refund = state.card
           ? " The payment page has closed: no card was charged."
-          : payment.refund_due
+          : state.paypal
+            ? " Nothing was taken from your PayPal account."
+            : payment.refund_due
             ? " A refund is due for a payment that arrived late: contact support with your registration ID."
             : " If you sent coins after the time ran out, contact support with your registration ID.";
         status.textContent = `The quote expired before a payment arrived.${refund}`;
@@ -869,7 +918,7 @@
 
   // ------------------------------------------------------------------ continuing after a reload
 
-  // back: "paid" or "back" when the payer comes back from the card payment page.
+  // back: "paid" or "back" when the payer comes back from the card or PayPal payment page.
   async function resume(previous, back = null) {
     const result = await call("GET", `/v1/dids/registrations/${previous.registrationId}`).catch(() => null);
     if (!result || result.status !== 200) return; // unknown or unreachable: start fresh, keep it saved
@@ -889,14 +938,14 @@
       lockDetails();
       if (registration.did || registration.next_action === "register_did") return register();
       if (payment === "settled") {
-        body(2).replaceChildren(element("p", { class: "status ok" }, state.card ? "Paid by card ✓" : "Paid ✓"));
+        body(2).replaceChildren(element("p", { class: "status ok" }, state.card ? "Paid by card ✓" : state.paypal ? "Paid with PayPal ✓" : "Paid ✓"));
         return startProof();
       }
-      if (back === "paid") return startPayment("Thank you: your card payment is being confirmed with Stripe…", true);
+      if (back === "paid") return startPayment(state.paypal ? "Thank you: your PayPal payment is being taken and confirmed…" : "Thank you: your card payment is being confirmed with Stripe…", true);
       if (back === "back") return startPayment("You came back without paying. Pay when you are ready, before the time runs out.");
       return startPayment();
     };
-    if (back) return carryOn(); // back from the card payment page: no need to ask
+    if (back) return carryOn(); // back from the card or PayPal payment page: no need to ask
     resumeBox.hidden = false;
     const go = element("button", { type: "button" }, registration.did ? "Show my DID-LLM" : "Continue");
     const fresh = element("button", { type: "button", class: "secondary" }, "Start a new one");
@@ -962,12 +1011,14 @@
     });
   }
   loadOptions();
-  // Back from the card payment page (?card=paid or ?card=back, and the payment's ID): the
-  // address is tidied, then the registration saved in this browser continues by itself.
+  // Back from the card or PayPal payment page (?card=paid, ?paypal=back..., and the payment's
+  // ID): the address is tidied (PayPal's token and PayerID go too), then the registration
+  // saved in this browser continues by itself.
   const query = new URLSearchParams(location.search);
-  const back = ["paid", "back"].includes(query.get("card")) ? query.get("card") : null;
+  const from = query.has("paypal") ? "paypal" : "card";
+  const back = ["paid", "back"].includes(query.get(from)) ? query.get(from) : null;
   const backFor = query.get("payment");
-  if (query.has("card")) history.replaceState(null, "", location.pathname + location.hash);
+  if (query.has("card") || query.has("paypal")) history.replaceState(null, "", location.pathname + location.hash);
   const previous = saved();
   if (previous && back && previous.paymentId === backFor) resume(previous, back);
   else if (previous) resume(previous);
@@ -975,7 +1026,7 @@
     // Paid from a link that an agent (or another device) gave: the registration goes on there.
     resumeBox.hidden = false;
     resumeBox.replaceChildren(
-      element("p", {}, back === "paid" ? "Thank you: your card payment is being confirmed. Go back to where you started (the app, the other browser, or the agent that gave you the payment link): the registration continues there." : "You left the card payment page without paying. To pay, go back to where you started, or open the payment link again.")
+      element("p", {}, back === "paid" ? `Thank you: your ${from === "paypal" ? "PayPal" : "card"} payment is being confirmed. Go back to where you started (the app, the other browser, or the agent that gave you the payment link): the registration continues there.` : `You left the ${from === "paypal" ? "PayPal" : "card"} payment page without paying. To pay, go back to where you started, or open the payment link again.`)
     );
   }
   // The installable app (on its own address): keeps the page for opening without a network.

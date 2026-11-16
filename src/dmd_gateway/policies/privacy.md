@@ -1,6 +1,6 @@
 ---
 title: Privacy policy
-version: 2026-11-12
+version: 2026-11-15
 status: approved
 summary: What the DebitMyData Agent Gateway collects, what it publishes, who it shares data with, and how long it keeps it.
 ---
@@ -25,6 +25,9 @@ DebitMyData's websites and apps are covered by the
 - For a card payment: Stripe's references for it (the payment page, the payment), its
   amount and whether it succeeded, was refunded or disputed. We do not receive or keep the
   card number.
+- For a PayPal payment: PayPal's references for it (the order, the payment), its amount
+  and whether it was completed, refunded or disputed. We do not receive or keep your PayPal
+  login, nor what you paid with.
 - For the DID-LLM directory, only if the owner lists the DID-LLM: the profile the owner
   publishes (the type, the specialty and a description, and if given, the owner's name, a
   region, a country and the date the entity was created), and the signatures with which the
@@ -45,7 +48,8 @@ DebitMyData's websites and apps are covered by the
 - Request IDs that link log lines to a request, so problems can be traced.
 
 We do not ask for, and never want, private keys, seed phrases or passwords. Card details
-are entered on Stripe's payment page, never on ours, and we never see them.
+are entered on Stripe's payment page, and PayPal logins on PayPal's, never on ours, and we
+never see them.
 
 ## What we publish
 
@@ -85,6 +89,10 @@ happy to make public, and put in a directory profile only what you want to make 
   country) and what it needs to prevent fraud, under the
   [Stripe privacy policy](https://stripe.com/privacy). We tell Stripe the amount, the
   registration ID and the DID-LLM's display name.
+- **PayPal** (for PayPal payments), which runs the PayPal payment page and processes the
+  payment. PayPal receives what you enter there and what it needs to prevent fraud, under
+  the [PayPal privacy statement](https://www.paypal.com/myaccount/privacy/privacyhub). We
+  tell PayPal the amount, the payment and registration IDs and the DID-LLM's display name.
 - **Blockchain node providers**, which the gateway asks about payments and wallets.
 - **Authorities**, when the law requires it.
 

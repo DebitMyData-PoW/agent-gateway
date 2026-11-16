@@ -43,6 +43,7 @@ def test_shipped_registry_loads_with_every_rail_off() -> None:
         "dmd_pow_native",
         "x402_usdc_base",
         "card_stripe",
+        "paypal",
         "x402_dmd_wrapped_base",
         "solana_usdc",
     }
@@ -302,7 +303,7 @@ def test_card_rail_cannot_pay_for_products(tmp_path: Path) -> None:
     data = _card(_shipped())
     data["products"]["bottybotty_entry"]["payment_options"].append("card_stripe")
     path = _write(tmp_path, data)
-    with pytest.raises(RegistryError, match="card payments are only built for DID-LLM"):
+    with pytest.raises(RegistryError, match="are only built for DID-LLM registrations"):
         load_registry(path, environ={}, available_adapters=CARD_ADAPTERS)
 
 
@@ -412,7 +413,7 @@ def test_price_source_must_be_implemented(tmp_path: Path) -> None:
 
 def test_terms_version_is_set() -> None:
     registry = load_registry(REGISTRY_PATH, environ={}, available_adapters=set())
-    assert registry.services["did_registration"].terms_version == "2026-11-12"
+    assert registry.services["did_registration"].terms_version == "2026-11-15"
 
 
 # --------------------------------------------------------------------------- donations
@@ -432,7 +433,7 @@ def test_shipped_inference_donation() -> None:
     assert (str(donation.amount.minimum), str(donation.amount.maximum)) == ("0.50", "1000.00")
     assert donation.payment_options == ("x402_usdc_base",)
     assert donation.recipients == {"x402_usdc_base": "DMD_USDC_BASE_INFERENCE_ADDRESS"}
-    assert donation.terms_version == "2026-11-12"
+    assert donation.terms_version == "2026-11-15"
     assert registry.donation_rails("inference_donation") == []  # every rail is off
 
 

@@ -630,7 +630,7 @@ def test_cards_are_paid_on_stripes_page_and_come_back_here() -> None:
     assert 'querySelectorAll(".pay-qr, .pay-card")' in script
     # Back from Stripe: the address is tidied, and the registration saved in this browser
     # continues by itself.
-    start = script.split("// Back from the card payment page")[1]
+    start = script.split("// Back from the card or PayPal payment page")[1]
     assert 'history.replaceState(null, "", location.pathname + location.hash)' in start
     assert "previous.paymentId === backFor" in start and "resume(previous, back)" in start
     assert "if (back) return carryOn();" in script
@@ -640,6 +640,35 @@ def test_cards_are_paid_on_stripes_page_and_come_back_here() -> None:
     # Back after paying: no second button to pay, only the wait.
     paid = card.split("if (paid) {")[1].split("\n    }\n")[0]
     assert '"Pay $' not in paid and "return checkPayment(status);" in paid
+
+
+def test_paypal_is_paid_on_paypals_page_and_comes_back_here() -> None:
+    script = get_did_page._SCRIPT
+    assert 'const PAYPAL = "paypal_checkout";' in script
+    # Only PayPal's own payment page (live or sandbox) is ever opened: the quote's payment_url.
+    assert r"const PAYPAL_PAGE = /^https:\/\/www\.(sandbox\.)?paypal\.com\//;" in script
+    paypal = script.split("function startPayPalPayment(note, paid) {")[1].split("\n  }\n")[0]
+    assert "PAYPAL_PAGE.test(state.paymentUrl" in paypal
+    assert "go to PayPal only" in paypal and "nothing is taken from your PayPal account" in paypal
+    assert "sandbox buyer account" in paypal and "config.staging" in paypal
+    assert "test-payments" not in paypal  # no test coins for PayPal
+    assert "pay-card" in paypal  # the button goes once a payment is seen, like the card's
+    paid = paypal.split("if (paid) {")[1].split("\n    }\n")[0]
+    assert '"Pay $' not in paid and "return checkPayment(status);" in paid
+    # Back from PayPal (?paypal=paid, plus PayPal's token and PayerID): tidied the same way.
+    start = script.split("// Back from the card or PayPal payment page")[1]
+    assert 'query.has("paypal") ? "paypal" : "card"' in start
+    assert 'query.has("card") || query.has("paypal")' in start
+
+
+@pytest.mark.parametrize(("card", "paypal"), [(False, True), (True, True)])
+def test_the_page_says_people_can_pay_with_paypal(card: bool, paypal: bool) -> None:
+    html = get_did_page.page_html(staging=True, card=card, paypal=paypal)
+    html = html.split("<body>")[1].split("<script")[0]
+    ways = "by card, with PayPal" if card else "with PayPal"
+    assert f"you then pay\n{ways}, or in DMD with any DMD wallet." in html
+    assert "PayPal's payment page." in html
+    assert "PayPal <strong>sandbox</strong> buyer account" in html
 
 
 @pytest.mark.parametrize("card", [False, True])

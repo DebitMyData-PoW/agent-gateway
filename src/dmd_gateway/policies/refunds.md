@@ -1,6 +1,6 @@
 ---
 title: Refund policy
-version: 2026-11-12
+version: 2026-11-15
 status: approved
 summary: The DID-LLM registration fee and inference donations are non-refundable; payments that are not credited to a registration are returned.
 ---
@@ -55,6 +55,8 @@ shows them as `refund_due`.
 - **Card payments go back to the card.** A card payment is refunded in US dollars, through
   Stripe, to the card that paid; there is no network fee. Banks usually show it within 5 to
   10 business days.
+- **PayPal payments go back to PayPal.** A PayPal payment is refunded in US dollars,
+  through PayPal, to the PayPal account that paid; there is no network fee.
 - **To an address you control.** For DMD, send us a DMD address of your own to return the
   payment to: the address a payment came from may belong to an exchange or a shared
   wallet. For USDC through x402, the refund goes back to the wallet that signed the
@@ -94,5 +96,5 @@ may be suspended while the dispute is open, and revoked if the payment is not ma
 
 ## Test networks
 
-Payments on the staging server use test networks whose coins have no value, and Stripe's
-test mode for cards. They are not refunded.
+Payments on the staging server use test networks whose coins have no value, Stripe's test
+mode for cards and PayPal's sandbox. They are not refunded.

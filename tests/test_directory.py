@@ -545,7 +545,7 @@ def test_the_profile_rules_without_a_database() -> None:
         controller=AGENT_CONTROLLER,
         name="X",
         profile=None,
-        terms_version="2026-11-12",
+        terms_version="2026-11-15",
         nonce="n",
         issued_at=now,
         expires_at=now + timedelta(minutes=15),

@@ -48,7 +48,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from dmd_gateway.api import brand, docs_pages
 from dmd_gateway.api.hosts import is_app, to_api, to_app
-from dmd_gateway.domain.routes import STRIPE_CHECKOUT, PaymentRouteRegistry
+from dmd_gateway.domain.routes import PAYPAL_CHECKOUT, STRIPE_CHECKOUT, PaymentRouteRegistry
 from dmd_gateway.services.quotes import DID_REGISTRATION
 from dmd_gateway.settings import Settings
 
@@ -399,6 +399,8 @@ def _body(
     mcp_url: str = MCP_PATH,
     card: bool = False,
     price: str = DEFAULT_PRICE,
+    *,
+    paypal: bool = False,
 ) -> str:
     # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once,
     # in groups, on an even grid. The first one is picked.
@@ -420,18 +422,34 @@ def _body(
         if card
         else ""
     )
+    test_paypal = (
+        ", or with PayPal, signed in with a PayPal <strong>sandbox</strong> buyer account (no "
+        "real money)"
+        if paypal
+        else ""
+    )
     staging_note = (
         "<p class=staging><strong>Staging server.</strong> Test networks and test DID-LLMs: pay "
-        f"with the <strong>Pay with test coins</strong> button{test_card}, and sign with your "
-        "own wallet (signing sends nothing).</p>"
+        f"with the <strong>Pay with test coins</strong> button{test_card}{test_paypal}, and sign "
+        "with your own wallet (signing sends nothing).</p>"
         if staging
         else ""
     )
-    # How people pay at step 2: in DMD, and by card once the card option is on.
-    how_to_pay = "by card, or in DMD with any DMD wallet" if card else "in DMD, with any DMD wallet"
+    # How people pay at step 2: in DMD, and by card or with PayPal once those options are on.
+    ways = [way for way, on in (("by card", card), ("with PayPal", paypal)) if on]
+    how_to_pay = (
+        ", ".join(ways) + ", or in DMD with any DMD wallet"
+        if ways
+        else "in DMD, with any DMD wallet"
+    )
+    pages = [
+        page
+        for page, on in (("Stripe's card payment page", card), ("PayPal's payment page", paypal))
+        if on
+    ]
     where_you_pay = (
-        "You sign in your own wallet, and pay in it or on Stripe's card payment page."
-        if card
+        "You sign in your own wallet, and pay in it or on " + " or ".join(pages) + "."
+        if pages
         else "You pay and sign in your own wallet."
     )
     # The app only: a window that offers to install it (get-did.js decides when).
@@ -659,6 +677,8 @@ def page_html(
     card: bool = False,
     head: str = "",
     price: str = DEFAULT_PRICE,
+    *,
+    paypal: bool = False,
 ) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
@@ -680,7 +700,7 @@ def page_html(
         '<link rel=icon href="/favicon.png">'
         f"{head}{installable}"
         f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head>"
-        f"<body>{_body(staging, app, mcp_url, card, escape(price))}"
+        f"<body>{_body(staging, app, mcp_url, card, escape(price), paypal=paypal)}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -739,9 +759,10 @@ def _render(request: Request, app: bool) -> Response:
     staging = bool(settings.staging_test_tools)
     rails = request.app.state.registry.enabled_rails(DID_REGISTRATION)
     card = any(rail.protocol == STRIPE_CHECKOUT for _, rail in rails)
+    paypal = any(rail.protocol == PAYPAL_CHECKOUT for _, rail in rails)
     price = did_price(request)
     head = head_tags(settings, price)
-    page = page_html(staging, app, mcp_url(settings), card, head, price_text(price))
+    page = page_html(staging, app, mcp_url(settings), card, head, price_text(price), paypal=paypal)
     return HTMLResponse(page, headers=headers)
 
 

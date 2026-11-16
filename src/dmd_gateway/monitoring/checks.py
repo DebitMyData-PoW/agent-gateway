@@ -81,7 +81,7 @@ AUDIT_TITLES = {
         "A donation's or product's payment left the chain after its receipt was issued"
     ),
     "alert.issued_identity_payment_taken_back": (
-        "A DID-LLM's card payment was refunded or disputed after the DID-LLM was issued"
+        "A DID-LLM's card or PayPal payment was refunded or disputed after it was issued"
     ),
 }
 

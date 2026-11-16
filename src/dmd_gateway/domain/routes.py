@@ -16,7 +16,7 @@ If a rail is switched on but any of the last six conditions fail, startup fails 
 ``RegistryError`` rather than silently running a half-configured payment rail. x402 rails
 must also name the token's EIP-712 domain and have their facilitator and chain RPC
 addresses configured (see ``x402_problems``); card rails need a restricted Stripe key of
-the right mode (see ``checkout_problems``).
+the right mode, and PayPal rails their app's client ID and secret (see ``checkout_problems``).
 
 Kill switches fail safe: any value other than empty/0/false/no/off counts as "killed".
 """
@@ -42,13 +42,27 @@ _FALSE = {"", "0", "false", "no", "off"}
 
 # Networks whose coins have no value. A rail on one of them never runs in production.
 TEST_NETWORKS = frozenset(
-    {"dmd:regtest", "dmd:testnet", "dmd:testnet4", "dmd:signet", "eip155:84532", "stripe:test"}
+    {
+        "dmd:regtest",
+        "dmd:testnet",
+        "dmd:testnet4",
+        "dmd:signet",
+        "eip155:84532",
+        "stripe:test",
+        "paypal:sandbox",
+    }
 )
 # Card payments through Stripe Checkout: live mode, or test mode (test cards, no real money).
 STRIPE_NETWORKS = frozenset({"stripe:live", "stripe:test"})
 STRIPE_CHECKOUT = "stripe_checkout"
+# PayPal Checkout (Orders v2): live, or PayPal's sandbox (sandbox accounts, no real money).
+PAYPAL_NETWORKS = frozenset({"paypal:live", "paypal:sandbox"})
+PAYPAL_CHECKOUT = "paypal_checkout"
+# Rails where a person pays on the payment provider's own page (``payment_url``).
+HOSTED_CHECKOUTS = frozenset({STRIPE_CHECKOUT, PAYPAL_CHECKOUT})
 # Stripe keeps a Checkout page open for 30 minutes at least: a card quote lasts a minute more,
 # so that the page closes before the quote ends and no card is charged for an expired quote.
+# A PayPal quote lasts as long, so that a person has the time to sign in to PayPal and pay.
 CHECKOUT_MIN_QUOTE_SECONDS = 31 * 60
 EVM_ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _EVM_NETWORK = re.compile(r"^eip155:([1-9][0-9]{0,18})$")
@@ -87,8 +101,8 @@ class AssetConfig(_Strict):
 class RecipientConfig(_Strict):
     # per_intent_address: a fresh address is derived for every payment intent.
     # env: one merchant address read from the named environment variable.
-    # hosted_checkout: DebitMyData's payment provider account (Stripe): each quote gets its
-    #   own payment page there, where the payer enters a card.
+    # hosted_checkout: DebitMyData's payment provider account (Stripe, PayPal): each quote
+    #   gets its own payment page there, where the payer pays (a card, a PayPal account).
     source: Literal["per_intent_address", "env", "hosted_checkout"]
     env: str | None = Field(default=None, pattern=ENV_NAME)
 
@@ -158,17 +172,29 @@ CDP_FACILITATOR_HOST = "api.cdp.coinbase.com"
 
 
 class CheckoutConfig(_Strict):
-    """What a card rail needs beyond the common fields (Stripe Checkout).
+    """What a rail paid on the payment provider's page needs beyond the common fields.
 
-    The secret is a restricted Stripe API key (``rk_live_...`` or ``rk_test_...``), read from
-    the environment only. It may create and read Checkout Sessions and read PaymentIntents
-    and Charges, nothing else: it cannot refund, pay out or change the account.
+    Stripe (card rails): the secret is a restricted Stripe API key (``rk_live_...`` or
+    ``rk_test_...``), read from the environment only. It may create and read Checkout
+    Sessions and read PaymentIntents and Charges, nothing else: it cannot refund, pay out or
+    change the account.
+
+    PayPal: the client ID and secret of DebitMyData's PayPal REST app (``client_id_env``,
+    ``secret_key_env``), read from the environment only: a sandbox app's on a sandbox rail, a
+    live app's on a live one.
     """
 
-    provider: Literal["stripe"]
+    provider: Literal["stripe", "paypal"]
     secret_key_env: str = Field(pattern=ENV_NAME)
-    # The name of the purchase on Stripe's payment page and on its receipt.
+    client_id_env: str | None = Field(default=None, pattern=ENV_NAME)  # PayPal only
+    # The name of the purchase on the provider's payment page and on its receipt.
     product_name: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _client_id(self) -> CheckoutConfig:
+        if (self.provider == "paypal") != (self.client_id_env is not None):
+            raise ValueError("client_id_env is set for PayPal rails, and only for them")
+        return self
 
 
 def facilitator_credentials(x402: X402Config, environ: Mapping[str, str]) -> tuple[str, str] | None:
@@ -450,10 +476,10 @@ class RegistryFile(_Strict):
                         f"product {product_id!r}: only quote-based rails can be used ({rail_id!r} "
                         "is x402)"
                     )
-                if rail.protocol == STRIPE_CHECKOUT:
+                if rail.protocol in HOSTED_CHECKOUTS:
                     raise ValueError(
-                        f"product {product_id!r}: card payments are only built for DID-LLM "
-                        f"registrations so far ({rail_id!r} is a card rail)"
+                        f"product {product_id!r}: payments on a provider's page (card, PayPal) "
+                        f"are only built for DID-LLM registrations so far ({rail_id!r})"
                     )
         self._check_tiers()
         return self
@@ -522,15 +548,19 @@ def readiness_problems(
         problems.append(f"payment adapter {rail.adapter} is not implemented")
     if rail.protocol == "x402":
         problems.extend(x402_problems(rail, environ))
-    if rail.protocol == STRIPE_CHECKOUT:
+    if rail.protocol in HOSTED_CHECKOUTS:
         problems.extend(checkout_problems(rail, environ))
     return problems
 
 
 def checkout_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]:
-    """Extra conditions for a card rail (Stripe Checkout). Messages never contain the key."""
+    """Extra conditions for a rail paid on the provider's page (Stripe Checkout, PayPal
+    Checkout). Messages never contain a key or a secret."""
     problems: list[str] = []
-    if rail.network not in STRIPE_NETWORKS:
+    paypal = rail.protocol == PAYPAL_CHECKOUT
+    if paypal and rail.network not in PAYPAL_NETWORKS:
+        problems.append(f"network {rail.network!r} must be paypal:live or paypal:sandbox")
+    if not paypal and rail.network not in STRIPE_NETWORKS:
         problems.append(f"network {rail.network!r} must be stripe:live or stripe:test")
     if rail.recipient.source != "hosted_checkout":
         problems.append("recipient.source must be hosted_checkout")
@@ -543,11 +573,16 @@ def checkout_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]
     if (rail.quote_ttl_seconds or 0) < CHECKOUT_MIN_QUOTE_SECONDS:
         problems.append(
             f"quote_ttl_seconds must be at least {CHECKOUT_MIN_QUOTE_SECONDS} (Stripe keeps a "
-            "payment page open for 30 minutes at least)"
+            "payment page open for 30 minutes at least; a PayPal payer needs the time to sign in)"
         )
     if rail.checkout is None:
         problems.append("checkout settings (provider, secret key variable) are missing")
         return problems
+    if rail.checkout.provider != ("paypal" if paypal else "stripe"):
+        problems.append(f"checkout.provider {rail.checkout.provider!r} does not match the protocol")
+        return problems
+    if paypal:
+        return problems + _paypal_credential_problems(rail.checkout, environ)
     key = (environ.get(rail.checkout.secret_key_env) or "").strip()
     mode = "test" if rail.network == "stripe:test" else "live"
     if not key:
@@ -557,6 +592,21 @@ def checkout_problems(rail: RailConfig, environ: Mapping[str, str]) -> list[str]
             f"{rail.checkout.secret_key_env} must be a restricted {mode}-mode key (rk_{mode}_...), "
             f"not a {_key_kind(key)}"
         )
+    return problems
+
+
+def _paypal_credential_problems(checkout: CheckoutConfig, environ: Mapping[str, str]) -> list[str]:
+    """The PayPal app's client ID and secret are both set (never shown)."""
+    problems: list[str] = []
+    client_id = (environ.get(checkout.client_id_env or "") or "").strip()
+    secret = (environ.get(checkout.secret_key_env) or "").strip()
+    for name, value in ((checkout.client_id_env, client_id), (checkout.secret_key_env, secret)):
+        if not value:
+            problems.append(f"{name} is empty")
+        elif len(value) < 20 or any(char.isspace() for char in value):
+            problems.append(f"{name} does not look like a PayPal app credential")
+    if client_id and client_id == secret:
+        problems.append(f"{checkout.secret_key_env} is the client ID, not the app's secret")
     return problems
 
 

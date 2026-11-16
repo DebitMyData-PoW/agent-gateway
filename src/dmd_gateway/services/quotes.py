@@ -37,7 +37,12 @@ from dmd_gateway.db.models import (
 from dmd_gateway.domain.ids import PAYMENT_INTENT, REGISTRATION_INTENT, new_id
 from dmd_gateway.domain.money import format_base_units, to_base_units, usd_to_base_units
 from dmd_gateway.domain.payment_status import HOSTED_PAY_ACTION, HOSTED_PAYMENT_PAGE, PaymentStatus
-from dmd_gateway.domain.routes import STRIPE_CHECKOUT, PaymentRouteRegistry, RailConfig, RailState
+from dmd_gateway.domain.routes import (
+    HOSTED_CHECKOUTS,
+    PaymentRouteRegistry,
+    RailConfig,
+    RailState,
+)
 from dmd_gateway.errors import ApiError
 from dmd_gateway.identity.crypto import ControllerKeyError, parse_controller_key
 from dmd_gateway.identity.names import NameRefused, check_display_name, is_brand_owner
@@ -199,8 +204,8 @@ class SelectedPaymentOption(BaseModel):
     payment_reference: str | None
     required_confirmations: int | None
     finality: str | None
-    # Card payments: the payment page made for this quote, where a person enters a card.
-    # An agent hands this link to its human; DebitMyData never sees the card.
+    # Card and PayPal payments: the payment page made for this quote, where a person pays.
+    # An agent hands this link to its human; DebitMyData never sees the card or the account.
     payment_url: str | None = None
 
 
@@ -354,7 +359,7 @@ def _next_action(rail: RailConfig) -> str:
     # be issued.
     if rail.protocol == "x402":
         return "prove_wallet_control"
-    return HOSTED_PAY_ACTION if rail.protocol == STRIPE_CHECKOUT else "send_payment"
+    return HOSTED_PAY_ACTION if rail.protocol in HOSTED_CHECKOUTS else "send_payment"
 
 
 def quote_ttl(ctx: QuoteContext, rail: RailConfig) -> timedelta:

@@ -32,6 +32,7 @@ Agent Gateway ── quote + payment intent + policy
         ├── Native DMD adapter ──► private DebitMyData nodes (watch-only)
         ├── x402 / USDC Base adapter ──► facilitator
         ├── Card adapter ──► Stripe Checkout (payment page hosted by Stripe)
+        ├── PayPal adapter ──► PayPal Checkout (payment page hosted by PayPal)
         └── future approved rails (disabled until reviewed)
         │
         ▼
@@ -40,7 +41,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.50.0`). The whole registration flow (quote,
+This is an early development release (`0.51.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
 DMD or by card; USDC through x402 runs on Base Sepolia on staging and waits for DebitMyData's
@@ -119,6 +120,7 @@ Coinbase CDP key in production:
 | Owner changes and owner revocation (ID-12; `services/owner_changes.py`, `api/owners.py`): an owner moves a DID-LLM to new owners (a new key and/or wallet) with `POST /v1/dids/{did}/owner-changes`, MCP `debitmydata_change_owner` or the owner-key tool's `change-owner`: one current owner signs the change's "approve" message and each new owner its "accept" message, within 15 minutes; then only the new owners control it (DID document, record, proofs of control), every sign-in made before ends (apps' refresh tokens revoked; older access tokens refused by the API, older app sign-ins by the token signer), and the monitor reports it. An owner revokes the DID-LLM for good with one signed message (`/revocations`, `debitmydata_revoke_did`, `revoke`). MCP tool descriptions lose the code's indentation on Python 3.12 too | done |
 | The identity endpoint (`/agenticsuperhighway/identity`, `mcp_server.build_identity_server`): a separate MCP server with three read-only tools, each for a signed-in DID-LLM (`debitmydata_whoami`; `debitmydata_get_profile`, the DID-LLM's record, owners, credentials, entitlements and listing; `debitmydata_verify_agent` with the DID only), for apps that need nothing else, such as a Google Connected App: every request there needs the token, from `initialize` on (0.49.1), so a client signs in as it connects; tokens are issued for one endpoint or the other (`resource`), each refusing the other's. Ending an app's sign-in (`/revoke` with its refresh token or an access token, a replayed refresh token) ends its access tokens at once: they carry their sign-in (`sid`), checked on every request. Google's domain-verification file at `/.well-known/google-connected-apps` (`DMD_GW_GOOGLE_CONNECTED_APPS_FILE`) | done |
 | Tool names in full: every MCP tool's name starts with `debitmydata_` (0.50.0), the company's name, never shortened. The earlier `dmd_` names still work when called, on both endpoints, but only the new ones are listed, so apps and scripts written before keep working. Identifiers stay as they are (`dmd_identity_...` and the other ID prefixes, payment option IDs such as `dmd_pow_native`, the `DMD_GW_` settings): they are inside issued credentials and records, and an `identity_id` never changes | done |
+| PayPal payments for DID-LLMs (payment option `paypal`, 0.51.0): each quote gets its own PayPal order and payment page (PayPal Checkout, Orders v2, `payment_url`), for exactly 25.00 USD, eCheck refused; the payer's PayPal login goes to PayPal only; the worker captures an approved order only while its 31-minute quote is open (never twice), checks the capture with PayPal itself, and settled payments for 30 days for refunds and disputes; PayPal's sandbox on staging; "Get a DID-LLM" offers it in place of the greyed "Soon" entry once it is on ([docs/paypal-payments.md](docs/paypal-payments.md)) | done (on once DebitMyData's PayPal app is set) |
 | Google Connected Apps' sign-in: a registration endpoint for Google's own return addresses (Google needs one: it does not read Client ID Metadata Documents) | next |
 | Native DMD wallet proofs (DEC-07); lost-key recovery (ID-14) | next |
 
@@ -129,7 +131,9 @@ runs in production with the gateway's own DebitMyData node and its watch-only re
 Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
 facilitator, which needs DebitMyData's CDP API key (DEC-08). Card payments run in Stripe's
 test mode on staging once its restricted test key is set, and in production with its
-restricted live key ([docs/card-payments.md](docs/card-payments.md)). A staging server with the full flow on a private
+restricted live key ([docs/card-payments.md](docs/card-payments.md)); PayPal payments run in
+PayPal's sandbox on staging and in production with DebitMyData's live PayPal app
+([docs/paypal-payments.md](docs/paypal-payments.md)). A staging server with the full flow on a private
 regtest chain runs at `https://staging-api.debitmydata.io`: anyone can try the registration
 from its [guided test page](https://staging-api.debitmydata.io/docs), or step by step from
 the [advanced API docs](https://staging-api.debitmydata.io/docs/advanced) (see

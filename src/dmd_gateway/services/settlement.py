@@ -255,6 +255,7 @@ def expected_payment(session: Session, intent: PaymentIntent) -> ExpectedPayment
         required_confirmations=intent.required_confirmations,
         known_transactions=_known_transactions(session, intent.id),
         authorizations=submitted_authorizations(session, intent.id),
+        quote_expires_at=intent.quote_expires_at,
     )
 
 

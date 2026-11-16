@@ -81,7 +81,7 @@ class PaymentStatusResponse(BaseModel):
     expires_at: datetime
     updated_at: datetime
     next_action: str
-    # Card payments, while unpaid: the payment page where a person enters a card.
+    # Card and PayPal payments, while unpaid: the payment page where a person pays.
     payment_url: str | None = None
 
 

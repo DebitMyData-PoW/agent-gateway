@@ -81,7 +81,7 @@ IDENTITY_PURPOSES = ("directory_listing", "rotation", "revocation")
 OWNER_CHANGE_STATUSES = ("open", "applied", "cancelled")
 # A directory listing's type, as on the Agentic Hub.
 DIRECTORY_ENTITY_TYPES = ("avatar", "robot", "sentient")
-# hosted_payment_page: a card payment page made for one intent (Stripe Checkout).
+# hosted_payment_page: a payment page made for one intent (Stripe Checkout, PayPal Checkout).
 RECIPIENT_KINDS = ("per_intent_address", "shared_with_reference", "hosted_payment_page")
 ACTOR_TYPES = ("system", "worker", "agent", "operator")
 X402_AUTHORIZATION_STATUSES = (

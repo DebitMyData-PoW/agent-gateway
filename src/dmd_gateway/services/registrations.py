@@ -191,7 +191,7 @@ def evaluate(
         and state.next_action == NEXT_ACTIONS[PaymentStatus.AWAITING_PAYMENT]
         and state.payment_status is PaymentStatus.AWAITING_PAYMENT
     ):
-        state.next_action = HOSTED_PAY_ACTION  # a person pays on the card payment page
+        state.next_action = HOSTED_PAY_ACTION  # a person pays on the card or PayPal page
     return state
 
 
