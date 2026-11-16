@@ -60,6 +60,41 @@ callers:
 DMD payments are tracked with a watch-only / descriptor wallet so that gateway hosts never
 hold keys that can move funds.
 
+Every answer, whatever made it, carries `Strict-Transport-Security: max-age=31536000` when the
+gateway's address is https (browsers then use https only for that name, for a year; not for
+its subdomains) and `X-Content-Type-Options: nosniff` (`api/security_headers.py`). How to
+report a security problem is at `/.well-known/security.txt` (RFC 9116), at both of the
+gateway's names: DebitMyData's address and the repository's private advisory form, as
+[SECURITY.md](../SECURITY.md) says, with an expiry always about six months ahead. What to do
+in an incident is in [emergencies.md](emergencies.md).
+
+## Authentication boundaries
+
+The gateway has no accounts and no passwords: what a request may do follows from what it
+carries. Every address the production gateway answers is listed in
+`tests/test_boundaries.py` with the rule that guards it, so a new address fails the tests until
+someone decides its rule.
+
+| Rule | Addresses |
+| --- | --- |
+| Public: what anyone may know | the pages, the well-known files, DID documents, credentials, the directory, prices, payment options, policies, health |
+| One record by its random ID (80 random bits), given to whoever made it | a registration's, payment's, purchase's, owner change's or revocation's progress (an issued DID-LLM's credential, its public receipt, names its registration and payment, so their progress is public from then on) |
+| Makes only an expiring quote or a message to sign: nothing is owed or changed | quotes, controller challenges, owner-change and revocation requests, directory listing messages (each also limited per address and per controller key) |
+| Changes something only with the owner's own signature, checked by the gateway | controller proofs, owner-change signatures, revocation signatures, directory listings |
+| Acts only on a settled payment (or the payer's own signed x402 payment) | issuing a DID-LLM, completing a purchase, donations |
+| Changes nothing | verifying a DID-LLM, a payment's transaction reference (a hint, checked on the chain) |
+| The sign-in server (OAuth), at its own host only, where nothing else answers | `/authorize`, `/token`, `/challenge`, `/register`, `/revoke` |
+| MCP and A2A: each tool or skill keeps the rule of the address it calls; tools that need a sign-in need a token | `/agenticsuperhighway` (and `/mcp`), `/agenticsuperhighway/a2a`, `/agenticsuperhighway/identity` (every tool needs a token) |
+
+**Internal** parts answer no address at all: the signer has no network (`PrivateNetwork`) and
+listens on a local socket that only the gateway's own user can open, the worker and the monitor
+listen on nothing, and the database and
+the DebitMyData node's RPC answer on the server only. **Operators** act on the server only, as
+root: `dmd-gateway-admin` (suspend, reactivate or revoke a DID-LLM; checks), the settings in
+`/etc/dmd-gateway/gateway.env` (kill switches, [emergencies.md](emergencies.md)). No address
+is for operators, and the staging test tools (`/v1/staging/...`, `/try`) are refused in
+production when the settings are read.
+
 ## DMD/USD price
 
 Until DMD has a market price, DMD is priced at the cost of mining it (DEC-01, approved as

@@ -12,6 +12,8 @@ Report them privately in one of these ways:
 - **Email:** info@debitmydata.com, with the subject line
   `Security: DebitMyData Agent Gateway`.
 
+The same addresses are at `https://api.debitmydata.io/.well-known/security.txt` (RFC 9116).
+
 Please include:
 
 - a description of the issue and its possible impact;

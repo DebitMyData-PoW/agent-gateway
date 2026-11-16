@@ -16,8 +16,8 @@ place; the application logic comes with the related phase.
 - [ ] P0-04 Decide which hosts may reach private DebitMyData RPC; deny all others
 - [x] P0-05 Staging environment (`deploy/staging`, [staging.md](staging.md)), with staging-only test tools so the flow can be tried from its docs page; production comes after the security review
 - [ ] P0-06 Owners for DNS/TLS, DevOps, database, treasury, policy approval, incident response
-- [ ] P0-08 Secrets inventory (never in tickets, chat, source or docs)
-- [ ] P0-09 Branch/release strategy and rollback procedure
+- [x] P0-08 Secrets inventory (never in tickets, chat, source or docs): every secret of the gateway by name and place, and how to replace it ([emergencies.md, part 5](emergencies.md#5-a-secret-or-a-key-may-have-leaked), 0.55.7)
+- [x] P0-09 Branch/release strategy and rollback procedure: one branch (`main`), every release one commit tried on staging first, then production with `update.sh`; going back to the previous version, database included: [production.md, section 8](production.md#8-updates) (0.55.6)
 
 ## Phase 1 – DMD infrastructure hardening
 
@@ -30,12 +30,12 @@ place; the application logic comes with the related phase.
 - [x] SEC-07 Explicit allowed-method list; reject unlock, key export, admin, mining, shutdown
 - [ ] SEC-08 Payment receive/tracking wallet separate from treasury
 - [x] SEC-09 Watch-only / descriptor-based payment tracking (the gateway refuses a wallet that can spend)
-- [ ] SEC-10 Firewall verified from an external host
+- [ ] SEC-10 Firewall verified from an external host: `scripts/firewall-check.sh`, from the operator's computer, to the server's own address ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside), 0.55.4); open: run against production
 - [ ] SEC-11 Secondary verification node with tip comparison
 - [x] SEC-12 Node health and sync checks: the monitor runs each payment option's readiness checks every 2 minutes and compares the DebitMyData node's height with the public explorer ([monitoring.md](monitoring.md))
 - [x] SEC-13 Reorg monitoring and alert thresholds: a payment that leaves the chain after its DID or receipt was issued is a critical alert; payments confirming for more than 2 hours are a warning
-- [ ] SEC-14 Backup and restore test (descriptors, configuration, database): nightly encrypted backup of the database and settings to object storage, monitored; restore procedure in [production.md](production.md#4-backups); open: the first restore test on the production server
-- [ ] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook
+- [ ] SEC-14 Backup and restore test (descriptors, configuration, database): nightly encrypted backup of the database and settings to object storage, monitored; restore procedure in [production.md](production.md#4-backups), with a restore test that needs no database (`scripts/backup-restore-test.sh`, 0.55.3); open: the first restore test with production's backups
+- [x] SEC-15 Emergency RPC isolation and DMD rail kill-switch runbook: [emergencies.md](emergencies.md) (kill switches, every sale stopped, the DebitMyData node cut off from its peers, attacks, leaked secrets, a compromised server; 0.55.4)
 
 ## Phase 2 – Gateway foundation
 
@@ -47,7 +47,7 @@ place; the application logic comes with the related phase.
 - [x] GW-06 Idempotency for mutating endpoints (`Idempotency-Key` header on quotes; DID issuance is idempotent by registration)
 - [x] GW-07 Request correlation IDs and safe structured logs
 - [x] GW-08 Health/readiness endpoints that expose no secrets
-- [ ] GW-09 Authentication boundaries for public, internal and operator endpoints
+- [x] GW-09 Authentication boundaries for public, internal and operator endpoints: every address with the rule that guards it, kept by a test (`tests/test_boundaries.py`); internal parts answer no address; operators act on the server only ([architecture.md](architecture.md#authentication-boundaries), 0.55.8)
 - [x] GW-10 OpenAPI documentation for public routes
 - [x] GW-11 Background worker for polling and finality (`dmd-gateway-worker`); full reconciliation is DMD-13
 - [x] GW-12 Per-rail feature flags and kill switches (environment-based; runtime toggle later with OPS-09)
@@ -173,6 +173,13 @@ place; the application logic comes with the related phase.
   (0.54.0)
 - [x] A2A (Agent2Agent protocol 1.0 and 0.3): the Agent Card at `/.well-known/agent-card.json`
   and JSON-RPC at `/agenticsuperhighway/a2a`, the MCP server's public tools as skills (0.55.0)
+- [x] The handshake check (every update, the daily report) also checks A2A (the Agent Card, a
+  skill run in 1.0, the 0.3 help answer, an unknown version refused) and `/manage` (0.55.1)
+- [x] The libraries' security: minimum versions with the published security fixes (PyJWT
+  2.15, cryptography 50, python-dotenv 1.2.2), which the next update installs; `pip-audit` in
+  CI on every push and every Monday; how to audit a server's own libraries (0.55.2)
+- [x] `/.well-known/security.txt` (RFC 9116) at both names, and HSTS and `nosniff` on every
+  answer (0.55.5)
 
 ## Phase 7 – x402 / USDC on Base
 

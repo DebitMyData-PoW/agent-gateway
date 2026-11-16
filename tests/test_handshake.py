@@ -1,7 +1,8 @@
 """The discovery runbook's Day 5 check (dmd-gateway-handshake): what an agent does to find and
-use the Agentic Superhighway, run against the gateway itself; that it catches what goes wrong
-(wrong content type, tools that differ, a missing Registry listing); the Registry check; the
-loopback transport the update scripts use; and the command."""
+use the Agentic Superhighway (MCP and A2A), run against the gateway itself; that it catches what
+goes wrong (wrong content type, tools or skills that differ, a missing Registry listing, a page
+without its Content-Security-Policy); the owners' page at the app's address; the Registry
+check; the loopback transport the update scripts use; and the command."""
 
 from __future__ import annotations
 
@@ -13,13 +14,15 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
+from sqlalchemy import Engine, create_engine
 
 from dmd_gateway import __version__, handshake
 from dmd_gateway.handshake import FAIL, PASS, SKIP, WARN, Handshake, Loopback, Report, Result
+from dmd_gateway.main import create_app
 from dmd_gateway.oauth import keys
+from dmd_gateway.settings import Settings
 
-from .conftest import TEST_DATABASE_URL
+from .conftest import TEST_DATABASE_URL, UNREACHABLE_DB
 from .test_mcp_auth import ISSUER
 from .test_oauth import AUTH
 from .test_quotes import _app_client, ready_registry  # noqa: F401
@@ -39,6 +42,7 @@ def through(client: TestClient, change: Callable[[httpx.Request, Any], Any] | No
             str(request.url),
             headers={k: v for k, v in request.headers.items() if k != "content-length"},
             content=request.content,
+            follow_redirects=False,  # as the command's own client
         )
         headers = {k: v for k, v in answer.headers.items() if k != "content-length"}
         response = httpx.Response(answer.status_code, headers=headers, content=answer.content)
@@ -57,12 +61,26 @@ def test_the_gateway_passes_the_handshake(client: TestClient) -> None:
     assert not report.failed, report.text()
     assert found["sign-in (OAuth 2.1)"] == SKIP  # closed here: no auth host
     assert all(status == PASS for step, status in found.items() if step != "sign-in (OAuth 2.1)")
-    assert len(found) == 15
+    assert len(found) == 21
     details = {result.step: result.detail for result in report.results}
     assert details["discovery: /.well-known/mcp"].startswith(f"MCP at {MCP};")
+    assert details["discovery: AI Catalog"] == "points to the Server Card and the A2A Agent Card"
     assert details["one truth: the same version everywhere"] == f"version {__version__}"
     assert "naming" in details["json-rpc: a wrong argument is named"]
-    assert report.summary() == "handshake complete: 14 checks passed"
+    assert details["a2a: Agent Card"].endswith(f"skills; A2A 1.0 and 0.3 at {MCP}/a2a")
+    skills = int(details["a2a: Agent Card"].split()[0])
+    assert details["one truth: the A2A skills are the open MCP tools"] == (
+        f"{skills} skills, as tools/list describes them"
+    )
+    assert details["a2a: SendMessage (1.0) runs a skill"] == (
+        "debitmydata_get_did_registration_offer: $25.00 USD, paid once"
+    )
+    assert details["a2a: message/send (0.3) lists the skills"] == (
+        f"the help answer lists the {skills} skills"
+    )
+    assert details["a2a: an unsupported version is refused"] == "-32009, supported: 1.0, 0.3"
+    assert details["owners: /manage answers"] == f"HTTP 200 at {BASE}/manage"
+    assert report.summary() == "handshake complete: 20 checks passed"
     assert report.text().splitlines()[0] == f"Handshake with {BASE}"
 
 
@@ -92,6 +110,10 @@ def test_the_sign_in_negotiation_completes(signing_in: TestClient) -> None:
     assert details["sign-in: a wrong token is refused"] == "401 invalid_token"
     assert details["sign-in: wallet-signature responds"].startswith("challenge and token")
     assert "oauth2.1" in details["discovery: /.well-known/mcp"]
+    # The tools that need a sign-in are not A2A skills: the others are, all of them.
+    assert details["one truth: the A2A skills are the open MCP tools"].endswith(
+        "skills, as tools/list describes them"
+    )
 
 
 def test_what_goes_wrong_is_caught(client: TestClient) -> None:
@@ -137,6 +159,95 @@ def test_what_goes_wrong_is_caught(client: TestClient) -> None:
     report = Handshake(BASE, through(client, unreachable)).run()
     assert statuses(report)["discovery: llms.txt"] == FAIL
     assert "no answer: ConnectError" in report.text()
+
+
+def changed_json(path: str, change: Callable[[Any], None]) -> Callable[..., httpx.Response]:
+    """An answer change: the JSON at ``path`` (GET) changed in place by ``change``."""
+
+    def changing(request: httpx.Request, response: httpx.Response) -> httpx.Response:
+        if request.method == "GET" and request.url.path == path:
+            document = response.json()
+            change(document)
+            return httpx.Response(200, json=document)
+        return response
+
+    return changing
+
+
+def test_what_goes_wrong_with_a2a_is_caught(client: TestClient) -> None:
+    def no_legacy(card: dict[str, Any]) -> None:
+        card["supportedInterfaces"] = card["supportedInterfaces"][:1]
+
+    report = Handshake(BASE, through(client, changed_json(handshake.A2A_CARD_PATH, no_legacy)))
+    found = statuses(report.run())
+    assert found["a2a: Agent Card"] == FAIL
+    assert "no JSON-RPC interface for A2A 0.3" in report.report.text()
+    later = ("a2a: SendMessage", "one truth: the A2A")
+    assert not [step for step in found if step.startswith(later)]
+    assert found["owners: /manage answers"] == PASS  # the steps after A2A still run
+
+    def reworded(card: dict[str, Any]) -> None:
+        card["skills"][0]["description"] = "Something else."
+        card["skills"] = card["skills"][:-1]
+
+    changing = changed_json(handshake.A2A_CARD_PATH, reworded)
+    report = Handshake(BASE, through(client, changing)).run()
+    skills = next(r for r in report.results if r.step.startswith("one truth: the A2A"))
+    assert skills.status == FAIL and skills.detail.startswith("only in the Agent Card: none; only")
+
+    def no_agent_card(catalog: dict[str, Any]) -> None:
+        entries = catalog["entries"]
+        catalog["entries"] = [e for e in entries if e["type"] != handshake.A2A_CARD_TYPE]
+
+    changing = changed_json("/.well-known/ai-catalog.json", no_agent_card)
+    found = statuses(Handshake(BASE, through(client, changing)).run())
+    assert found["discovery: AI Catalog"] == FAIL
+    assert found["a2a: Agent Card"] == PASS  # found at its well-known address all the same
+
+    def refused(request: httpx.Request, response: httpx.Response) -> httpx.Response:
+        if request.url.path.endswith("/a2a") and b"debitmydata_get_did" in request.content:
+            answer = response.json()
+            answer["result"]["message"]["parts"][1]["data"] = {"error": {"code": "rail_off"}}
+            return httpx.Response(200, json=answer)
+        if request.url.path == handshake.MANAGE_PATH:
+            headers = {"content-type": "text/html; charset=utf-8"}
+            return httpx.Response(200, headers=headers, content=response.content)
+        return response
+
+    report = Handshake(BASE, through(client, refused)).run()
+    details = {r.step: (r.status, r.detail) for r in report.results}
+    assert details["a2a: SendMessage (1.0) runs a skill"] == (
+        FAIL,
+        "debitmydata_get_did_registration_offer answered an error: rail_off",
+    )
+    lost = "the page has lost its Content-Security-Policy"
+    assert details["owners: /manage answers"] == (FAIL, lost)
+
+
+def test_the_owners_page_is_found_at_the_apps_address(settings: Settings) -> None:
+    """In production, /manage at the API's address leads to the app's (api/hosts.py): the
+    check follows, once, and only to the same page."""
+    unreachable = create_engine(UNREACHABLE_DB, connect_args={"connect_timeout": 1})
+    app_host = "id.debitmydata.io"
+    production = settings.model_copy(update={"app_host": app_host})
+    app = create_app(production, environ={}, engine=unreachable)
+    with TestClient(app) as client:
+        report = Handshake(BASE, through(client)).run()
+        assert not report.failed, report.text()
+        manage = next(r for r in report.results if r.step == "owners: /manage answers")
+        assert manage.detail == f"HTTP 200 at https://{app_host}/manage"
+
+        def elsewhere(request: httpx.Request, response: httpx.Response) -> httpx.Response:
+            if request.url.path == handshake.MANAGE_PATH:
+                return httpx.Response(308, headers={"location": "https://evil.example/login"})
+            return response
+
+        report = Handshake(BASE, through(client, elsewhere)).run()
+        manage = next(r for r in report.results if r.step == "owners: /manage answers")
+        assert (manage.status, manage.detail) == (
+            FAIL,
+            "HTTP 308 to https://evil.example/login, not the page",
+        )
 
 
 def registry_answer(**changes: Any) -> Callable[[httpx.Request], httpx.Response]:

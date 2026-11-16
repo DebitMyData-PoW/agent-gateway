@@ -3,7 +3,9 @@
 The production gateway runs at `https://api.debitmydata.io` on its own Vultr server, in
 DebitMyData's account, separate from staging and from every other DebitMyData server. It
 takes real payments, so it has none of staging's test material: no test tools, no test
-chain, no test wallets. Every update is tried on staging first.
+chain, no test wallets. Every update is tried on staging first. When something goes wrong
+(stopping a payment option at once, a leaked key, an attack), see
+[emergencies.md](emergencies.md).
 
 ```
 Internet ── Cloudflare proxy (TLS, WAF) ──► VPS :443, open to Cloudflare only
@@ -137,17 +139,49 @@ journalctl -u dmd-gateway-backup -n 20 --no-pager
 It ends with `Backup <time>: ... copied to vultr:...`. From then on the monitor warns when no
 backup has succeeded for 26 hours.
 
-**e. Restore test (once now, then every 6 months),** on a scratch server or the Ubuntu VM,
-never on production. Copy a pair of files from the bucket and the key file, then:
+**e. Restore test (once now, then every 6 months),** on the Ubuntu VM, never on production.
+It proves that the backups can be read with the offline key and hold what a new server needs.
+The VM needs `sudo apt install age postgresql-client` and a copy of this repository. (Ubuntu
+24.04's `postgresql-client` is version 16, as on the server; an older Ubuntu has an older one,
+which cannot read the server's dumps: install `postgresql-client-16` from PostgreSQL's own
+apt repository there.)
+
+1. Copy the newest pair from the server (it keeps the last 7 nights in
+   `/var/backups/dmd-gateway`, readable by root). `SERVER` is how you log in (`root@<address>`;
+   the SSH port goes after `-p` for `ssh` and after `-P` for `scp`):
+
+   ```bash
+   mkdir -p ~/restore-test && cd ~/restore-test
+   ssh SERVER 'ls -1 /var/backups/dmd-gateway | grep db- | tail -n 1'   # the newest <time>
+   scp 'SERVER:/var/backups/dmd-gateway/agent-gateway-*-<time>.*.age' .
+   ```
+
+2. Run the test from the repository, and paste the key's `AGE-SECRET-KEY-1...` line from the
+   password manager when it asks (it is not shown, and it is deleted when the test ends):
+
+   ```bash
+   scripts/backup-restore-test.sh ~/restore-test
+   ```
+
+   It lists the files in the settings backup (the gateway's and the signer's settings and the
+   issuer key must be there), the database dump's date and the rows in each table, without a
+   database and without writing anything decrypted to disk. It ends with `RESTORE TEST
+   PASSED` and the command that counts the DID-LLMs on the server: the server has the same
+   number, or more if DID-LLMs were registered after the backup.
+
+3. Delete the copies (`rm -r ~/restore-test`), and note the date of the test.
+
+The key line it shows (`Backup key: age1...`) is the backup key's public half: it is the one
+in `DMD_BACKUP_AGE_RECIPIENT` on the server (`grep RECIPIENT /etc/dmd-gateway/backup.env`).
+
+To go further, a full restore into a scratch database on the VM (it needs PostgreSQL 16 there;
+delete the decrypted file after):
 
 ```bash
-age -d -i dmd-gateway-backup-key.txt agent-gateway-config-<time>.tar.age | tar -tvf -
 age -d -i dmd-gateway-backup-key.txt agent-gateway-db-<time>.dump.age > db.dump
 createdb restore_test && pg_restore -d restore_test db.dump
 psql -d restore_test -c "SELECT count(*) FROM identities"
 ```
-
-The settings list and the DID count must match the server. Delete the scratch copies after.
 
 **Restoring production** after losing the server: a new server (step 1), then put back
 `/etc/dmd-gateway`, `/etc/dmd-signer` and `/etc/debitmydata` from the settings backup before
@@ -238,7 +272,7 @@ It keeps every secret, key, wallet and setting, and refuses to run on a server w
 settings are not production's (it changes nothing there). Staging's `update.sh` likewise
 refuses to run here. It ends with the discovery runbook's **handshake check**, through this
 server's nginx: what any agent does to find and use the Agentic Superhighway, from the
-well-known files to `tools/list` ([staging.md, section 11](staging.md#11-the-handshake-check-the-runbooks-day-5)).
+well-known files to `tools/list`, A2A and the owners' page ([staging.md, section 11](staging.md#11-the-handshake-check-the-runbooks-day-5)).
 If a check fails, the update says so (`FAIL` lines, then an error): fix it before announcing
 anything. The daily report runs the same check through Cloudflare, with the MCP Registry's
 listing ([monitoring.md](monitoring.md#4-the-daily-report)). To run it yourself, as agents
@@ -247,6 +281,75 @@ see the server:
 ```bash
 /opt/agent-gateway/.venv/bin/dmd-gateway-handshake --registry https://api.debitmydata.io
 ```
+
+**Going back to the previous version,** when an update breaks something that a quick fix
+cannot. Every release is one commit on `main` (`0.X.Y: ...`), tried on staging first, so the
+version before it is one commit back. As root:
+
+1. Find the commit to go back to (the one before the update):
+
+   ```bash
+   git -C /opt/agent-gateway log --oneline -5
+   ```
+
+2. Did the update change the database? This lists the database changes between that commit
+   and now; if it lists nothing, go to step 4:
+
+   ```bash
+   git -C /opt/agent-gateway diff --stat <that commit> HEAD -- migrations/versions
+   ```
+
+3. If it lists a new file (`migrations/versions/00NN_....py`), undo that change first, with
+   the version that made it. Take a backup, then read where the change starts from (its
+   `down_revision`, for example `"0016"`) and go back to it:
+
+   ```bash
+   systemctl start dmd-gateway-backup
+   systemctl stop dmd-gateway-monitor.timer dmd-gateway-api dmd-gateway-worker
+   grep down_revision /opt/agent-gateway/migrations/versions/00NN_*.py
+   (cd /opt/agent-gateway && set -a && . /etc/dmd-gateway/gateway.env && set +a &&
+     runuser -u gateway -- .venv/bin/alembic downgrade 0016)
+   ```
+
+   The API and the worker stop first, so that nothing uses the database while it changes
+   (agents get an error for that minute); step 4 starts them again. What only the new version
+   stored (its new tables or columns) is lost; everything else stays. With several new files,
+   go back to the `down_revision` of the oldest one.
+
+4. Put that version back and install it. `setup.sh`, not `update.sh` (which would fetch the
+   newest version again), installs what is in the folder, starts or restarts every service and
+   the monitor, and ends with the handshake check:
+
+   ```bash
+   git -C /opt/agent-gateway reset --hard <that commit>
+   /opt/agent-gateway/deploy/production/setup.sh
+   ```
+
+5. Once the fix is on GitHub and runs well on staging, `update.sh` as usual: it moves forward
+   from there.
+
+**Security fixes in the libraries the gateway uses.** An update installs the libraries only
+as far as `pyproject.toml` asks: a library already on the server in a version that satisfies
+it stays as it is. So when a library publishes a security fix, the gateway raises its minimum
+version there (0.55.2 did it for PyJWT, cryptography and python-dotenv), and the next update
+installs the fixed version. The repository's CI audits the libraries a new install gets with
+`pip-audit` (PyPI's advisory database) on every push and every Monday: a failed `audit` job
+names the library and the version with the fix.
+
+To audit what a server actually runs, from your own computer (nothing is installed on the
+server; `SERVER` is how you log in to it, with `-p` for its SSH port):
+
+```bash
+ssh SERVER "/opt/agent-gateway/.venv/bin/pip freeze --exclude-editable" \
+  | grep -v '^dmd-agent-gateway' > gateway-packages.txt
+python3 -m venv ~/pip-audit && ~/pip-audit/bin/pip install -q pip-audit
+~/pip-audit/bin/pip-audit -r gateway-packages.txt --no-deps --disable-pip
+```
+
+`No known vulnerabilities found` is the answer to expect. Otherwise each line names a library,
+its version on the server and the version with the fix: a gateway release that raises that
+minimum fixes it at the next update. The list holds library names and versions only, no
+secret.
 
 **A new DebitMyData Core release** (staging first, then production). Check the SHA-256 of the
 new `debitmydatad` and `debitmydata-cli` against the release, then:
@@ -498,7 +601,7 @@ curl -s https://api.debitmydata.io/agenticsuperhighway/a2a -H 'content-type: app
 ```
 
 The first shows the A2A endpoint twice (versions 1.0 and 0.3), the second `"$25.00 USD, paid
-once"`.
+once"`. The handshake check that ends every update does the same (its `a2a:` lines).
 
 The **official MCP Registry** (registry.modelcontextprotocol.io), where MCP clients and
 directories look for servers, lists it from `server.json` at the repository root, under the
@@ -702,6 +805,10 @@ only.
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer
 - [ ] Alerts arrive (test message), the daily report arrives, the outside uptime check is set
 - [ ] A backup ran and the restore test worked; the backup key is in the password manager
+- [ ] The firewall, checked from outside, lets only SSH answer
+      ([emergencies.md, part 8](emergencies.md#8-the-firewall-checked-from-outside))
+- [ ] Whoever looks after the server has read [emergencies.md](emergencies.md), and has
+      tried a kill switch on staging
 - [ ] DMD payments on (step 6); the first quote's address and the monitor's line match the
       treasury record sheet
 - [ ] USDC payments on (step 7) once the Coinbase key is set; Bazaar validation passes

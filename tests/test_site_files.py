@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -217,3 +218,42 @@ def test_the_page_script_shows_the_same_price_text() -> None:
 )
 def test_price_text(price: tuple[str, str], text: str) -> None:
     assert get_did_page.price_text(price) == text
+
+
+# --------------------------------------------------------------------------- security.txt
+
+
+def test_security_txt_says_how_to_report_a_problem_at_both_names(app_client: TestClient) -> None:  # noqa: F811
+    for headers in ({}, API):
+        response = app_client.get("/.well-known/security.txt", headers=headers)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/plain; charset=utf-8"
+        fields = [line.split(": ", 1) for line in response.text.splitlines() if ": " in line]
+        found: dict[str, list[str]] = {}
+        for name, value in fields:
+            if not name.startswith("#"):
+                found.setdefault(name, []).append(value)
+        assert found["Contact"] == [
+            "mailto:info@debitmydata.com",
+            "https://github.com/DebitMyData-PoW/agent-gateway/security/advisories/new",
+        ]
+        assert found["Policy"] == [
+            "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/SECURITY.md"
+        ]
+        assert found["Canonical"] == [
+            "http://localhost:8000/.well-known/security.txt",
+            f"https://{APP_HOST}/.well-known/security.txt",
+        ]
+        assert found["Preferred-Languages"] == ["en"]
+        # RFC 9116: one Expires, in the future and less than a year ahead.
+        [expires] = found["Expires"]
+        moment = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        now = datetime.now(UTC)
+        assert now + timedelta(days=170) < moment < now + timedelta(days=365)
+
+
+def test_security_txt_expires_six_months_after_the_day_it_is_read(settings: Settings) -> None:
+    text = site_files.security_txt(settings, datetime(2026, 11, 16, 17, 45, tzinfo=UTC))
+    assert "Expires: 2027-05-15T00:00:00Z" in text.splitlines()
+    assert "Canonical: http://localhost:8000/.well-known/security.txt" in text.splitlines()
+    assert APP_HOST not in text  # no app address: one name only

@@ -139,7 +139,8 @@ Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
   alert.
 - **Discovery**: the discovery runbook's Day 5 handshake (`dmd-gateway-handshake`) through
   the public address, as agents reach it through Cloudflare: the well-known files, the MCP
-  handshake, the sign-in negotiation when it is open, and in production the official MCP
+  handshake, A2A (the Agent Card and a skill run over it), the owners' page `/manage`, the
+  sign-in negotiation when it is open, and in production the official MCP
   Registry's listing (the runbook's recurring check: the Registry is in preview and may be
   reset; a listing that shows an older version is a reminder to publish, not a failure).
   What fails is sent as a warning too.
@@ -148,5 +149,33 @@ Every day at 07:00 UTC, to `REPORT_EMAIL_TO` and Discord:
 ## 5. When the whole server is down
 
 The monitor runs on the gateway server, so it cannot report that the server itself is down.
-Add an outside uptime check on `https://api.debitmydata.io/readyz` (any uptime-monitoring
-service; alert by email when it does not answer `"ready"`).
+An outside uptime check does: a service that asks the gateway every few minutes, from outside,
+as agents reach it (through Cloudflare), and sends an email when it does not answer.
+
+`/readyz` is the address to watch: it answers HTTP 200 with `"status": "ready"` when the
+gateway, its database and (in production) the signing service all work, and HTTP 503 when one
+of them does not. Nothing in it is secret.
+
+**Which service.** Any uptime-monitoring service with email alerts works. Two notes, as of
+November 2026: UptimeRobot's free plan is for personal, non-commercial use only (since
+November 2024), so DebitMyData would need its paid plan; Better Stack's free plan has 10
+monitors checked every 3 minutes with email alerts. Check the service's current terms when
+signing up, with a DebitMyData address that more than one person reads.
+
+**The monitors** (an HTTP or "status code" monitor each, alert when the answer is not 2xx):
+
+| Address | What it shows |
+| --- | --- |
+| `https://api.debitmydata.io/readyz` | the API, its database and the signing service |
+| `https://id.debitmydata.io/` | the Get a DID-LLM app people open |
+| `https://staging-api.debitmydata.io/readyz` | staging (optional; it may be down on purpose) |
+
+Alert after two failed checks in a row rather than one, so that a restart during an update
+does not send an email. When the email comes: `systemctl status dmd-gateway-api` and
+`curl -s http://127.0.0.1:8000/readyz` on the server say which part is down (the first
+alert in section 3 says what each part means).
+
+**If every check fails with HTTP 403 while the gateway works,** Cloudflare's bot protection is
+stopping the monitoring service: Cloudflare's Security Events show it. Allow the service's
+published addresses (its documentation lists them) with a Cloudflare WAF custom rule that
+skips the bot checks for `/readyz`, and nothing else.

@@ -653,6 +653,13 @@ what any agent does to find and use the Agentic Superhighway. The gateway has it
 4. **One truth:** the tools in the runbook's card are exactly those `tools/list` gives, with
    the same descriptions, and every file gives the same version. With `--registry`, the
    official MCP Registry lists the server with the same address, title and description.
+5. **A2A**, for agents that speak it rather than MCP: the Agent Card the AI Catalog points to
+   offers A2A 1.0 and 0.3 at one address, with the same version; its skills are exactly the
+   MCP tools that need no sign-in, described the same way; `SendMessage` (1.0) runs
+   `debitmydata_get_did_registration_offer` and gets the price; `message/send` (0.3) gets the
+   list of skills; a version the server does not speak is refused with -32009.
+6. **The owners' page:** `/manage` answers 200 with its Content-Security-Policy (in production
+   at the app's address, `id.debitmydata.io`, where the API's address leads).
 
 **Every update runs it** on the server, after nginx answers (`--local`: through this
 server's nginx, under the public names), and fails if a check fails, so a broken update is

@@ -44,6 +44,7 @@ from dmd_gateway.api import (
     products,
     quotes,
     registrations,
+    security_headers,
     server_card,
     site_files,
     staging,
@@ -193,6 +194,8 @@ def create_app(
         app.add_middleware(FormBodyMiddleware)  # docs page forms; see api/form_bodies.py
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(oauth.AuthHostOnly, settings=settings)  # auth host: OAuth only
+    https = settings.public_base_url.startswith("https://")
+    app.add_middleware(security_headers.SecurityHeaders, https=https)  # every answer
     app.include_router(health.router)
     app.include_router(discovery.router)
     app.include_router(prices.router)

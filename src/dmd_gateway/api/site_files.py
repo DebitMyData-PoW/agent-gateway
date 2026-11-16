@@ -11,6 +11,9 @@ names (the API's and the app's, hosts.py):
     GET /.well-known/google-connected-apps
                                   Google Connected Apps' domain verification: the file Google's
                                   console gives, as it is (google_connected_apps_file; 404 unset)
+    GET /.well-known/security.txt RFC 9116: how to report a security problem (SECURITY.md):
+                                  DebitMyData's address and the repository's private advisory
+                                  form, with an expiry date always about six months ahead
 
 The staging server is a test server: its robots.txt asks crawlers not to list it, and it has
 no sitemap. Agents and the API are not affected (robots.txt is for crawlers).
@@ -20,6 +23,7 @@ The pages for people send a ``Link`` header (RFC 8288) to the same places: ``lin
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from xml.sax.saxutils import escape
 
@@ -44,6 +48,10 @@ STATUS_PATH = "/healthz"
 # it: being known to agents and the models behind them is what the DID-LLM is for.
 CONTENT_SIGNALS = "search=yes, ai-input=yes, ai-train=yes"
 CACHE = "public, max-age=3600"
+SECURITY_TXT_PATH = "/.well-known/security.txt"
+# RFC 9116 asks for an expiry less than a year ahead, so that a forgotten file stops being
+# trusted; the gateway serves it, so it is always about six months ahead.
+SECURITY_TXT_VALID = timedelta(days=180)
 
 
 def _base(settings: Settings) -> str:
@@ -131,6 +139,31 @@ def google_connected_apps(request: Request) -> Response:
     except OSError:
         return Response(status_code=404)
     return Response(body, media_type="application/json", headers={"Cache-Control": "no-store"})
+
+
+def security_txt(settings: Settings, now: datetime) -> str:
+    """The security.txt (RFC 9116) for this gateway's names."""
+    expires = (now + SECURITY_TXT_VALID).astimezone(UTC).strftime("%Y-%m-%dT00:00:00Z")
+    names = [_base(settings)]
+    if settings.app_host:
+        names.append(f"https://{settings.app_host}")
+    canonical = "".join(f"Canonical: {name}{SECURITY_TXT_PATH}\n" for name in names)
+    return (
+        "# DebitMyData Agent Gateway: how to report a security problem, privately.\n"
+        "# Subject line for email: Security: DebitMyData Agent Gateway\n"
+        f"Contact: mailto:{brand.CONTACT}\n"
+        f"Contact: {brand.SOURCE_CODE}/security/advisories/new\n"
+        f"Expires: {expires}\n"
+        "Preferred-Languages: en\n"
+        f"Policy: {brand.SOURCE_CODE}/blob/main/SECURITY.md\n"
+        f"{canonical}"
+    )
+
+
+@router.get(SECURITY_TXT_PATH)
+def _security_txt(request: Request) -> PlainTextResponse:
+    text = security_txt(request.app.state.settings, datetime.now(UTC))
+    return PlainTextResponse(text, headers={"Cache-Control": CACHE})
 
 
 @router.get(ROBOTS_PATH)

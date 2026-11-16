@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
@@ -175,3 +177,31 @@ def test_unknown_payment_status_is_rejected(engine: Engine) -> None:
             text("UPDATE payment_intents SET status = 'paid_probably' WHERE id = :id"),
             {"id": payment_id},
         )
+
+
+def test_the_newest_database_change_can_be_undone_as_a_rollback_does(engine: Engine) -> None:
+    """production.md, section 8, "Going back to the previous version": the newest migration's
+    down_revision is where `alembic downgrade` goes back to, and the schema can come forward
+    again; every migration can be undone, one step at a time."""
+    config = _alembic_config()
+    scripts = ScriptDirectory.from_config(config)
+    newest = scripts.get_revision(scripts.get_current_head())
+    files = sorted((Path(__file__).resolve().parents[1] / "migrations" / "versions").glob("0*.py"))
+    assert f'down_revision: str | None = "{newest.down_revision}"' in files[-1].read_text()
+
+    def current() -> str | None:
+        with engine.connect() as conn:
+            return conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+
+    command.downgrade(config, str(newest.down_revision))
+    assert current() == newest.down_revision
+    command.upgrade(config, "head")
+    assert current() == newest.revision
+
+    steps = 0
+    while current() is not None:
+        command.downgrade(config, "-1")
+        steps += 1
+    assert steps == len(files)
+    command.upgrade(config, "head")
+    command.check(config)

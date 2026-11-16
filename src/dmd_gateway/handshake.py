@@ -24,6 +24,13 @@ the Agentic Superhighway, and says what fails.
 4. One truth: the tools in the runbook's card are exactly those ``tools/list`` gives, and the
    manifest, both cards and ``initialize`` give the same version; with ``--registry``, the
    official MCP Registry lists the server with the same address, title and description.
+5. A2A, for agents that speak it rather than MCP: the Agent Card the AI Catalog points to
+   (A2A 1.0 and 0.3 at one address, the same version), its skills exactly the MCP tools that
+   need no sign-in, with the same descriptions; ``SendMessage`` in 1.0 runs a skill (the
+   DID-LLM offer, with its price); ``message/send`` in 0.3 gets the list of skills; a version
+   the server does not speak is refused as the specification says (-32009).
+6. The owners' page, ``/manage`` (Manage my DID-LLM): it answers, at the app's address when
+   the API's leads there, with its Content-Security-Policy.
 
 ``--local`` sends every request to this server (127.0.0.1:443) under the public names, as the
 update scripts check nginx: the certificate is Cloudflare's origin certificate, which only
@@ -37,6 +44,7 @@ import argparse
 import json
 import re
 import sys
+import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -56,6 +64,14 @@ TIMEOUT_SECONDS = 15
 CLIENT_INFO = {"name": "dmd-gateway-handshake", "version": "1"}
 NOT_A_TOKEN = "not-a-token"  # noqa: S105 - what a wrong token looks like
 _CHALLENGE_FIELD = re.compile(r'(\w+)="([^"]*)"')
+# A2A (a2a-protocol.org): the Agent Card's well-known path and its type in the AI Catalog.
+A2A_CARD_PATH = "/.well-known/agent-card.json"
+A2A_CARD_TYPE = "application/a2a-agent-card+json"
+A2A_VERSIONS = ("1.0", "0.3")
+A2A_SKILL = "debitmydata_get_did_registration_offer"  # what an agent asks first: the price
+A2A_UNSUPPORTED = "99.0"
+MANAGE_PATH = "/manage"
+REDIRECTS = (301, 302, 303, 307, 308)
 
 
 class Failed(Exception):
@@ -198,6 +214,9 @@ class Handshake:
         self.server_card: dict[str, Any] = {}
         self.session: str | None = None
         self.protocol: str | None = None
+        self.agent_card_url = ""
+        self.a2a: dict[str, str] = {}  # A2A version -> its JSON-RPC address
+        self.skills: list[dict[str, Any]] = []
         self._ids = 0
 
     # ----------------------------------------------------------------------- running
@@ -241,6 +260,13 @@ class Handshake:
         self.step("json-rpc: -32601 method not found", self.unknown_method)
         self.step("json-rpc: -32602 invalid params", self.invalid_params)
         self.step("json-rpc: a wrong argument is named", self.wrong_argument)
+        if self.step("a2a: Agent Card", self.agent_card):
+            if self.listed:
+                self.step("one truth: the A2A skills are the open MCP tools", self.same_skills)
+            self.step("a2a: SendMessage (1.0) runs a skill", self.a2a_skill)
+            self.step("a2a: message/send (0.3) lists the skills", self.a2a_legacy)
+            self.step("a2a: an unsupported version is refused", self.a2a_version)
+        self.step("owners: /manage answers", self.manage_page)
         if "oauth2.1" in self.authentication:
             self.sign_in()
         else:
@@ -308,10 +334,14 @@ class Handshake:
         response = self.get(f"{self.base}/.well-known/ai-catalog.json")
         document = _json(response, JSON_TYPE, "application/ai-catalog+json")
         entries = _object(document, "the AI Catalog").get("entries") or []
-        urls = [entry.get("url") for entry in entries if isinstance(entry, dict)]
-        if self.card_url not in urls:
+        entries = [entry for entry in entries if isinstance(entry, dict)]
+        if self.card_url not in [entry.get("url") for entry in entries]:
             raise Failed("the AI Catalog does not point to the Server Card")
-        return "points to the Server Card"
+        agent_cards = [entry.get("url") for entry in entries if entry.get("type") == A2A_CARD_TYPE]
+        if not agent_cards or not isinstance(agent_cards[0], str):
+            raise Failed("the AI Catalog does not point to the A2A Agent Card")
+        self.agent_card_url = agent_cards[0]
+        return "points to the Server Card and the A2A Agent Card"
 
     def llms(self) -> str:
         response = self.get(f"{self.base}/llms.txt", "text/plain, text/markdown")
@@ -476,6 +506,159 @@ class Handshake:
                         return f"{tool['name']}: a tool error naming {name}"
                     raise Failed(f"{tool['name']} accepted a number for {name}")
         raise Warned("no tool with a required text parameter to try")
+
+    # ----------------------------------------------------------------------- A2A
+
+    def agent_card(self) -> str:
+        url = self.agent_card_url or f"{self.base}{A2A_CARD_PATH}"
+        card = _object(_json(self.get(url)), "the Agent Card")
+        _text_field(card, "name", "the Agent Card")
+        _text_field(card, "description", "the Agent Card")
+        if card.get("version") != self.version:
+            raise Failed(f"version {card.get('version')} here, {self.version} in the manifest")
+        interfaces = card.get("supportedInterfaces")
+        if not isinstance(interfaces, list) or not interfaces:
+            raise Failed("the Agent Card has no supportedInterfaces (A2A 1.0)")
+        found: dict[str, str] = {}
+        for interface in interfaces:
+            interface = _object(interface, "an interface of the Agent Card")
+            if interface.get("protocolBinding") == "JSONRPC":
+                address = _text_field(interface, "url", "an interface of the Agent Card")
+                found.setdefault(str(interface.get("protocolVersion")), address)
+        missing = [version for version in A2A_VERSIONS if version not in found]
+        if missing:
+            raise Failed("no JSON-RPC interface for A2A " + ", ".join(missing))
+        for version in A2A_VERSIONS:
+            if not _web_address(found[version]):
+                raise Failed(f"the A2A {version} address is not https: {found[version]}")
+        # A 0.3 client reads these instead of supportedInterfaces.
+        if card.get("url") != found["0.3"]:
+            raise Failed("the card's url (read by A2A 0.3 clients) is not its 0.3 interface")
+        if not str(card.get("protocolVersion", "")).startswith("0.3"):
+            raise Failed(f"protocolVersion {card.get('protocolVersion')!r}, not 0.3.x")
+        skills = card.get("skills")
+        if not isinstance(skills, list) or not skills:
+            raise Failed("the Agent Card lists no skills")
+        for skill in skills:
+            _text_field(_object(skill, "a skill"), "id", "a skill of the Agent Card")
+            _text_field(skill, "description", f"the skill {skill['id']}")
+        self.a2a = {version: found[version] for version in A2A_VERSIONS}
+        self.skills = skills
+        return f"{len(skills)} skills; A2A 1.0 and 0.3 at {found['1.0']}"
+
+    def same_skills(self) -> str:
+        def one_line(text: Any) -> str:
+            return " ".join(str(text or "").split())
+
+        open_tools = {
+            tool["name"]: one_line(tool.get("description"))
+            for tool in self.listed
+            if not any(
+                isinstance(scheme, dict) and scheme.get("type") == "oauth2"
+                for scheme in ((tool.get("_meta") or {}).get("securitySchemes") or [])
+            )
+        }
+        skills = {skill["id"]: one_line(skill.get("description")) for skill in self.skills}
+        if set(skills) != set(open_tools):
+            only_card = ", ".join(sorted(set(skills) - set(open_tools))) or "none"
+            only_mcp = ", ".join(sorted(set(open_tools) - set(skills))) or "none"
+            raise Failed(f"only in the Agent Card: {only_card}; only in tools/list: {only_mcp}")
+        changed = sorted(name for name in skills if skills[name] != open_tools[name])
+        if changed:
+            raise Failed("described differently: " + ", ".join(changed))
+        return f"{len(skills)} skills, as tools/list describes them"
+
+    def a2a_call(
+        self, version: str, method: str, parts: list[dict[str, Any]], *, header: str | None = None
+    ) -> dict[str, Any]:
+        """One A2A JSON-RPC request with a user message; the JSON-RPC answer."""
+        self._ids += 1
+        role = "ROLE_USER" if version == "1.0" else "user"
+        message: dict[str, Any] = {"messageId": str(uuid.uuid4()), "role": role, "parts": parts}
+        if version != "1.0":
+            message["kind"] = "message"
+        body = {"jsonrpc": "2.0", "id": self._ids, "method": method, "params": {"message": message}}
+        headers = {"Accept": JSON_TYPE, "Content-Type": JSON_TYPE}
+        if header is not None:
+            headers["A2A-Version"] = header
+        response = self.http.post(self.a2a[version], content=json.dumps(body), headers=headers)
+        answer = _object(_json(response), "the A2A answer")
+        if answer.get("id") != self._ids:
+            raise Failed(f"the answer's id is {answer.get('id')!r}, not {self._ids}")
+        return answer
+
+    @staticmethod
+    def a2a_data(message: dict[str, Any], role: str) -> dict[str, Any]:
+        """The data part of the agent's answer."""
+        if message.get("role") != role:
+            raise Failed(f"the answer's role is {message.get('role')!r}, not {role}")
+        parts = message.get("parts")
+        if not isinstance(parts, list):
+            raise Failed("the answer has no parts")
+        for part in parts:
+            if isinstance(part, dict) and isinstance(part.get("data"), dict):
+                return part["data"]
+        raise Failed("the answer has no data part")
+
+    def a2a_skill(self) -> str:
+        if A2A_SKILL not in {skill["id"] for skill in self.skills}:
+            raise Failed(f"the Agent Card has no skill {A2A_SKILL}")
+        call = {"skill": A2A_SKILL, "arguments": {}}
+        parts = [{"data": call, "mediaType": JSON_TYPE}]
+        answer = self.a2a_call("1.0", "SendMessage", parts, header="1.0")
+        result = self.result(answer)
+        data = self.a2a_data(
+            _object(result.get("message"), "the 1.0 answer's message"), "ROLE_AGENT"
+        )
+        if "error" in data:
+            error = _object(data["error"], "the skill's error")
+            raise Failed(f"{A2A_SKILL} answered an error: {error.get('code')}")
+        product = _object(data.get("product"), f"the product in {A2A_SKILL}")
+        return f"{A2A_SKILL}: {_text_field(product, 'price_text', 'the product')}"
+
+    def a2a_legacy(self) -> str:
+        parts = [{"kind": "text", "text": "What can you do?"}]
+        result = self.result(self.a2a_call("0.3", "message/send", parts))
+        if result.get("kind") != "message":
+            raise Failed(f"the 0.3 answer is a {result.get('kind')!r}, not a message")
+        listed = self.a2a_data(result, "agent").get("skills")
+        if not isinstance(listed, list) or len(listed) != len(self.skills):
+            count = len(listed) if isinstance(listed, list) else 0
+            raise Failed(f"the answer lists {count} skills, the Agent Card {len(self.skills)}")
+        return f"the help answer lists the {len(listed)} skills"
+
+    def a2a_version(self) -> str:
+        parts = [{"text": "hello"}]
+        answer = self.a2a_call("1.0", "SendMessage", parts, header=A2A_UNSUPPORTED)
+        error = _object(answer.get("error"), f"the answer to A2A {A2A_UNSUPPORTED}")
+        supported = (error.get("data") or {}).get("supportedVersions")
+        if error.get("code") != -32009:
+            raise Failed(f"error code {error.get('code')}, not -32009")
+        if not isinstance(supported, list) or "1.0" not in supported:
+            raise Failed("the error does not say which versions are supported")
+        return "-32009, supported: " + ", ".join(map(str, supported))
+
+    # ----------------------------------------------------------------------- the owners' page
+
+    def manage_page(self) -> str:
+        url = f"{self.base}{MANAGE_PATH}"
+        response = self.http.get(url, headers={"Accept": "text/html"})
+        if response.status_code in REDIRECTS:
+            # In production, the pages for people are at the app's address (api/hosts.py).
+            url = str(response.url.join(response.headers.get("location", "")))
+            if not _web_address(url) or urlsplit(url).path != MANAGE_PATH:
+                raise Failed(f"HTTP {response.status_code} to {url}, not the page")
+            response = self.http.get(url, headers={"Accept": "text/html"})
+        if response.status_code != 200:
+            raise Failed(f"HTTP {response.status_code} at {url}")
+        if _content_type(response) != "text/html":
+            raise Failed(f"{url} is {_content_type(response) or 'untyped'}, not text/html")
+        policy = response.headers.get("content-security-policy", "")
+        if "script-src 'sha256-" not in policy or "frame-ancestors 'none'" not in policy:
+            raise Failed("the page has lost its Content-Security-Policy")
+        if "Manage your" not in response.text:
+            raise Failed("the page does not say what it is for")
+        return f"HTTP 200 at {url}"
 
     # ----------------------------------------------------------------------- sign-in
 

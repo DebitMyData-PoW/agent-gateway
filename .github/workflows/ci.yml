@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 6 * * 1"  # every Monday: libraries with a security fix published since
 
 permissions:
   contents: read
@@ -35,5 +37,32 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check .
       - run: ruff format --check .
-      - run: shellcheck -x deploy/staging/*.sh deploy/staging/files/dmd-cli
+      - name: shellcheck (every server script, and the backups' restore test)
+        run: >-
+          shellcheck -x deploy/staging/*.sh deploy/staging/files/dmd-cli
+          deploy/staging/files/dmd-gateway-admin deploy/production/*.sh
+          scripts/backup-restore-test.sh scripts/firewall-check.sh
+      - name: The pages' scripts parse
+        run: for file in src/dmd_gateway/static/*.js; do node --check "$file"; done
+      - name: age, for the backups' restore test (tests/test_backup_restore_test.py)
+        run: sudo apt-get install -y -q age
       - run: pytest
+
+  audit:
+    # The libraries a new install of the gateway gets (and nothing else), against the known
+    # vulnerabilities (PyPI's advisory database): the same check as for a server's own
+    # libraries (docs/production.md, section 8). A failure names the library and the version
+    # with the fix: raise its minimum in pyproject.toml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the gateway alone, as a server does
+        run: |
+          python -m venv /tmp/gateway
+          /tmp/gateway/bin/pip install -q .
+          /tmp/gateway/bin/pip freeze --exclude-editable | grep -v '^dmd-agent-gateway' > gateway-packages.txt
+      - run: pip install pip-audit
+      - run: pip-audit -r gateway-packages.txt --no-deps --disable-pip --progress-spinner off
