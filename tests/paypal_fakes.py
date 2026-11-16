@@ -41,6 +41,7 @@ class FakePayPal:
         self.by_request_id: dict[str, tuple[int, bytes]] = {}
         self.refuse: tuple[int, dict[str, Any]] | None = None  # answer every request with this
         self.decline_next_capture = False
+        self.refuse_next_capture: str | None = None  # the issue PayPal answers with
         self.hold_next_capture: str | None = None  # a capture PENDING for this reason
         self._ids = _IDS
 
@@ -139,6 +140,11 @@ class FakePayPal:
         if self.decline_next_capture:
             self.decline_next_capture = False
             return _error(422, "UNPROCESSABLE_ENTITY", "INSTRUMENT_DECLINED")
+        if self.refuse_next_capture:
+            issue, self.refuse_next_capture = self.refuse_next_capture, None
+            return _error(
+                422, "UNPROCESSABLE_ENTITY", issue, "The requested transaction was refused."
+            )
         unit = order["purchase_units"][0]
         number = next(self._ids)
         capture: dict[str, Any] = {
@@ -191,10 +197,10 @@ class FakePayPal:
         return [r for r in self.requests if r.url.path.endswith("/capture")]
 
 
-def _error(status: int, name: str, issue: str) -> httpx.Response:
+def _error(status: int, name: str, issue: str, description: str = "") -> httpx.Response:
+    detail = {"issue": issue, **({"description": description} if description else {})}
     return httpx.Response(
-        status,
-        json={"name": name, "details": [{"issue": issue}], "debug_id": "f0a1b2c3d4e5"},
+        status, json={"name": name, "details": [detail], "debug_id": "f0a1b2c3d4e5"}
     )
 
 

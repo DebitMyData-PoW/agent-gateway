@@ -161,6 +161,13 @@ class PayPalClient:
             if issue:
                 parts.append(issue)
             detail = ": " + " / ".join(_short(part, 60) for part in parts) if parts else ""
+            # PayPal's own words for it, when it gives them.
+            said = ""
+            if isinstance(details, list) and details and isinstance(details[0], dict):
+                said = str(details[0].get("description") or "")
+            said = said or str(body.get("message") or "")
+            if said:
+                detail += f" ({_short(said, 160)})"
             if body.get("debug_id"):
                 detail += f" (debug_id {_short(body['debug_id'], 40)})"
         raise PayPalUnavailable(

@@ -26,6 +26,7 @@ app on a sandbox rail). Refunds are made by a person, in PayPal's dashboard.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -46,6 +47,8 @@ from dmd_gateway.adapters.paypal_api import PayPalClient, PayPalUnavailable
 from dmd_gateway.domain.payment_status import HOSTED_PAYMENT_PAGE
 from dmd_gateway.domain.routes import PAYPAL_CHECKOUT, PAYPAL_NETWORKS, RailConfig
 
+log = logging.getLogger(__name__)
+
 CURRENCY = "USD"
 ORDERS = "/v2/checkout/orders"
 DISPUTES = "/v1/customer/disputes"
@@ -64,8 +67,18 @@ ORDER_ID = re.compile(r"^[A-Z0-9]{8,40}$")
 # Why PayPal holds a capture because of the payer's bank or a complaint: the money came in,
 # and is being claimed back (a dispute).
 DISPUTE_REASONS = frozenset({"BUYER_COMPLAINT", "CHARGEBACK"})
-# Capture answers that ask the payer to choose again on PayPal's page.
-PAYER_AGAIN = frozenset({"INSTRUMENT_DECLINED", "PAYER_ACTION_REQUIRED"})
+# Capture answers where PayPal refuses this payment as the payer approved it (what they chose
+# to pay with, or PayPal's own checks): tried once per approval, and again only once the
+# payer approves again on PayPal's page.
+PAYER_AGAIN = frozenset(
+    {
+        "INSTRUMENT_DECLINED",
+        "PAYER_ACTION_REQUIRED",
+        "TRANSACTION_REFUSED",
+        "PAYER_CANNOT_PAY",
+        "MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED",
+    }
+)
 
 T = TypeVar("T")
 
@@ -116,6 +129,8 @@ class PayPalCheckoutAdapter(PaymentAdapter):
         self.live = rail.network == "paypal:live"
         self._client = client
         self._ready = False
+        # Approvals PayPal refused to capture: order ID -> the order's update_time then.
+        self._refused: dict[str, str] = {}
 
     # ------------------------------------------------------------------ PayPal
 
@@ -233,17 +248,30 @@ class PayPalCheckoutAdapter(PaymentAdapter):
             if ends is None or now + CAPTURE_MARGIN > ends:
                 note = f"{order_id}: approved after the quote ended, not captured: nothing taken"
                 return PaymentObservation(payment_id, self.name, now, notes=(note,))
+            approval = str(order.get("update_time") or "")
+            if self._refused.get(order_id) == approval:
+                note = f"{order_id}: refused by PayPal; waiting for the payer to approve again"
+                return PaymentObservation(payment_id, self.name, now, notes=(note,))
             # A new ID when the payer approved again (another way to pay): PayPal would
             # otherwise answer with the first attempt's refusal.
-            request_id = f"dmd-capture-{payment_id}-{order.get('update_time') or ''}"
+            request_id = f"dmd-capture-{payment_id}-{approval}"
             try:
                 self.client().post(f"{ORDERS}/{order_id}/capture", {}, request_id=request_id)
             except PayPalUnavailable as exc:
                 if exc.issue in PAYER_AGAIN:
-                    note = (
-                        f"{order_id}: PayPal declined what the payer chose ({exc.issue}); they "
-                        "can open the payment page again and choose another way to pay"
+                    self._refused[order_id] = approval
+                    log.warning(
+                        "paypal refused a capture",
+                        extra={"event": {"payment_intent_id": payment_id, "error": str(exc)}},
                     )
+                    note = (
+                        f"{order_id}: PayPal refused the payment ({exc.issue}); the payer can "
+                        "open the payment page again and choose another way to pay"
+                    )
+                    return PaymentObservation(payment_id, self.name, now, notes=(note,))
+                if exc.issue == "ORDER_NOT_APPROVED":
+                    # The payer is on PayPal's page again: the order is approved anew soon.
+                    note = f"{order_id}: not approved (yet) on PayPal's page"
                     return PaymentObservation(payment_id, self.name, now, notes=(note,))
                 if exc.issue != "ORDER_ALREADY_CAPTURED":
                     raise AdapterUnavailable(str(exc), rate_limited=exc.rate_limited) from exc

@@ -20,6 +20,7 @@ from alembic import command
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 
+from dmd_gateway.adapters import paypal_checkout
 from dmd_gateway.adapters.base import (
     AdapterUnavailable,
     ExpectedPayment,
@@ -132,7 +133,7 @@ def test_paypal_errors_name_the_issue_and_never_a_token() -> None:
         body = {
             "name": "UNPROCESSABLE_ENTITY",
             "message": f"Bearer {TOKEN} was used",
-            "details": [{"issue": "INSTRUMENT_DECLINED"}],
+            "details": [{"issue": "INSTRUMENT_DECLINED", "description": "The card was declined."}],
             "debug_id": "abc123",
         }
         return httpx.Response(422, json=body)
@@ -142,6 +143,7 @@ def test_paypal_errors_name_the_issue_and_never_a_token() -> None:
         client.post("/v2/checkout/orders/X/capture", {})
     assert caught.value.issue == "INSTRUMENT_DECLINED" and caught.value.status == 422
     assert "INSTRUMENT_DECLINED" in str(caught.value) and "abc123" in str(caught.value)
+    assert "(The card was declined.)" in str(caught.value)  # PayPal's own words
     assert TOKEN not in str(caught.value)
 
 
@@ -273,12 +275,52 @@ def test_a_declined_way_to_pay_lets_the_payer_choose_again() -> None:
     paypal.decline_next_capture = True
     observation = adapter.observe(_expected(destination))
     assert observation.outputs == () and "INSTRUMENT_DECLINED" in observation.notes[0]
+    # Not tried again until the payer approves again.
+    waiting = adapter.observe(_expected(destination))
+    assert "approve again" in waiting.notes[0] and len(paypal.capture_requests()) == 1
     # The payer approves again with another way to pay: a new capture request, which works
     # (PayPal would answer the same request ID with the first refusal).
     paypal.approve(order_id)
     assert len(adapter.observe(_expected(destination)).outputs) == 1
     first, second = paypal.capture_requests()
     assert first.headers["PayPal-Request-Id"] != second.headers["PayPal-Request-Id"]
+
+
+def test_a_refused_payment_is_tried_once_per_approval(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Alembic's logging setup (migrations/env.py) turns off loggers made before it, in tests.
+    monkeypatch.setattr(paypal_checkout.log, "disabled", False)
+    paypal = FakePayPal()
+    adapter, destination = _quoted(paypal)
+    order_id = destination.payment_reference or ""
+    paypal.approve(order_id)
+    paypal.refuse_next_capture = "TRANSACTION_REFUSED"
+    with caplog.at_level("WARNING"):
+        refused = adapter.observe(_expected(destination))
+    assert refused.outputs == () and "TRANSACTION_REFUSED" in refused.notes[0]
+    logged = [
+        record for record in caplog.records if record.getMessage() == "paypal refused a capture"
+    ]
+    assert "The requested transaction was refused." in logged[0].event["error"]  # type: ignore[attr-defined]
+    for _ in range(3):  # every pass of the worker: no new capture, nothing taken
+        assert adapter.observe(_expected(destination)).outputs == ()
+    assert len(paypal.capture_requests()) == 1
+    paypal.approve(order_id)
+    assert len(adapter.observe(_expected(destination)).outputs) == 1
+    assert len(paypal.capture_requests()) == 2
+
+
+def test_an_order_being_approved_again_is_waited_for() -> None:
+    paypal = FakePayPal()
+    adapter, destination = _quoted(paypal)
+    order_id = destination.payment_reference or ""
+    paypal.approve(order_id)
+    paypal.refuse_next_capture = "ORDER_NOT_APPROVED"
+    waiting = adapter.observe(_expected(destination))
+    assert waiting.outputs == () and "not approved (yet)" in waiting.notes[0]
+    paypal.approve(order_id)  # the payer finishes on PayPal's page
+    assert len(adapter.observe(_expected(destination)).outputs) == 1
 
 
 def test_a_held_capture_counts_once_paypal_completes_it() -> None:

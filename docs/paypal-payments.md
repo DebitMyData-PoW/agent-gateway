@@ -22,9 +22,11 @@ they paid with.
    pays for an expired quote. The capture cannot happen twice (PayPal's `PayPal-Request-Id`).
 4. The worker then checks that the order and its capture carry this payment's ID, for exactly
    25.00 USD, completed. Only then is the payment `settled`. If PayPal holds the capture (a
-   review), it counts once PayPal completes it. If PayPal declines what the payer chose, the
-   payer opens PayPal's page again (the Get a DID-LLM page offers the link) and chooses
-   another way to pay.
+   review), it counts once PayPal completes it. If PayPal refuses the payment (what the payer
+   chose, or its own checks: `INSTRUMENT_DECLINED`, `TRANSACTION_REFUSED`...), the worker
+   tries once per approval and logs `paypal refused a capture` with PayPal's reason; the payer
+   opens PayPal's page again (the Get a DID-LLM page offers the link) and chooses another way
+   to pay, or approves again.
 5. A settled PayPal payment is checked again every 15 minutes for 30 days. A **full refund**
    makes it `refunded`; a **dispute** or chargeback makes it `disputed`. A registration not
    yet issued is then cancelled. For a DID-LLM already issued, the monitor raises the alert
