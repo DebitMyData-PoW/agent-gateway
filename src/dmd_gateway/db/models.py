@@ -781,6 +781,30 @@ class OAuthRefreshToken(Base):
     created_at: Mapped[datetime] = created_at()
 
 
+class OAuthRegisteredClient(Base):
+    """An app that registered itself (RFC 7591, ``POST /register``): Google's apps (Gemini),
+    which cannot use a Client ID Metadata Document. Its return addresses are Google's own
+    only, and it authenticates with a client secret, kept as its SHA-256 only."""
+
+    __tablename__ = "oauth_registered_clients"
+    __table_args__ = (
+        CheckConstraint(
+            "auth_method IN ('client_secret_basic', 'client_secret_post')", name="auth_method"
+        ),
+    )
+
+    client_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    secret_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    client_name: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uris: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    auth_method: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(Timestamp)
+    created_at: Mapped[datetime] = mapped_column(
+        Timestamp, nullable=False, server_default=func.now(), index=True
+    )
+
+
 APPEND_ONLY_TABLES = (
     "audit_events",
     "payment_events",

@@ -17,10 +17,12 @@ from dmd_gateway.api.get_did_page import did_price, mcp_url, page_url, price_tex
 from dmd_gateway.api.mcp_auth import identity_resource, main_resource, metadata_url
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
+    REGISTER_PATH,
     REVOKE_PATH,
     TOKEN_PATH,
     browser_sign_in_open,
     issuer,
+    registration_open,
     sign_in_open,
 )
 from dmd_gateway.api.server_card import card_url
@@ -126,6 +128,19 @@ The person signs one message with their DID-LLM's wallet or key; you get a code,
 (with a refresh token) at `{auth}{TOKEN_PATH}`. A tool that needs a signed-in person answers
 with `_meta["mcp/www_authenticate"]`. Ending the sign-in (`{auth}{REVOKE_PATH}`, with its
 refresh token or an access token) ends its access tokens at once.
+{_registration(state, auth)}"""
+
+
+def _registration(state: object, auth: str) -> str:
+    """Google's apps, which register (RFC 7591), where registration is switched on."""
+    if not registration_open(state):
+        return ""
+    return f"""
+Google's apps (Gemini), which cannot use a Client ID Metadata Document, register at
+`{auth}{REGISTER_PATH}` (RFC 7591) with Google's own return addresses only
+(`https://oauth-redirect.googleusercontent.com/r/...`), and authenticate with the client
+secret they get (`client_secret_basic` or `client_secret_post`). Their tokens are for the
+identity endpoint, and their refresh token stays the same at each refresh.
 """
 
 

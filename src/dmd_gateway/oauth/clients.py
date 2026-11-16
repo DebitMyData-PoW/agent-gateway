@@ -12,6 +12,9 @@ standard port, to a host whose every address is public (never this server, its n
 cloud metadata address), with no redirects, a short timeout and a size limit; the certificate
 must be valid for the host. An app that signs its token requests (``private_key_jwt``, as
 ChatGPT may) has its keys fetched the same way.
+
+Google's apps cannot use a Client ID Metadata Document: they register (oauth/registration.py)
+and are found in the database instead (``registered``).
 """
 
 from __future__ import annotations
@@ -62,6 +65,12 @@ class Client:
     auth_methods: frozenset[str]  # how it authenticates at the token endpoint
     jwks: dict[str, Any] | None
     jwks_uri: str | None
+    # A registered app (oauth/registration.py): the SHA-256 of its client secret.
+    secret_hash: str | None = None
+
+    @property
+    def registered(self) -> bool:
+        return self.secret_hash is not None
 
 
 def check_client_id(client_id: str) -> str:
@@ -186,9 +195,19 @@ def parse_document(client_id: str, data: bytes) -> Client:
 class ClientDirectory:
     """The apps' metadata documents (and keys), fetched when needed and kept a while."""
 
-    def __init__(self, fetch: Fetch = safe_fetch, clock: Callable[[], float] = time.monotonic):
+    def __init__(
+        self,
+        fetch: Fetch = safe_fetch,
+        clock: Callable[[], float] = time.monotonic,
+        registered: Callable[[str], Client | None] | None = None,
+        registered_hosts: frozenset[str] = frozenset(),
+    ) -> None:
         self._fetch = fetch
         self._clock = clock
+        # Registered apps (Google's), looked up by client_id; their hosts never serve a
+        # metadata document.
+        self._registered = registered
+        self._registered_hosts = registered_hosts
         self._lock = threading.Lock()
         self._clients: dict[str, tuple[float, Client]] = {}
         self._keys: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -205,7 +224,13 @@ class ClientDirectory:
         return found[1] if found and found[0] > self._clock() else None
 
     def get(self, client_id: str) -> Client:
-        check_client_id(client_id)
+        host = check_client_id(client_id)
+        if self._registered is not None:
+            found = self._registered(client_id)
+            if found is not None:
+                return found
+        if host in self._registered_hosts:
+            raise ClientRejected("this app is not registered here: register it again")
         client = self._cached(self._clients, client_id)
         if client is None:
             data, headers = self._fetch(client_id)

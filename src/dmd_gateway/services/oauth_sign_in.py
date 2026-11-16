@@ -8,6 +8,8 @@ the DID-LLM's own wallet or key, as when it was issued.
     finish       an authorization code for the app, once, valid one minute
     exchange     the app trades the code (with its PKCE verifier) for tokens
     refresh      a refresh token for new tokens: used once, replay revokes the whole family
+                 (a registered app's, Google's, is kept and used again: Google expects the
+                 same refresh token back, and it still ends with the sign-in)
     revoke       the app (or the person, through it) ends the sign-in
 
 Once the signature is right, the token signer gives a grant for the sign-in (oauth/grants.py;
@@ -445,8 +447,10 @@ def use_refresh_token(
     scope: str | None,
     resource: str | None,
     now: datetime,
+    rotate: bool = True,
 ) -> tuple[OAuthRefreshToken, str]:
-    """The refresh token (now used) and the scope for the new tokens."""
+    """The refresh token (now used, unless ``rotate`` is False: a registered app keeps it) and
+    the scope for the new tokens."""
     row = session.get(OAuthRefreshToken, digest(token), with_for_update=True)
     if row is None or row.client_id != client_id:
         raise TokenError("invalid_grant", "unknown refresh token")
@@ -468,7 +472,8 @@ def use_refresh_token(
     except TokenError:
         revoke_family(session, row.family_id, now)
         raise
-    row.used_at = now
+    if rotate:
+        row.used_at = now
     return row, " ".join(asked)
 
 

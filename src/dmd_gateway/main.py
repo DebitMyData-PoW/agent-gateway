@@ -57,6 +57,7 @@ from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
 from dmd_gateway.mcp_server import mount_identity, mount_mcp
+from dmd_gateway.oauth import registration
 from dmd_gateway.oauth.clients import ClientDirectory
 from dmd_gateway.oauth.keys import load_private_key, load_public_key
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
@@ -170,8 +171,12 @@ def create_app(
         challenge_minutes=settings.controller_challenge_ttl_seconds // 60,
     )
     app.state.wallet_verifier = WalletVerifier.from_registry(registry, env)
-    # The apps people sign in to, by their Client ID Metadata Document (oauth/clients.py).
-    app.state.oauth_clients = ClientDirectory()
+    # The apps people sign in to, by their Client ID Metadata Document (oauth/clients.py), or
+    # registered (Google's apps, oauth/registration.py).
+    app.state.oauth_clients = ClientDirectory(
+        registered=registration.database_lookup(app.state.session_factory),
+        registered_hosts=registration.GOOGLE_HOSTS,
+    )
     app.state.issuance = IssuanceContext(
         registry=registry, issuer=issuer_key, public_base_url=settings.public_base_url
     )

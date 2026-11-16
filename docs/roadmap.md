@@ -161,9 +161,10 @@ place; the application logic comes with the related phase.
 - [x] PayPal payments for DID-LLMs (`paypal`, PayPal Checkout): captured only while the quote
   is open, refunds and disputes watched for 30 days (0.51.0); live once DebitMyData's PayPal
   app is set
-- [ ] Google Connected Apps (Gemini, Search): sign-in for Google's console (a registration
-  endpoint for Google's return addresses), then the app in Google's console, once DebitMyData
-  has access to it
+- [x] Google Connected Apps (Gemini, Search): sign-in for Google's apps, a registration
+  endpoint for Google's return addresses only, client secrets, one refresh token per link,
+  the identity endpoint only (0.52.0)
+- [ ] The app in Google's console, once DebitMyData has access to it
 
 ## Phase 7 – x402 / USDC on Base
 

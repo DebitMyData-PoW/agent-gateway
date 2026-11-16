@@ -657,6 +657,21 @@ The last command prints the file. Google's servers call the MCP server and the t
 themselves: if linking fails, look at Cloudflare's Security Events for `api` and `auth`, as for
 Claude and ChatGPT above.
 
+Google's apps register (RFC 7591) before they sign anyone in, which is off until the settings
+switch it on (0.52.0; test it on staging first, [staging.md](staging.md) section 10). Switch it
+on when the app is being set up in Google's console:
+
+```bash
+echo "DMD_GW_OAUTH_REGISTRATION_ENABLED=true" | sudo tee -a /etc/dmd-gateway/gateway.env
+sudo systemctl restart dmd-gateway-api
+curl -s https://auth.debitmydata.io/.well-known/oauth-authorization-server | jq .registration_endpoint
+```
+
+The last command prints `"https://auth.debitmydata.io/register"`. In Google's console, the MCP
+server's address is the identity endpoint's,
+`https://api.debitmydata.io/agenticsuperhighway/identity`: Google's apps get tokens for it
+only.
+
 ## 15. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer

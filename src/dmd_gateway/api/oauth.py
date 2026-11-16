@@ -12,6 +12,9 @@ sign in to apps (MCP clients) with their DID-LLM in the browser (api/oauth_brows
                                                    and for apps (phase 2) the authorization
                                                    code (PKCE) and refresh token grants
     POST /challenge                                the message a wallet signs to sign in
+    POST /register                                 Google's apps register (RFC 7591), when
+                                                   oauth_registration_enabled is set
+                                                   (oauth/registration.py)
 
 Tokens are signed by this process's key (development, staging) or, in production, by the
 signer service, which checks every request itself first (signer/tokens.py), including the
@@ -47,7 +50,7 @@ from dmd_gateway.api.get_did_page import mcp_url
 from dmd_gateway.db.models import AgentIdentity, OAuthAssertion
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import ApiError, error_body
-from dmd_gateway.oauth import grants
+from dmd_gateway.oauth import grants, registration
 from dmd_gateway.oauth import wallet_sign_in as wallet
 from dmd_gateway.oauth.assertion import (
     ASSERTION_TYPE,
@@ -79,9 +82,20 @@ METADATA_PATH = "/.well-known/oauth-authorization-server"
 JWKS_PATH = "/.well-known/jwks.json"
 AUTHORIZE_PATH = "/authorize"
 REVOKE_PATH = "/revoke"
+REGISTER_PATH = registration.REGISTER_PATH
 AUTH_PATHS = frozenset(
-    {METADATA_PATH, JWKS_PATH, TOKEN_PATH, AUTHORIZE_PATH, REVOKE_PATH, wallet.CHALLENGE_PATH}
+    {
+        METADATA_PATH,
+        JWKS_PATH,
+        TOKEN_PATH,
+        AUTHORIZE_PATH,
+        REVOKE_PATH,
+        REGISTER_PATH,
+        wallet.CHALLENGE_PATH,
+    }
 )
+# How registered apps (Google's) authenticate, with their client secret.
+SECRET_METHODS = list(registration.AUTH_METHODS)
 # What the sign-in page needs at the auth host besides its own addresses.
 AUTH_ASSETS = frozenset({"/favicon.ico", "/favicon.png", "/logo.png", "/logo-dark.png"})
 AUTH_PREFIXES = (AUTHORIZE_PATH + "/", "/fonts/")
@@ -234,7 +248,20 @@ def metadata(settings: Settings, *, browser: bool = False) -> dict[str, Any]:
                 "authorization_response_iss_parameter_supported": True,
             }
         )
+        if settings.oauth_registration_enabled:
+            # Google's apps, which need a registration endpoint and a client secret.
+            document["registration_endpoint"] = f"{iss}{REGISTER_PATH}"
+            for name in (
+                "token_endpoint_auth_methods_supported",
+                "revocation_endpoint_auth_methods_supported",
+            ):
+                document[name] = [*document[name], *SECRET_METHODS]
     return document
+
+
+def registration_open(state: Any) -> bool:
+    """Google's apps can register: people can sign in to apps, and it is switched on."""
+    return browser_sign_in_open(state) and state.settings.oauth_registration_enabled
 
 
 def sign_in_open(state: Any) -> bool:
@@ -302,6 +329,48 @@ def authorization_server_metadata(request: Request) -> Response:
     )
 
 
+@router.post(REGISTER_PATH)
+async def register(request: Request) -> Response:
+    """RFC 7591 for Google's apps (oauth/registration.py): their metadata as JSON, answered
+    with their client_id and client_secret (201)."""
+    if not _enabled(request) or not registration_open(request.app.state):
+        return _not_found()
+    if request.headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+        return _oauth_error(400, "invalid_client_metadata", "send the metadata as application/json")
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > registration.MAX_BODY_BYTES:
+            return _oauth_error(400, "invalid_client_metadata", "the metadata is too large")
+    state = request.app.state
+
+    def work() -> dict[str, Any]:
+        metadata = registration.read_metadata(bytes(body))
+        now = datetime.now(UTC)
+        with transaction(state.session_factory) as session:
+            registered = registration.register(session, metadata, now)
+            session.flush()
+            audit.record_audit_event(
+                session,
+                action="oauth.client_registered",
+                subject_type="oauth_client",
+                subject_id=registered.row.client_id,
+                actor_type="system",
+                actor_id=None,
+                data={
+                    "client_name": registered.row.client_name,
+                    "redirect_uris": list(registered.row.redirect_uris),
+                },
+            )
+            return registered.answer()
+
+    try:
+        answer = await anyio.to_thread.run_sync(work)
+    except registration.RegistrationRefused as exc:
+        return _oauth_error(exc.status, exc.error, exc.description)
+    return JSONResponse(answer, status_code=201, headers=NO_STORE)
+
+
 @router.get(JWKS_PATH)
 def jwks(request: Request) -> Response:
     if not _enabled(request):
@@ -343,7 +412,8 @@ async def token(request: Request) -> Response:
         return _oauth_error(400, "invalid_request", fields)
     grant = fields.get("grant_type")
     if grant in ("authorization_code", "refresh_token") and browser_sign_in_open(request.app.state):
-        return await _app_grant(request.app.state, grant, fields)
+        authorization = request.headers.get("authorization")
+        return await _app_grant(request.app.state, grant, fields, authorization)
     if grant == wallet.GRANT_TYPE:
         return await anyio.to_thread.run_sync(_wallet_tokens, request.app.state, fields)
     if grant != "client_credentials":
@@ -644,13 +714,42 @@ def _wallet_tokens_once(state: Any, fields: dict[str, str]) -> Response:
 # --------------------------------------------------------------------------- apps (phase 2)
 
 
-async def _app_grant(state: Any, grant: str, fields: dict[str, str]) -> Response:
-    """The authorization code and refresh token grants, for an app a person signed in to."""
+def client_credentials(
+    fields: dict[str, str], authorization: str | None
+) -> tuple[str, str | None] | str:
+    """The app's client_id and, for a registered app, its secret: in the form
+    (``client_secret_post``) or the Authorization header (``client_secret_basic``); or what is
+    wrong with them."""
+    basic = registration.basic_credentials(authorization)
+    if basic is not None:
+        if fields.get("client_secret") is not None:
+            return "send the client secret one way only"
+        if fields.get("client_id") not in (None, basic[0]):
+            return "client_id is not the one in the Authorization header"
+        return basic
     client_id = fields.get("client_id", "")
     if not client_id:
-        return _oauth_error(400, "invalid_request", "send client_id")
+        return "send client_id"
+    return client_id, fields.get("client_secret")
+
+
+async def _app_grant(
+    state: Any, grant: str, fields: dict[str, str], authorization: str | None = None
+) -> Response:
+    """The authorization code and refresh token grants, for an app a person signed in to."""
+    credentials = client_credentials(fields, authorization)
+    if isinstance(credentials, str):
+        return _oauth_error(400, "invalid_request", credentials)
+    client_id, secret = credentials
     try:
         client: Client = await anyio.to_thread.run_sync(state.oauth_clients.get, client_id)
+        if client.registered:
+            # A registered app (Google's) always authenticates with its secret.
+            if not registration.secret_matches(client, secret):
+                return _oauth_error(401, "invalid_client", "the client secret is not this app's")
+            return await anyio.to_thread.run_sync(_app_tokens, state, grant, fields, client, None)
+        if secret:
+            return _oauth_error(401, "invalid_client", "this app has no client secret")
         assertion = fields.get("client_assertion")
         keys = None
         if assertion:
@@ -738,6 +837,8 @@ def _app_tokens_once(
                     scope=fields.get("scope"),
                     resource=fields.get("resource"),
                     now=now,
+                    # Google keeps one refresh token per link and expects it back unchanged.
+                    rotate=not client.registered,
                 )
                 family, identity_id, did = used.family_id, used.identity_id, used.did
                 resource, granted = used.resource, used.sign_in_grant
@@ -770,17 +871,21 @@ def _app_tokens_once(
             return _oauth_error(400, "invalid_grant", "the sign-in was refused: sign in again")
         except SignerUnavailable as exc:
             raise _SignerDown(str(exc)) from exc
-        refresh = browser.new_refresh_token(
-            session,
-            family_id=family,
-            client_id=client.client_id,
-            identity_id=identity_id,
-            did=did,
-            scope=scope,
-            resource=resource,
-            grant=sign_in_grant,
-            now=now,
-        )
+        if client.registered and grant == "refresh_token":
+            refresh = fields.get("refresh_token", "")  # the same one, its end moved on
+        else:
+            refresh = browser.new_refresh_token(
+                session,
+                family_id=family,
+                client_id=client.client_id,
+                identity_id=identity_id,
+                did=did,
+                scope=scope,
+                resource=resource,
+                grant=sign_in_grant,
+                now=now,
+            )
+        registration.mark_used(session, client, now)
         audit.record_audit_event(
             session,
             action="oauth.token_issued",

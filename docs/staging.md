@@ -613,6 +613,24 @@ DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoa
 
 It prints `Its identity endpoint says: signed in as did:web:...`.
 
+**Google's apps (Gemini), from 0.52.0.** Google cannot use a Client ID Metadata Document: its
+apps register first (RFC 7591), then authenticate with a client secret. Registration is off
+until the server's settings switch it on:
+
+```bash
+echo "DMD_GW_OAUTH_REGISTRATION_ENABLED=true" | sudo tee -a /etc/dmd-gateway/gateway.env
+sudo systemctl restart dmd-gateway-api
+curl -s https://staging-auth.debitmydata.io/.well-known/oauth-authorization-server | jq .registration_endpoint
+```
+
+The last command prints `"https://staging-auth.debitmydata.io/register"`. Only Google's own
+return addresses can register (`https://oauth-redirect.googleusercontent.com/r/...`, its
+sandbox and test hosts, `/r/` or `/a/`), at most 30 an hour; a registration that never signs
+anyone in is forgotten after 7 days. Their sign-ins are for the identity endpoint only, the
+person sees and signs "Sign in to: <the app's name> (oauth-redirect.googleusercontent.com)",
+and Google keeps one refresh token, which works until the sign-in's 30 days end. In Google's
+console, the MCP server's address is the identity endpoint's.
+
 ## 11. The handshake check (the runbook's Day 5)
 
 The discovery runbook ends with a check that an automated client completes, unsupervised,

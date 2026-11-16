@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     oauth_public_key_path: Path | None = None
     # How long an access token is valid.
     oauth_token_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    # Apps may register themselves at the auth host's /register (RFC 7591): Google's apps
+    # only, which cannot use a Client ID Metadata Document (oauth/registration.py).
+    oauth_registration_enabled: bool = False
     # DIDs left out of the daily report's figures (comma-separated), such as the company's
     # own test DIDs. Their payments are still checked like every other.
     report_excluded_dids: str = ""

@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.51.0). Technical owner: Tyler
+here is live on production and on staging (gateway 0.52.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -135,9 +135,9 @@ the DID-LLM is refused.
 For an app (an MCP client, a website, an agent's own app) whose users sign in with their
 DID-LLM. It is the flow MCP clients already use: ChatGPT and Claude connect with no setup.
 
-**Client registration: a Client ID Metadata Document only** (CIMD, the MCP specification's
-recommended way). There is no dynamic client registration (DCR) and nothing to ask us for:
-your `client_id` is the https address of a JSON file you publish:
+**Client registration: a Client ID Metadata Document** (CIMD, the MCP specification's
+recommended way). Nothing to ask us for: your `client_id` is the https address of a JSON file
+you publish (dynamic client registration is for Google's apps only, below):
 
 ```json
 {
@@ -180,6 +180,18 @@ your `client_id` is the https address of a JSON file you publish:
 A sign-in lasts **30 days** from the person's signature, then they sign again. It also ends
 when the DID-LLM is suspended or revoked, or when its owners change (section 7), with the same
 immediate effect on its access tokens.
+
+**Google's apps (Gemini, Search)**, from 0.52.0. Google cannot use a Client ID Metadata
+Document, so its apps register (RFC 7591) at `https://auth.debitmydata.io/register` (the
+`registration_endpoint` of the server's metadata, once switched on) with Google's own return
+addresses only: `https://oauth-redirect.googleusercontent.com/r/...` (and the
+`oauth-redirect-sandbox` and `oauth-redirect-test` hosts, `/r/` or `/a/`). The answer gives a
+`client_id` (an https address on Google's return host, so the person sees, and signs, that the
+app is on Google) and a `client_secret`, which the app sends at `/token` and `/revoke`
+(`client_secret_basic` or `client_secret_post`; kept as its SHA-256 only). These apps get
+tokens for the identity endpoint only, and their refresh token stays the same at each refresh,
+as Google expects; it ends with the sign-in, after 30 days, like every other: the person then
+links again.
 
 ## 6. The access token, the MCP server, and checking an agent
 

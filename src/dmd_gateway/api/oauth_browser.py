@@ -35,17 +35,19 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from pydantic import BaseModel, Field
 
 from dmd_gateway.api import brand
-from dmd_gateway.api.mcp_auth import main_resource, protected_resources
+from dmd_gateway.api.mcp_auth import identity_resource, main_resource, protected_resources
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
     REVOKE_PATH,
     browser_sign_in_open,
+    client_credentials,
     issuer,
     read_form,
 )
 from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import ApiError, error_body
+from dmd_gateway.oauth import registration
 from dmd_gateway.oauth.clients import LOOPBACK_HOSTS, ClientRejected, redirect_allowed
 from dmd_gateway.oauth.tokens import SCOPES, TokenRejected, verify_token
 from dmd_gateway.services import oauth_sign_in as flow
@@ -179,7 +181,12 @@ async def authorize(request: Request) -> Response:
     if unknown:
         return refuse("invalid_scope", f"unknown scope: {' '.join(unknown)}")
     resources = list(protected_resources(state.settings).values())
-    resource = params.get("resource", "").rstrip("/") or main_resource(state.settings)
+    default = main_resource(state.settings)
+    if client.registered:
+        # Google's apps: the identity endpoint only (read-only, nothing to buy or change).
+        resources = [identity_resource(state.settings)]
+        default = resources[0]
+    resource = params.get("resource", "").rstrip("/") or default
     if resource not in resources:
         return refuse("invalid_target", f"resource must be the MCP server: {', '.join(resources)}")
     authorization = AuthorizationRequest(
@@ -392,17 +399,35 @@ async def revoke(request: Request) -> Response:
     if not _enabled(request):
         return _not_found()
     fields = await read_form(request)
-    if isinstance(fields, str) or not fields.get("token") or not fields.get("client_id"):
+    credentials = (
+        ""
+        if isinstance(fields, str)
+        else client_credentials(fields, request.headers.get("authorization"))
+    )
+    if isinstance(fields, str) or not fields.get("token") or isinstance(credentials, str):
         return JSONResponse(
             status_code=400,
             content={"error": "invalid_request", "error_description": "send token and client_id"},
             headers={"Cache-Control": "no-store"},
         )
     state = request.app.state
+    client_id, secret = credentials
+    if registration.is_registered_id(client_id):
+        # A registered app (Google's) authenticates with its secret (RFC 7009 section 2.1).
+        try:
+            client = await anyio.to_thread.run_sync(state.oauth_clients.get, client_id)
+        except ClientRejected:
+            client = None
+        if client is None or not registration.secret_matches(client, secret):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "invalid_client", "error_description": "unknown app or secret"},
+                headers={"Cache-Control": "no-store", "WWW-Authenticate": 'Basic realm="revoke"'},
+            )
 
     def work() -> None:
         now = datetime.now(UTC)
-        token, client_id = fields["token"], fields["client_id"]
+        token = fields["token"]
         with transaction(state.session_factory) as session:
             if flow.revoke(session, token=token, client_id=client_id, now=now):
                 return
