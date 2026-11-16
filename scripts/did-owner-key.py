@@ -14,15 +14,17 @@
         DID-LLM, changing its listing or removing it): shows what you are signing, asks you to
         confirm, signs it with the owner key and sends the signature. Then click Continue.
 
-    python3 did-owner-key.py token  KEYS  did:web:...  [--show]
+    python3 did-owner-key.py token  KEYS  did:web:...  [--show] [--identity]
         Signs in as the DID-LLM at DebitMyData's authorization server (OAuth): signs a short
         request with the owner key and gets an access token for the Agentic Superhighway (MCP),
         valid for a few minutes. --show prints the token itself: keep it private, whoever holds
-        it can act as the DID-LLM until it expires.
+        it can act as the DID-LLM until it expires. --identity: a token for the Agentic
+        Superhighway's identity endpoint (.../agenticsuperhighway/identity) instead.
 
-    python3 did-owner-key.py whoami  KEYS  did:web:...
-        Signs in as above, then asks the Agentic Superhighway who it is signed in as: checks
-        the whole sign-in from start to end. The token is never printed.
+    python3 did-owner-key.py whoami  KEYS  did:web:...  [--identity]
+        Signs in as above, then asks the Agentic Superhighway (or with --identity, its identity
+        endpoint) who it is signed in as: checks the whole sign-in from start to end. The token
+        is never printed.
 
     python3 did-owner-key.py sign-in  KEYS  https://auth.debitmydata.io/authorize/dmd_signin_...
         Signs you in to an app (ChatGPT, Claude...) with the DID-LLM, from DebitMyData's sign-in
@@ -373,9 +375,10 @@ def directory(path: str, challenge_id: str, confirm=input) -> None:
     print("Back on the page, click Continue.")
 
 
-def sign_in(path: str, did: str) -> tuple[str, dict]:
-    """Signs in as the DID-LLM: the MCP server's address and the authorization server's answer
-    (its access_token, expires_in and scope)."""
+def sign_in(path: str, did: str, identity_endpoint: bool = False) -> tuple[str, dict]:
+    """Signs in as the DID-LLM: the MCP server's address (``identity_endpoint``: its identity
+    endpoint's) and the authorization server's answer (its access_token, expires_in and
+    scope)."""
     found = AGENT_DID.match(did)
     if not found:
         sys.exit("A DID-LLM looks like did:web:api.debitmydata.io:agents:... (its page says it).")
@@ -411,6 +414,8 @@ def sign_in(path: str, did: str) -> tuple[str, dict]:
     resource = discovery.get("mcp_url") if status == 200 else None
     if not resource:
         sys.exit(f"{API} does not give its MCP server's address (HTTP {status}).")
+    if identity_endpoint:
+        resource = str(resource).rstrip("/") + "/identity"
     form = {
         "grant_type": "client_credentials",
         "client_assertion_type": ASSERTION_TYPE,
@@ -458,8 +463,8 @@ def mcp_call(url: str, access_token: str, tool: str) -> tuple[int, dict]:
         sys.exit(f"Could not reach {url}: {error.reason}")
 
 
-def token(path: str, did: str, show: bool = False) -> None:
-    resource, answer = sign_in(path, did)
+def token(path: str, did: str, show: bool = False, identity_endpoint: bool = False) -> None:
+    resource, answer = sign_in(path, did, identity_endpoint)
     minutes = max(1, int(answer.get("expires_in", 0)) // 60)
     print(f"Signed in as {did}.")
     print(f"Access token for {resource} (scope: {answer.get('scope')}), valid {minutes} minutes.")
@@ -470,9 +475,9 @@ def token(path: str, did: str, show: bool = False) -> None:
         print("Add --show to print the token itself.")
 
 
-def whoami(path: str, did: str) -> None:
+def whoami(path: str, did: str, identity_endpoint: bool = False) -> None:
     """Signs in, then asks the MCP server who it is signed in as: the whole sign-in, checked."""
-    resource, answer = sign_in(path, did)
+    resource, answer = sign_in(path, did, identity_endpoint)
     print(f"Signed in as {did}; asking {resource} who that is...")
     status, reply = mcp_call(resource, answer["access_token"], "dmd_whoami")
     if status != 200:
@@ -486,7 +491,8 @@ def whoami(path: str, did: str) -> None:
     identity = content.get("identity") or {}
     if content.get("signed_in_as") != did:
         sys.exit(f"The MCP server says this is {content.get('signed_in_as')}, not {did}.")
-    print(f"The Agentic Superhighway says: signed in as {did}")
+    where = "Its identity endpoint" if identity_endpoint else "The Agentic Superhighway"
+    print(f"{where} says: signed in as {did}")
     print(f"  status: {identity.get('status')}, name: {identity.get('display_name')}")
     print(f"  scope: {content.get('scope')}, token valid until {content.get('token_expires_at')}")
 
@@ -666,6 +672,8 @@ def revoke(path: str, did: str, confirm=input) -> None:
     print("Revoked: the DID-LLM, its credential and its entitlements no longer work.")
 
 
+OPTIONAL_ID = ([], ["--identity"])
+
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "new":
         new(sys.argv[2])
@@ -673,10 +681,20 @@ if __name__ == "__main__":
         prove(sys.argv[2], sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "directory":
         directory(sys.argv[2], sys.argv[3])
-    elif len(sys.argv) in (4, 5) and sys.argv[1] == "token" and sys.argv[4:] in ([], ["--show"]):
-        token(sys.argv[2], sys.argv[3], show=sys.argv[4:] == ["--show"])
-    elif len(sys.argv) == 4 and sys.argv[1] == "whoami":
-        whoami(sys.argv[2], sys.argv[3])
+    elif (
+        len(sys.argv) in (4, 5, 6)
+        and sys.argv[1] == "token"
+        and set(sys.argv[4:]) <= {"--show", "--identity"}
+        and len(set(sys.argv[4:])) == len(sys.argv[4:])
+    ):
+        token(
+            sys.argv[2],
+            sys.argv[3],
+            show="--show" in sys.argv,
+            identity_endpoint="--identity" in sys.argv,
+        )
+    elif sys.argv[1:2] == ["whoami"] and len(sys.argv) in (4, 5) and sys.argv[4:] in OPTIONAL_ID:
+        whoami(sys.argv[2], sys.argv[3], identity_endpoint=sys.argv[4:] == ["--identity"])
     elif len(sys.argv) == 4 and sys.argv[1] == "sign-in":
         approve(sys.argv[2], sys.argv[3])
     elif len(sys.argv) in (5, 6) and sys.argv[1] == "change-owner":

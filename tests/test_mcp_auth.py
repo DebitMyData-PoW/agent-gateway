@@ -319,6 +319,8 @@ def test_the_owner_key_tool_signs_in_end_to_end(
     out = capsys.readouterr().out
     assert f"The Agentic Superhighway says: signed in as {did}" in out
     assert "status: active" in out and "scope: did:read" in out
+    tool.whoami(str(key_file), did, identity_endpoint=True)
+    assert f"Its identity endpoint says: signed in as {did}" in capsys.readouterr().out
 
     tool.token(str(key_file), did)
     assert "valid 10 minutes" in capsys.readouterr().out

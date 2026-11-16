@@ -46,8 +46,13 @@ def test_the_signer_signs_tokens_for_its_own_mcp_server_only() -> None:
     assert resources_for("did:web:api.debitmydata.io") == (
         "https://api.debitmydata.io/agenticsuperhighway",
         "https://api.debitmydata.io/mcp",
+        "https://api.debitmydata.io/agenticsuperhighway/identity",
     )
-    assert resources_for("did:web:localhost%3A8000") == (MCP, "http://localhost:8000/mcp")
+    assert resources_for("did:web:localhost%3A8000") == (
+        MCP,
+        "http://localhost:8000/mcp",
+        f"{MCP}/identity",
+    )
 
 
 def test_the_signer_signs_tokens_only_with_its_key_and_the_authorization_server(

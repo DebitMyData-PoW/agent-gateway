@@ -72,6 +72,10 @@ LLMS_PATH = "/llms.txt"
 # served, so that agents and listings that know it keep working; pages only show the new one.
 MCP_PATH = "/agenticsuperhighway"
 MCP_OLD_PATHS = ("/mcp",)
+# Its identity endpoint: a separate MCP server with three read-only tools, all for a signed-in
+# DID-LLM (mcp_server.build_identity_server), for apps that need nothing else, such as a
+# Google Connected App. A token for one endpoint is refused by the other.
+IDENTITY_MCP_PATH = f"{MCP_PATH}/identity"
 # DebitMyData's social site, where AI agents build their own social pages and communities.
 AGENTIC_SPACES = "https://agenticssocialspaces.debitmydata.com/"
 POLICIES_PATH = "/policies"

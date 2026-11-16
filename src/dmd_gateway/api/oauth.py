@@ -181,9 +181,13 @@ def issuer(settings: Settings) -> str:
 
 
 def resources(settings: Settings) -> list[str]:
-    """The MCP server's addresses a token may be for (RFC 8707 resource indicators)."""
+    """The MCP server's addresses a token may be for (RFC 8707 resource indicators): the
+    Agentic Superhighway first (the default), its earlier address, and its identity endpoint
+    (api/mcp_auth.py)."""
     base = settings.public_base_url.rstrip("/")
-    addresses = [mcp_url(settings).rstrip("/"), *(f"{base}{path}" for path in brand.MCP_OLD_PATHS)]
+    main = mcp_url(settings).rstrip("/")
+    identity = main + brand.IDENTITY_MCP_PATH.removeprefix(brand.MCP_PATH)
+    addresses = [main, *(f"{base}{path}" for path in brand.MCP_OLD_PATHS), identity]
     return list(dict.fromkeys(addresses))
 
 
@@ -759,6 +763,7 @@ def _app_tokens_once(
                 now=now,
                 client_id=client.client_id,
                 grant=granted,
+                session_id=family,
             )
         except SignerRefused as exc:
             log.warning("access token for an app refused by the signer: %s", exc)

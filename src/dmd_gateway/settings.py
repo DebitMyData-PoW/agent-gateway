@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # page at its root, as an app people add to their home screen, e.g. id.debitmydata.io.
     # Empty: no app; the page is at /get-did as before. DIDs keep public_base_url's host.
     app_host: str = ""
+    # Google Connected Apps (Gemini, Search): the domain-verification file Google's console
+    # gives, served at /.well-known/google-connected-apps (api/site_files.py). Unset: 404.
+    google_connected_apps_file: Path | None = None
     # OAuth (oauth/, phase 1): the authorization server's host name, e.g. auth.debitmydata.io.
     # Agents get access tokens there by signing with their DID-LLM's key. Empty: no OAuth.
     auth_host: str = ""
@@ -150,6 +153,7 @@ class Settings(BaseSettings):
         "issuer_public_key",
         "monitor_fallback_state_path",
         "backup_status_path",
+        "google_connected_apps_file",
         mode="before",
     )
     @classmethod

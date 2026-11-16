@@ -573,7 +573,8 @@ How it goes:
    once; a copied one used again ends the whole sign-in. A sign-in lasts **30 days** from the
    person's signature (the token signer's grant for it, kept by the gateway): then the app
    asks the person to sign in again. Suspending the DID-LLM ends it too. The app can end it
-   itself (`/revoke`).
+   itself (`/revoke`, with the refresh token or an access token): its access tokens stop at
+   once, not when they expire (they carry their sign-in, `sid`, checked on every request).
 4. With the token, the app's MCP requests are the person's: `dmd_whoami` answers who. Called
    without one, `dmd_whoami` is answered with HTTP 401 and a `WWW-Authenticate` challenge
    (`scope="did:read"`) before the MCP server runs: what makes apps such as Claude show their
@@ -592,6 +593,20 @@ on the page it opens with a staging DID-LLM of your own (wallet or key), and run
 again: it answers with your DID-LLM. If the app says it cannot reach the server or sign in,
 look at Cloudflare's Security Events for `staging-api` and `staging-auth`: the apps' own
 servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do.
+
+**The identity endpoint**, `https://staging-api.debitmydata.io/agenticsuperhighway/identity`,
+works the same way with its three tools only (`dmd_whoami`, `dmd_get_profile`,
+`dmd_verify_agent`), every one needing the sign-in. Add that address as the MCP server in the
+app instead and run `dmd_get_profile`: the app opens the sign-in at once (every tool needs it),
+and its token is for that endpoint only. An agent asks for one with
+`resource=https://staging-api.debitmydata.io/agenticsuperhighway/identity`; with the
+owner-key tool, `whoami` (or `token`) with `--identity`:
+
+```bash
+DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:... --identity
+```
+
+It prints `Its identity endpoint says: signed in as did:web:...`.
 
 ## 11. The handshake check (the runbook's Day 5)
 

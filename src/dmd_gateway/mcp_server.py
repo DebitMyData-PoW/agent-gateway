@@ -12,6 +12,13 @@ themselves and send only signatures.
 Transport: Streamable HTTP, stateless, JSON responses (nothing to keep between requests, so
 several gateway instances can serve it). Requests are checked against the allowed host
 names to block DNS-rebinding attacks.
+
+A second, separate MCP server, the identity endpoint (``/agenticsuperhighway/identity``,
+``build_identity_server``), has only three read-only tools, all for a signed-in DID-LLM:
+dmd_whoami, dmd_get_profile and dmd_verify_agent. Nothing else exists there, so nothing can be
+bought, registered or changed through it, for apps that need nothing more (such as a Google
+Connected App). It is served while agents can sign in, and tokens are issued for one endpoint
+or the other (api/mcp_auth.py).
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI
+from mcp.server.auth.provider import AccessToken
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
@@ -36,7 +44,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dmd_gateway import __version__
 from dmd_gateway.api import get_did_page, mcp_auth, superhighway_page
-from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
+from dmd_gateway.api.brand import IDENTITY_MCP_PATH, MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.api.oauth import issuer, sign_in_open
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
@@ -1016,14 +1024,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                     'error="insufficient_scope", scope="did:read", '
                     'error_description="This needs the did:read scope"',
                 )
-            identity_id = (token.claims or {})["identity_id"]
-            return {
-                "signed_in_as": token.subject,
-                "scope": " ".join(token.scopes),
-                "token_expires_at": datetime.fromtimestamp(token.expires_at or 0, UTC).isoformat(),
-                "identity": await api.call("GET", f"/v1/dids/{identity_id}"),
-                "entitlements": await api.call("GET", f"/v1/entitlements/{identity_id}"),
-            }
+            return await _whoami(api, token)
 
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)
     async def dmd_marketplace_provider_requirements() -> dict[str, Any]:
@@ -1038,6 +1039,127 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
             ),
             "policy_urls": discovery["policy_urls"],
         }
+
+    clean_descriptions(server._tool_manager.list_tools())  # noqa: SLF001 (no public setter)
+    return server
+
+
+async def _whoami(api: GatewayApi, token: AccessToken) -> dict[str, Any]:
+    """dmd_whoami's answer, on either endpoint."""
+    identity_id = (token.claims or {})["identity_id"]
+    return {
+        "signed_in_as": token.subject,
+        "scope": " ".join(token.scopes),
+        "token_expires_at": datetime.fromtimestamp(token.expires_at or 0, UTC).isoformat(),
+        "identity": await api.call("GET", f"/v1/dids/{identity_id}"),
+        "entitlements": await api.call("GET", f"/v1/entitlements/{identity_id}"),
+    }
+
+
+IDENTITY_INSTRUCTIONS = """\
+DebitMyData DID-LLM identity: read-only, for a signed-in DID-LLM. Every tool needs an access \
+token from DebitMyData's authorization server with the did:read scope, issued for this \
+endpoint: a person signs in with their DID-LLM in the browser (OAuth authorization code), an \
+agent with a request signed by its own key (OAuth client credentials).
+
+- dmd_whoami: the DID-LLM this request is signed in as.
+- dmd_get_profile: that DID-LLM's profile: its record, owners, credentials, entitlements and \
+directory listing.
+- dmd_verify_agent: check another DID-LLM: issued by DebitMyData and active, its credential \
+signed by DebitMyData, its owners and entitlements.
+
+Nothing here buys, registers or changes anything. DebitMyData never asks for private keys, \
+seed phrases or wallet access."""
+
+SIGNED_IN_ONLY = {"securitySchemes": [{"type": "oauth2", "scopes": ["did:read"]}]}
+
+
+def _owners(identity: dict[str, Any]) -> list[dict[str, str]]:
+    found = []
+    if identity.get("controller_public_key"):
+        found.append({"type": "key", "value": identity["controller_public_key"]})
+    if identity.get("controller_wallet"):
+        found.append({"type": "wallet", "value": identity["controller_wallet"]})
+    return found
+
+
+def build_identity_server(app: FastAPI) -> MCPServer:
+    """The identity endpoint's MCP server: three read-only tools, each for a signed-in DID-LLM
+    (the endpoint refuses a request without a valid token for it before any tool runs; the
+    tools check again)."""
+    api = GatewayApi(app)
+    server: MCPServer = MCPServer(
+        name="debitmydata-identity",
+        title="DebitMyData DID-LLM identity",
+        description="A signed-in DID-LLM's identity and profile, and checking other DID-LLMs.",
+        instructions=IDENTITY_INSTRUCTIONS,
+        version=__version__,
+    )
+
+    def signed_in() -> AccessToken:
+        token = mcp_auth.signed_in()
+        if token is None or "did:read" not in token.scopes:
+            raise ToolError(
+                json.dumps(
+                    {
+                        "error": {
+                            "code": "sign_in_required",
+                            "message": "Sign in with your DID-LLM (an access token with the "
+                            "did:read scope, for this endpoint).",
+                        }
+                    }
+                )
+            )
+        return token
+
+    @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
+    async def dmd_whoami() -> dict[str, Any]:
+        """The DID-LLM this request is signed in as, with its record and entitlements."""
+        return await _whoami(api, signed_in())
+
+    @server.tool(title="My DID-LLM profile", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
+    async def dmd_get_profile() -> dict[str, Any]:
+        """The signed-in DID-LLM's profile: its DID and identity ID (both stable: never
+        reassigned, and kept when its owners change), name, participant type and status, its
+        owner key and/or wallet, its credentials, its entitlements and its directory listing
+        (null when it is not listed)."""
+        identity_id = (signed_in().claims or {})["identity_id"]
+        identity = await api.call("GET", f"/v1/dids/{identity_id}")
+        entitlements = await api.call("GET", f"/v1/entitlements/{identity_id}")
+        try:
+            listing = await api.call("GET", f"/v1/directory/{identity_id}")
+        except ToolError as exc:
+            if '"http_status": 404' not in str(exc):
+                raise
+            listing = None
+        return {
+            "did": identity["did"],
+            "identity_id": identity["identity_id"],
+            "display_name": identity["display_name"],
+            "participant_type": identity["participant_type"],
+            "status": identity["status"],
+            "created_at": identity["created_at"],
+            "owners": _owners(identity),
+            "owner_changed_at": identity["owner_changed_at"],
+            "did_document_url": identity["did_document_url"],
+            "credentials": identity["credentials"],
+            "entitlements": entitlements["entitlements"],
+            "directory_listing": listing,
+        }
+
+    @server.tool(title="Verify an agent", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
+    async def dmd_verify_agent(
+        did: Annotated[
+            str, Field(description="The DID-LLM to check (did:web:api.debitmydata.io:agents:...)")
+        ],
+    ) -> dict[str, Any]:
+        """Check a DID-LLM's public record: issued by DebitMyData and active, its credential
+        signed by DebitMyData, its owner key or wallet, its entitlements. verified is true only
+        when every check passed; reasons says what failed."""
+        signed_in()
+        result = await api.call("POST", "/v1/dids/verifications", json_body={"did": did})
+        result.pop("challenge", None)  # proving control is on the Agentic Superhighway
+        return result
 
     clean_descriptions(server._tool_manager.list_tools())  # noqa: SLF001 (no public setter)
     return server
@@ -1110,4 +1232,23 @@ def mount_mcp(app: FastAPI, settings: Settings) -> MCPServer:
         else:
             routes.append(route)
     app.router.routes.extend(routes)
+    return server
+
+
+def mount_identity(app: FastAPI, settings: Settings) -> MCPServer | None:
+    """Serve the identity endpoint, while agents can sign in (every tool there needs it).
+    Run ``server.session_manager.run()`` in the app's lifespan too."""
+    if not sign_in_open(app.state):
+        return None
+    server = build_identity_server(app)
+    mcp_app: Starlette = server.streamable_http_app(
+        streamable_http_path=IDENTITY_MCP_PATH,
+        stateless_http=True,
+        json_response=True,
+        transport_security=transport_security(settings),
+    )
+    for route in mcp_app.routes:
+        if isinstance(route, Route) and route.path == IDENTITY_MCP_PATH:
+            endpoint = mcp_auth.BearerTokens(route.endpoint, settings, identity=True)
+            app.router.routes.append(Route(IDENTITY_MCP_PATH, endpoint=endpoint))
     return server

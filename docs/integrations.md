@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.48.1). Technical owner: Tyler
+here is live on production and on staging (gateway 0.49.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -11,6 +11,7 @@ here is live on production and on staging (gateway 0.48.1). Technical owner: Tyl
 | --- | --- | --- |
 | REST API and its docs | <https://api.debitmydata.io/docs/advanced> (OpenAPI: `/openapi.json`) | <https://staging-api.debitmydata.io/docs/advanced>; `/docs` is the guided test page |
 | MCP server (Streamable HTTP) | <https://api.debitmydata.io/agenticsuperhighway> | <https://staging-api.debitmydata.io/agenticsuperhighway> |
+| Identity endpoint (MCP, sign-in only, section 6) | <https://api.debitmydata.io/agenticsuperhighway/identity> | <https://staging-api.debitmydata.io/agenticsuperhighway/identity> |
 | OAuth authorization server | <https://auth.debitmydata.io> | <https://staging-auth.debitmydata.io> |
 | Get a DID-LLM, for people | <https://id.debitmydata.io/> | <https://staging-api.debitmydata.io/get-did> |
 | Issuer DID | `did:web:api.debitmydata.io` | `did:web:staging-api.debitmydata.io` |
@@ -28,6 +29,8 @@ Discovery files, on the API's address:
 | `/.well-known/mcp`, `/.well-known/mcp/server-card.json` | the MCP server card: tools, sign-in (`oauth2.1`, `wallet-signature`) |
 | `/.well-known/api-catalog` | the API catalog (RFC 9727) |
 | `/.well-known/oauth-protected-resource/agenticsuperhighway` | which authorization server issues tokens for the MCP server (RFC 9728) |
+| `/.well-known/oauth-protected-resource/agenticsuperhighway/identity` | the same, for the identity endpoint |
+| `/.well-known/google-connected-apps` | Google Connected Apps' domain verification, once Google's console gives the file |
 | `/.well-known/oauth-authorization-server` (on the `auth` address) | the authorization server's metadata (RFC 8414) |
 | `/v1/discovery`, `/v1/payment-options` | services, prices and the payment options enabled right now |
 
@@ -168,10 +171,14 @@ your `client_id` is the https address of a JSON file you publish:
    and `code_verifier`: an **access token** (10 minutes) and a **refresh token**.
 5. `grant_type=refresh_token` gives a new pair. Each refresh token works **once**; a used one
    presented again ends the whole sign-in (it was copied).
-6. `POST /revoke` (RFC 7009, `token` and `client_id`) ends the sign-in from your side.
+6. `POST /revoke` (RFC 7009, `token` and `client_id`) ends the sign-in from your side, with
+   its refresh token or any of its access tokens. Every token of that sign-in stops **at
+   once**: access tokens carry their sign-in (`sid`), and the MCP server checks it on every
+   request.
 
 A sign-in lasts **30 days** from the person's signature, then they sign again. It also ends
-when the DID-LLM is suspended or revoked, or when its owners change (section 7).
+when the DID-LLM is suspended or revoked, or when its owners change (section 7), with the same
+immediate effect on its access tokens.
 
 ## 6. The access token, the MCP server, and checking an agent
 
@@ -183,14 +190,15 @@ when the DID-LLM is suspended or revoked, or when its owners change (section 7).
 | `iss` | `https://auth.debitmydata.io` |
 | `sub` | the DID-LLM |
 | `client_id` | the DID-LLM (agent sign-in) or your CIMD address (app sign-in) |
-| `aud` | the MCP server, `https://api.debitmydata.io/agenticsuperhighway` |
+| `aud` | the endpoint it is for (the `resource` asked): `https://api.debitmydata.io/agenticsuperhighway` (the default) or its identity endpoint, `.../agenticsuperhighway/identity` |
 | `scope` | `did:read` (the only scope today: read your own DID-LLM's records) |
 | `iat`, `exp` | 10 minutes |
 | `jti` | random |
+| `sid` | app sign-ins only: the sign-in it belongs to |
 
-It is a **bearer** token, bound to its audience: only the MCP server accepts it, and it checks
-everything on every request (signature, issuer, audience, expiry, and the DID-LLM still active
-with the same owners). So a call needs the token only, **not a fresh signature**; a fresh
+It is a **bearer** token, bound to its audience: only that endpoint accepts it, and it checks
+everything on every request (signature, issuer, audience, expiry, the DID-LLM still active with
+the same owners, and for an app, its sign-in not ended). So a call needs the token only, **not a fresh signature**; a fresh
 signature is needed at each sign-in and for each owner action (section 3). Without a token every
 tool works except `dmd_whoami`, which answers 401 with a `WWW-Authenticate: Bearer` header
 naming the resource metadata and `scope="did:read"`: what makes MCP clients show their Connect
@@ -198,8 +206,24 @@ button. A wrong or expired token is answered 401 `invalid_token`.
 
 `dmd_whoami` says which DID-LLM the request is signed in as, with its status. Your own service
 can check our tokens the same way: verify against the JWKS, and require our `iss`, the `aud`
-you expect, and `exp`. Today only the MCP server is an audience; tell Tyler if your service
-needs to be one.
+you expect, and `exp`. Today only the two MCP endpoints are audiences; tell Tyler if your
+service needs to be one.
+
+**The identity endpoint** (`/agenticsuperhighway/identity`, since 0.49.0) is a separate MCP
+server for apps that only need the signed-in DID-LLM, such as a Google Connected App. It has
+three read-only tools, and nothing else exists there: nothing can be bought, registered or
+changed through it.
+
+| Tool | Answers |
+| --- | --- |
+| `dmd_whoami` | the DID-LLM the request is signed in as, its record and entitlements |
+| `dmd_get_profile` | the signed-in DID-LLM's profile: `did`, `identity_id`, `display_name`, `participant_type`, `status`, `created_at`, `owners` (`key` and/or `wallet`), `owner_changed_at`, `did_document_url`, `credentials`, `entitlements`, `directory_listing` (null when not listed) |
+| `dmd_verify_agent` | another DID-LLM's public record (`did` only): the same answer as below, without the challenge |
+
+Every tool needs a `did:read` token issued for this endpoint (`resource=` its address): without
+one, the endpoint answers 401 with its `WWW-Authenticate` before any tool runs, and a token for
+the Agentic Superhighway is refused there (and the other way round). `identity_id` and the DID
+never change and are never reused: an owner change keeps both.
 
 **Checking an agent you meet** (any service, no sign-in): `POST /v1/dids/verifications`, or
 the MCP tool `dmd_verify_agent`.

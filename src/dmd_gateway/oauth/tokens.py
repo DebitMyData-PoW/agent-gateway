@@ -6,6 +6,9 @@
     scope      what it may do, space-separated
     iat, exp   valid for ``oauth_token_ttl_seconds`` (10 minutes by default)
     jti        random
+    sid        an app's tokens only: the sign-in they belong to (its refresh-token family).
+               Ending the sign-in (``/revoke``, a replayed refresh token) ends them at once:
+               the MCP server checks the sign-in on every request (api/mcp_auth.py)
 
 A token is only accepted by the resource it was issued for (``aud``); the MCP server checks
 every claim on every request (api/mcp_auth.py).
@@ -62,9 +65,11 @@ def issue_token(
     ttl_seconds: int,
     now: datetime,
     client_id: str | None = None,
+    session_id: str | None = None,
 ) -> IssuedToken:
     """An access token for ``did``. ``client_id``: the app the DID-LLM's owner signed in to
-    (browser sign-in); an agent signing in with its own key is its own client."""
+    (browser sign-in), and ``session_id`` that sign-in; an agent signing in with its own key is
+    its own client, with no sign-in to end."""
     issued = int(now.timestamp())
     jti = secrets.token_urlsafe(18)
     scope = " ".join(scopes)
@@ -78,6 +83,8 @@ def issue_token(
         "exp": issued + ttl_seconds,
         "jti": jti,
     }
+    if session_id is not None:
+        claims["sid"] = session_id
     headers = {"typ": TOKEN_TYPE, "kid": public_jwk(key.public_key())["kid"]}
     token = jwt.encode(claims, key, algorithm="RS256", headers=headers)
     return IssuedToken(access_token=token, expires_in=ttl_seconds, scope=scope, jti=jti)

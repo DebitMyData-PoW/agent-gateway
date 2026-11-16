@@ -47,7 +47,7 @@ from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import ApiError, error_body
 from dmd_gateway.oauth.clients import LOOPBACK_HOSTS, ClientRejected, redirect_allowed
-from dmd_gateway.oauth.tokens import SCOPES
+from dmd_gateway.oauth.tokens import SCOPES, TokenRejected, verify_token
 from dmd_gateway.services import oauth_sign_in as flow
 from dmd_gateway.services.oauth_sign_in import CHALLENGE, AuthorizationRequest
 
@@ -371,6 +371,22 @@ def sign_in_deny(request: Request, sign_in_id: str) -> Response:
 # --------------------------------------------------------------------------- revoke
 
 
+def _sign_in_of(state: Any, token: str, client_id: str, now: datetime) -> str | None:
+    """The sign-in an app's access token belongs to, if it is one of ours for that app."""
+    try:
+        claims = verify_token(
+            token,
+            state.token_signer.public_keys,
+            issuer=issuer(state.settings),
+            audiences=list(protected_resources(state.settings).values()),
+            now=now,
+        )
+    except TokenRejected:
+        return None  # not ours, or expired: nothing to end (RFC 7009, section 2.2)
+    sid = claims.get("sid")
+    return str(sid) if sid and claims.get("client_id") == client_id else None
+
+
 @router.post(REVOKE_PATH)
 async def revoke(request: Request) -> Response:
     if not _enabled(request):
@@ -385,10 +401,17 @@ async def revoke(request: Request) -> Response:
     state = request.app.state
 
     def work() -> None:
+        now = datetime.now(UTC)
+        token, client_id = fields["token"], fields["client_id"]
         with transaction(state.session_factory) as session:
-            flow.revoke(
-                session, token=fields["token"], client_id=fields["client_id"], now=datetime.now(UTC)
-            )
+            if flow.revoke(session, token=token, client_id=client_id, now=now):
+                return
+            # An access token: ends the whole sign-in it belongs to, so that its other tokens
+            # stop too (RFC 7009 lets the server choose; partial revocation would leave the
+            # refresh token able to get new ones).
+            sign_in = _sign_in_of(state, token, client_id, now)
+            if sign_in is not None:
+                flow.revoke_family(session, sign_in, now)
 
     await anyio.to_thread.run_sync(work)
     return JSONResponse({}, headers={"Cache-Control": "no-store"})

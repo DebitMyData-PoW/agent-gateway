@@ -472,13 +472,17 @@ def use_refresh_token(
     return row, " ".join(asked)
 
 
-def revoke(session: Session, *, token: str, client_id: str, now: datetime) -> None:
-    """RFC 7009: ends the sign-in the refresh token belongs to (an unknown token is no error)."""
+def revoke(session: Session, *, token: str, client_id: str, now: datetime) -> bool:
+    """RFC 7009: ends the sign-in the refresh token belongs to, with its access tokens (they
+    carry it, ``sid``). False if it is not one of this app's refresh tokens (an unknown token
+    is no error)."""
     row = session.scalar(
         select(OAuthRefreshToken).where(OAuthRefreshToken.token_hash == digest(token))
     )
-    if row is not None and row.client_id == client_id:
-        revoke_family(session, row.family_id, now)
+    if row is None or row.client_id != client_id:
+        return False
+    revoke_family(session, row.family_id, now)
+    return True
 
 
 def describe(sign_in: OAuthSignIn, identity: AgentIdentity | None = None) -> dict[str, Any]:

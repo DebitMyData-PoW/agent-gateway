@@ -137,6 +137,8 @@ DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py toke
   DMD_GATEWAY_API=https://staging-api.debitmydata.io python3 did-owner-key.py whoami ~/did-keys did:web:staging-api.debitmydata.io:agents:...
   ```
 
+- `--identity` at the end (of `token` or `whoami`) signs in for the Agentic Superhighway's
+  identity endpoint (`.../agenticsuperhighway/identity`) instead: its tokens are its own.
 - Signing in to an **app** (ChatGPT, Claude...) happens on DebitMyData's sign-in page: for
   a DID-LLM owned by a key, the page shows a command with its own address, to run as is:
 

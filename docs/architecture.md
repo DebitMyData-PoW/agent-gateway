@@ -410,6 +410,16 @@ error. Requests whose `Host` or `Origin` is not the gateway's own address are re
 (DNS-rebinding protection); `DMD_GW_MCP_ALLOWED_HOSTS` adds host names when needed. Agents
 sign challenges themselves: no tool takes or returns a private key.
 
+**The identity endpoint**, `/agenticsuperhighway/identity`, is a second MCP server
+(`build_identity_server`), served while sign-in is open, for apps that need only the
+signed-in DID-LLM (a Google Connected App, for one). It has three read-only tools and nothing
+else, so nothing can be bought, registered or changed through it: `dmd_whoami`,
+`dmd_get_profile` (`GET /v1/dids/{id}`, `/v1/entitlements/{id}` and `/v1/directory/{id}` for
+the signed-in DID-LLM) and `dmd_verify_agent` with the DID only (no challenge). Every request
+that calls a tool needs a `did:read` token issued for this endpoint (`aud`); without one the
+endpoint answers 401 with its `WWW-Authenticate` before any tool runs, and the two endpoints
+refuse each other's tokens (`api/mcp_auth.py`).
+
 ## Identity issuance rule
 
 An identity is issued only when **all** of these hold:

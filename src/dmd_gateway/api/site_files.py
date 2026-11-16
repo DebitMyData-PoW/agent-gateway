@@ -8,6 +8,9 @@ names (the API's and the app's, hosts.py):
     GET /.well-known/api-catalog  RFC 9727: the APIs here, as a linkset (RFC 9264): the REST API
                                   (its OpenAPI description, its docs, llms.txt, its status) and
                                   the MCP server (its Server Card)
+    GET /.well-known/google-connected-apps
+                                  Google Connected Apps' domain verification: the file Google's
+                                  console gives, as it is (google_connected_apps_file; 404 unset)
 
 The staging server is a test server: its robots.txt asks crawlers not to list it, and it has
 no sitemap. Agents and the API are not affected (robots.txt is for crawlers).
@@ -110,6 +113,24 @@ def api_catalog(settings: Settings) -> dict[str, Any]:
             },
         ]
     }
+
+
+GOOGLE_VERIFICATION_PATH = "/.well-known/google-connected-apps"
+MAX_VERIFICATION_BYTES = 64 * 1024
+
+
+@router.get(GOOGLE_VERIFICATION_PATH)
+def google_connected_apps(request: Request) -> Response:
+    """Google's challenge file, read at each request (replacing it needs no restart). Answered
+    200 with no redirect, as Google's check requires."""
+    path = request.app.state.settings.google_connected_apps_file
+    try:
+        if path is None or path.stat().st_size > MAX_VERIFICATION_BYTES:
+            return Response(status_code=404)
+        body = path.read_bytes()
+    except OSError:
+        return Response(status_code=404)
+    return Response(body, media_type="application/json", headers={"Cache-Control": "no-store"})
 
 
 @router.get(ROBOTS_PATH)

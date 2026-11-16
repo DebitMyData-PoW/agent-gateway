@@ -36,6 +36,7 @@ in to that app in the last 30 days), nor a token for another service.
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -46,7 +47,7 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from dmd_gateway.api.brand import MCP_OLD_PATHS, MCP_PATH
+from dmd_gateway.api.brand import IDENTITY_MCP_PATH, MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.db.models import AgentIdentity
 from dmd_gateway.oauth import grants
 from dmd_gateway.oauth import wallet_sign_in as wallet
@@ -60,6 +61,7 @@ from dmd_gateway.oauth.grants import GrantRefused
 from dmd_gateway.oauth.keys import public_jwk
 from dmd_gateway.oauth.tokens import SCOPES, TOKEN_PATH, issue_token
 
+SID = re.compile(r"[a-z][a-z0-9_]{1,40}_[0-9A-HJKMNP-TV-Z]{26}")
 MIN_TTL_SECONDS = 60
 MAX_TTL_SECONDS = 3600
 # More signed requests than this within their few minutes of validity is not normal use.
@@ -72,10 +74,12 @@ class TokenRefused(RuntimeError):
 
 def resources_for(issuer_did: str) -> tuple[str, ...]:
     """The MCP server's addresses at the issuer's host (did:web:api.debitmydata.io ->
-    https://api.debitmydata.io/agenticsuperhighway and .../mcp)."""
+    https://api.debitmydata.io/agenticsuperhighway, .../mcp and its identity endpoint
+    .../agenticsuperhighway/identity)."""
     host = issuer_did.removeprefix("did:web:").split(":", 1)[0].replace("%3A", ":")
     scheme = "http" if host.startswith(("localhost", "127.0.0.1")) else "https"
-    return tuple(f"{scheme}://{host}{path}" for path in (MCP_PATH, *MCP_OLD_PATHS))
+    paths = (MCP_PATH, *MCP_OLD_PATHS, IDENTITY_MCP_PATH)
+    return tuple(f"{scheme}://{host}{path}" for path in paths)
 
 
 @dataclass
@@ -236,6 +240,11 @@ class TokenIssuer:
         token, client_id = request.get("grant"), request.get("client_id")
         if not isinstance(token, str) or not isinstance(client_id, str):
             raise TokenRefused("a token request for an app needs its grant and client_id")
+        # The sign-in the token belongs to, written into it so that ending the sign-in ends
+        # the token at once (the MCP server checks it). Only ever a restriction.
+        sid = request.get("sid")
+        if sid is not None and not (isinstance(sid, str) and SID.fullmatch(sid)):
+            raise TokenRefused("sid must be a sign-in ID")
         try:
             grant = grants.verify_grant(
                 token, (self.key.public_key(),), issuer=self.issuer, now=now
@@ -257,6 +266,7 @@ class TokenIssuer:
             ttl_seconds=ttl,
             now=now,
             client_id=client_id,
+            session_id=sid,
         )
         answer = {
             "ok": True,

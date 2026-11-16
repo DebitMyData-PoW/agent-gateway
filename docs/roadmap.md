@@ -150,6 +150,13 @@ place; the application logic comes with the related phase.
 - [x] `dmd_open_checkout` gives the purchase step ready to fill in (`next_step`) (0.46.0)
 - [x] An Agent Skill to install: `/.well-known/agent-skills/index.json` and the
   `debitmydata-did-llm` SKILL.md, written from llms.txt (0.47.0)
+- [x] The identity endpoint (`/agenticsuperhighway/identity`): `dmd_whoami`,
+  `dmd_get_profile` and `dmd_verify_agent` only, each for a signed-in DID-LLM, with tokens of
+  its own; ending an app's sign-in ends its access tokens at once; Google's domain-verification
+  file (0.49.0)
+- [ ] Google Connected Apps (Gemini, Search): sign-in for Google's console (a registration
+  endpoint for Google's return addresses), then the app in Google's console, once DebitMyData
+  has access to it
 
 ## Phase 7 – x402 / USDC on Base
 

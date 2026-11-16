@@ -389,6 +389,11 @@ def test_token_signs_in_with_the_owner_key(
     tool.token(str(path), AGENT_DID, show=True)
     assert "eyJ.the-token.sig" in capsys.readouterr().out
 
+    # --identity: a token for the identity endpoint instead.
+    tool.token(str(path), AGENT_DID, identity_endpoint=True)
+    assert f"Access token for {MCP}/identity" in capsys.readouterr().out
+    assert seen[-1][1]["resource"] == f"{MCP}/identity"
+
 
 def test_token_signs_nothing_when_something_is_off(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]

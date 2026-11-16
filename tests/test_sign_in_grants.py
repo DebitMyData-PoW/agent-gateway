@@ -295,6 +295,7 @@ def test_people_sign_in_to_apps_through_the_signer(
         now=datetime.now(UTC),
     )
     assert claims["sub"] == did and claims["client_id"] == APP
+    assert claims["sid"].startswith("dmd_oauthfam_")  # the sign-in, written by the signer
     me = whoami(client, tokens["access_token"]).json()["result"]["structuredContent"]
     assert me["signed_in_as"] == did
 

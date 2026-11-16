@@ -10,7 +10,7 @@ import functools
 import logging
 import re
 from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import replace
 from datetime import timedelta
 from typing import Any
@@ -56,7 +56,7 @@ from dmd_gateway.identity.did import issuer_did
 from dmd_gateway.identity.issuer import Issuer, load_issuer_key
 from dmd_gateway.identity.names import brand_owners
 from dmd_gateway.identity.wallets import WalletVerifier, controller_networks
-from dmd_gateway.mcp_server import mount_mcp
+from dmd_gateway.mcp_server import mount_identity, mount_mcp
 from dmd_gateway.oauth.clients import ClientDirectory
 from dmd_gateway.oauth.keys import load_private_key, load_public_key
 from dmd_gateway.observability import CorrelationIdMiddleware, configure_logging
@@ -128,7 +128,10 @@ def create_app(
                 }
             },
         )
-        async with app.state.mcp.session_manager.run():
+        async with AsyncExitStack() as servers:
+            for server in (app.state.mcp, app.state.identity_mcp):
+                if server is not None:
+                    await servers.enter_async_context(server.session_manager.run())
             yield
         engine.dispose()
 
@@ -209,6 +212,7 @@ def create_app(
         _add_how_to_guide(app)
     app.state.docs_steps = functools.cache(lambda: panel_steps(app))
     app.state.mcp = mount_mcp(app, settings)
+    app.state.identity_mcp = mount_identity(app, settings)  # the identity endpoint
     return app
 
 

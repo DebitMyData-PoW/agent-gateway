@@ -14,9 +14,10 @@ from fastapi.responses import PlainTextResponse
 from dmd_gateway import __version__
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import did_price, mcp_url, page_url, price_text
-from dmd_gateway.api.mcp_auth import main_resource, metadata_url
+from dmd_gateway.api.mcp_auth import identity_resource, main_resource, metadata_url
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
+    REVOKE_PATH,
     TOKEN_PATH,
     browser_sign_in_open,
     issuer,
@@ -68,6 +69,7 @@ def _sign_in(request: Request) -> str:
     settings = state.settings
     auth = issuer(settings)
     resource = main_resource(settings)
+    identity = identity_resource(settings)
     return f"""
 ## Signing in with your DID-LLM (OAuth, optional)
 
@@ -96,6 +98,12 @@ instead (wallet-signature):
 
 The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP server's:
 `{metadata_url(resource)}`.
+
+**The identity endpoint**, `{identity}`, is a separate MCP server with three read-only tools,
+every one for a signed-in DID-LLM: `dmd_whoami`, `dmd_get_profile` (your DID-LLM's record,
+owners, credentials, entitlements and listing) and `dmd_verify_agent` (another DID-LLM's
+public record). Nothing there buys, registers or changes anything. Its tokens are its own: ask
+for them with `resource={identity}` (metadata: `{metadata_url(identity)}`).
 {_apps(state, auth)}"""
 
 
@@ -109,7 +117,8 @@ authorization code flow with PKCE (S256): `{auth}{AUTHORIZE_PATH}`, with your Cl
 Metadata Document's https URL as `client_id` (no registration step), and the `resource` above.
 The person signs one message with their DID-LLM's wallet or key; you get a code, then tokens
 (with a refresh token) at `{auth}{TOKEN_PATH}`. A tool that needs a signed-in person answers
-with `_meta["mcp/www_authenticate"]`.
+with `_meta["mcp/www_authenticate"]`. Ending the sign-in (`{auth}{REVOKE_PATH}`, with its
+refresh token or an access token) ends its access tokens at once.
 """
 
 

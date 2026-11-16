@@ -206,16 +206,20 @@ class RemoteTokenSigner:
         client_id: str | None = None,
         grant: str | None = None,
         wallet: tuple[str, str] | None = None,
+        session_id: str | None = None,
     ) -> IssuedToken:
         """An access token for an agent (``assertion``: its signed request; or ``wallet``: the
         message from /challenge and its wallet's signature) or for an app a person signed in to
-        (``grant`` and the app's ``client_id``). ``SignerRefused`` if the signer's own checks
+        (``grant`` and the app's ``client_id``, with ``session_id``, its sign-in, so that ending
+        the sign-in ends its tokens). ``SignerRefused`` if the signer's own checks
         fail, ``SignerUnavailable`` if it cannot be reached or returns a token that does not
         hold up."""
         target = {"resource": audience, "scope": " ".join(scopes), "ttl_seconds": ttl_seconds}
         request: dict[str, Any] = {"op": "token", "assertion": assertion, **target}
         if grant is not None:
             request = {"op": "token", "grant": grant, "client_id": client_id, **target}
+            if session_id is not None:
+                request["sid"] = session_id
         elif wallet is not None:
             message, signature = wallet
             request = {
@@ -240,6 +244,7 @@ class RemoteTokenSigner:
             claims["sub"] != did
             or claims["scope"] != " ".join(scopes)
             or claims.get("client_id") != (client_id or did)
+            or claims.get("sid") != (session_id if grant is not None else None)
         ):
             raise SignerUnavailable("credential signer returned a token for something else")
         return IssuedToken(

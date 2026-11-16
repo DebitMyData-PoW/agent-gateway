@@ -622,6 +622,35 @@ it signs or refuses (`journalctl -u dmd-gateway-signer`). To close sign-in again
 agents and apps. **Never copy the token key** off the server or into a chat; a new key (delete
 it and run the update) only means agents and people sign in again.
 
+**The identity endpoint** (`https://api.debitmydata.io/agenticsuperhighway/identity`, since
+0.49.0) answers while sign-in is open, with nothing to set: a separate MCP server with three
+read-only tools (`dmd_whoami`, `dmd_get_profile`, `dmd_verify_agent`), each for a signed-in
+DID-LLM, with tokens of its own ([integrations.md](integrations.md#6-the-access-token-the-mcp-server-and-checking-an-agent)).
+To check it after the update:
+
+```bash
+curl -s https://api.debitmydata.io/.well-known/oauth-protected-resource/agenticsuperhighway/identity | jq .resource
+```
+
+It prints the endpoint's address. Ending an app's sign-in (`/revoke`) now ends its access
+tokens at once too.
+
+**Google Connected Apps (Gemini, Search):** Google checks that the MCP server's site is ours
+with a file its console gives (once DebitMyData has access to the console). Put it on the
+server and name it in the settings; the gateway serves it at
+`https://api.debitmydata.io/.well-known/google-connected-apps`, read at each request:
+
+```bash
+sudo install -m 644 -o root -g root google-connected-apps.json /etc/dmd-gateway/google-connected-apps.json
+echo "DMD_GW_GOOGLE_CONNECTED_APPS_FILE=/etc/dmd-gateway/google-connected-apps.json" | sudo tee -a /etc/dmd-gateway/gateway.env
+sudo systemctl restart dmd-gateway-api
+curl -s https://api.debitmydata.io/.well-known/google-connected-apps
+```
+
+The last command prints the file. Google's servers call the MCP server and the token endpoint
+themselves: if linking fails, look at Cloudflare's Security Events for `api` and `auth`, as for
+Claude and ChatGPT above.
+
 ## 15. Go-live checklist
 
 - [ ] Steps 1 to 5 done; the readiness check, the issuer DID document and the policies answer

@@ -4,8 +4,13 @@ MCP authorization).
 
     GET /.well-known/oauth-protected-resource/agenticsuperhighway   (and .../mcp, its first
                                                                      address)
+    GET /.well-known/oauth-protected-resource/agenticsuperhighway/identity
 
-says which authorization server issues its tokens. Both answer only while agents can sign in.
+says which authorization server issues its tokens. They answer only while agents can sign in.
+
+The identity endpoint (``/agenticsuperhighway/identity``) is a separate resource with three
+read-only tools, every one of them for a signed-in DID-LLM: a token is issued for one endpoint
+or the other (its ``aud``), and each endpoint refuses the other's.
 
 Signing in is optional. Discovering DebitMyData, quotes, payments and registering a DID-LLM
 need no token: the DID-LLM is the login, so a token cannot be needed to get one. A request
@@ -20,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -30,14 +36,14 @@ from fastapi.responses import JSONResponse, Response
 from mcp.server.auth.middleware.auth_context import auth_context_var, get_access_token
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from mcp.server.auth.provider import AccessToken
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from starlette.authentication import AuthCredentials
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from dmd_gateway.api import brand
 from dmd_gateway.api.get_did_page import mcp_url
 from dmd_gateway.api.oauth import PUBLIC, issuer, sign_in_open
-from dmd_gateway.db.models import AgentIdentity
+from dmd_gateway.db.models import AgentIdentity, OAuthRefreshToken
 from dmd_gateway.db.session import transaction
 from dmd_gateway.errors import error_body
 from dmd_gateway.oauth.grants import before_owner_change
@@ -49,10 +55,12 @@ router = APIRouter(include_in_schema=False)
 
 METADATA_PREFIX = "/.well-known/oauth-protected-resource"
 RESOURCE_NAME = "DebitMyData Agentic Superhighway"
+IDENTITY_RESOURCE_NAME = "DebitMyData DID-LLM identity"
 
 
-def protected_resources(settings: Settings) -> dict[str, str]:
-    """Each MCP address (its path) and its resource identifier, the exact URL a token is for."""
+def main_resources(settings: Settings) -> dict[str, str]:
+    """The Agentic Superhighway's addresses (each path and its resource identifier, the exact
+    URL a token is for): its address, and its earlier one."""
     main = main_resource(settings)
     base = settings.public_base_url.rstrip("/")
     found = {urlsplit(main).path: main}
@@ -61,9 +69,21 @@ def protected_resources(settings: Settings) -> dict[str, str]:
     return found
 
 
+def protected_resources(settings: Settings) -> dict[str, str]:
+    """Every MCP address a token may be for: the Agentic Superhighway's and the identity
+    endpoint's."""
+    identity = identity_resource(settings)
+    return {**main_resources(settings), urlsplit(identity).path: identity}
+
+
 def main_resource(settings: Settings) -> str:
     """The MCP server's resource identifier: its address, as agents connect to it."""
     return mcp_url(settings).rstrip("/")
+
+
+def identity_resource(settings: Settings) -> str:
+    """The identity endpoint's resource identifier: the MCP server's address + /identity."""
+    return main_resource(settings) + brand.IDENTITY_MCP_PATH.removeprefix(brand.MCP_PATH)
 
 
 def metadata_url(resource: str) -> str:
@@ -74,12 +94,13 @@ def metadata_url(resource: str) -> str:
 
 
 def resource_metadata(settings: Settings, resource: str) -> dict[str, Any]:
+    identity = resource == identity_resource(settings)
     return {
         "resource": resource,
         "authorization_servers": [issuer(settings)],
         "scopes_supported": list(SCOPES),
         "bearer_methods_supported": ["header"],
-        "resource_name": RESOURCE_NAME,
+        "resource_name": IDENTITY_RESOURCE_NAME if identity else RESOURCE_NAME,
         "resource_documentation": f"{settings.public_base_url.rstrip('/')}{brand.LLMS_PATH}",
     }
 
@@ -95,7 +116,7 @@ def _metadata_route(path: str) -> Any:
     return metadata
 
 
-for _path in (brand.MCP_PATH, *brand.MCP_OLD_PATHS):
+for _path in (brand.MCP_PATH, *brand.MCP_OLD_PATHS, brand.IDENTITY_MCP_PATH):
     router.add_api_route(
         f"{METADATA_PREFIX}{_path}", _metadata_route(_path), methods=["GET", "HEAD"]
     )
@@ -116,16 +137,22 @@ class Refused(Exception):
         self.detail = detail or description
 
 
-def check_token(state: Any, token: str, now: datetime) -> AccessToken:
-    """The signed-in agent, if ``token`` is a valid access token for this MCP server and its
-    DID-LLM is active. Runs in a worker thread (it reads the database)."""
+def check_token(
+    state: Any, token: str, now: datetime, audiences: Sequence[str] | None = None
+) -> AccessToken:
+    """The signed-in agent, if ``token`` is a valid access token for this endpoint
+    (``audiences``: the Agentic Superhighway's addresses unless given), its DID-LLM is active
+    and, for an app, its sign-in has not ended. Runs in a worker thread (it reads the
+    database)."""
     settings: Settings = state.settings
+    if audiences is None:
+        audiences = list(main_resources(settings).values())
     try:
         claims = verify_token(
             token,
             state.token_signer.public_keys,
             issuer=issuer(settings),
-            audiences=list(protected_resources(settings).values()),
+            audiences=list(audiences),
             now=now,
         )
     except TokenRejected as exc:
@@ -145,6 +172,18 @@ def check_token(state: Any, token: str, now: datetime) -> AccessToken:
             raise Refused(
                 "This DID-LLM's owners changed after this sign-in: sign in again",
                 f"token issued before the owner change of {did}",
+            )
+        sid = claims.get("sid")
+        if sid is not None and not session.scalar(
+            select(
+                exists().where(
+                    OAuthRefreshToken.family_id == str(sid),
+                    OAuthRefreshToken.revoked_at.is_(None),
+                )
+            )
+        ):
+            raise Refused(
+                "This sign-in was ended: sign in again", f"token of the ended sign-in {sid}"
             )
         identity_id = identity.id
     return AccessToken(
@@ -198,8 +237,9 @@ PROTECTED_TOOLS = frozenset({"dmd_whoami"})
 MAX_PEEK_BYTES = 1024 * 1024
 
 
-def _calls_protected_tool(body: bytes) -> str | None:
-    """The scope a JSON-RPC request needs, if it calls a protected tool."""
+def _calls_protected_tool(body: bytes, *, every_tool: bool = False) -> str | None:
+    """The scope a JSON-RPC request needs, if it calls a protected tool (``every_tool``: any
+    tool)."""
     try:
         parsed = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -209,7 +249,7 @@ def _calls_protected_tool(body: bytes) -> str | None:
             isinstance(message, dict)
             and message.get("method") == "tools/call"
             and isinstance(message.get("params"), dict)
-            and message["params"].get("name") in PROTECTED_TOOLS
+            and (every_tool or message["params"].get("name") in PROTECTED_TOOLS)
         ):
             return "did:read"
     return None
@@ -243,11 +283,14 @@ async def _peek(receive: Receive) -> tuple[bytes, Receive]:
 class BearerTokens:
     """The MCP endpoint, for anyone; with the agent signed in when the request carries a valid
     access token (``Authorization: Bearer ...``), refused with 401 when it carries an invalid
-    one, or none for a tool that needs it. While signing in is not open, tokens are ignored."""
+    one, or none for a tool that needs it. While signing in is not open, tokens are ignored.
 
-    def __init__(self, endpoint: ASGIApp, settings: Settings) -> None:
+    ``identity``: the identity endpoint, where every tool needs a token for that endpoint."""
+
+    def __init__(self, endpoint: ASGIApp, settings: Settings, *, identity: bool = False) -> None:
         self.endpoint = endpoint
         self.settings = settings
+        self.identity = identity
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or not sign_in_open(scope["app"].state):
@@ -255,12 +298,17 @@ class BearerTokens:
             return
         state = scope["app"].state
         header = _authorization(scope)
-        resources = protected_resources(self.settings)
-        resource = resources.get(scope["path"], main_resource(self.settings))
+        if self.identity:
+            resource = identity_resource(self.settings)
+            audiences = [resource]
+        else:
+            resources = main_resources(self.settings)
+            resource = resources.get(scope["path"], main_resource(self.settings))
+            audiences = list(resources.values())
         if header is None:
             if scope.get("method") == "POST":
                 body, receive = await _peek(receive)
-                needed = _calls_protected_tool(body)
+                needed = _calls_protected_tool(body, every_tool=self.identity)
                 if needed:
                     await _refuse(send, resource, "Sign in with your DID-LLM", scope=needed)
                     return
@@ -272,7 +320,9 @@ class BearerTokens:
             await _refuse(send, resource, "Send the access token as: Authorization: Bearer <token>")
             return
         try:
-            access = await anyio.to_thread.run_sync(check_token, state, token, datetime.now(UTC))
+            access = await anyio.to_thread.run_sync(
+                check_token, state, token, datetime.now(UTC), audiences
+            )
         except Refused as refused:
             log.info("mcp access token refused: %s", refused.detail)
             await _refuse(send, resource, refused.description)
