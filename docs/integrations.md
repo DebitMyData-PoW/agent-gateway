@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.49.0). Technical owner: Tyler
+here is live on production and on staging (gateway 0.49.1). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -220,9 +220,11 @@ changed through it.
 | `dmd_get_profile` | the signed-in DID-LLM's profile: `did`, `identity_id`, `display_name`, `participant_type`, `status`, `created_at`, `owners` (`key` and/or `wallet`), `owner_changed_at`, `did_document_url`, `credentials`, `entitlements`, `directory_listing` (null when not listed) |
 | `dmd_verify_agent` | another DID-LLM's public record (`did` only): the same answer as below, without the challenge |
 
-Every tool needs a `did:read` token issued for this endpoint (`resource=` its address): without
-one, the endpoint answers 401 with its `WWW-Authenticate` before any tool runs, and a token for
-the Agentic Superhighway is refused there (and the other way round). `identity_id` and the DID
+Every request needs a `did:read` token issued for this endpoint (`resource=` its address),
+from the first one (`initialize`, `tools/list`): without one, the endpoint answers 401 with
+`WWW-Authenticate: Bearer resource_metadata="...", scope="did:read"`, which is what makes an
+MCP client sign in as it connects. A token for the Agentic Superhighway is refused there (and
+the other way round). `identity_id` and the DID
 never change and are never reused: an owner change keeps both.
 
 **Checking an agent you meet** (any service, no sign-in): `POST /v1/dids/verifications`, or

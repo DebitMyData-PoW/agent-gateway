@@ -416,9 +416,10 @@ signed-in DID-LLM (a Google Connected App, for one). It has three read-only tool
 else, so nothing can be bought, registered or changed through it: `dmd_whoami`,
 `dmd_get_profile` (`GET /v1/dids/{id}`, `/v1/entitlements/{id}` and `/v1/directory/{id}` for
 the signed-in DID-LLM) and `dmd_verify_agent` with the DID only (no challenge). Every request
-that calls a tool needs a `did:read` token issued for this endpoint (`aud`); without one the
-endpoint answers 401 with its `WWW-Authenticate` before any tool runs, and the two endpoints
-refuse each other's tokens (`api/mcp_auth.py`).
+there needs a `did:read` token issued for this endpoint (`aud`), from `initialize` on: without
+one the endpoint answers 401 with its `WWW-Authenticate` (the plain MCP authorization flow:
+the client signs in as it connects), and the two endpoints refuse each other's tokens
+(`api/mcp_auth.py`).
 
 ## Identity issuance rule
 

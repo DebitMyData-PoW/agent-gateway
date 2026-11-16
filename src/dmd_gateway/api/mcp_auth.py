@@ -9,8 +9,9 @@ MCP authorization).
 says which authorization server issues its tokens. They answer only while agents can sign in.
 
 The identity endpoint (``/agenticsuperhighway/identity``) is a separate resource with three
-read-only tools, every one of them for a signed-in DID-LLM: a token is issued for one endpoint
-or the other (its ``aud``), and each endpoint refuses the other's.
+read-only tools, every one of them for a signed-in DID-LLM: every request there needs a token
+(401 otherwise, from the first one), a token is issued for one endpoint or the other (its
+``aud``), and each endpoint refuses the other's.
 
 Signing in is optional. Discovering DebitMyData, quotes, payments and registering a DID-LLM
 need no token: the DID-LLM is the login, so a token cannot be needed to get one. A request
@@ -209,11 +210,16 @@ def _authorization(scope: Scope) -> str | None:
     return None
 
 
-async def _refuse(send: Send, resource: str, description: str, scope: str = "") -> None:
+async def _refuse(
+    send: Send, resource: str, description: str, scope: str = "", *, missing: bool = False
+) -> None:
+    """401 with the challenge that starts the sign-in. ``missing``: the request carried no
+    token at all, so the challenge names no error (RFC 6750, section 3.1), as MCP clients
+    expect when they connect: only where to sign in (resource_metadata) and the scope."""
     body = json.dumps({"error": "invalid_token", "error_description": description}).encode()
-    challenge = (
-        f'Bearer error="invalid_token", error_description="{description}", '
-        f'resource_metadata="{metadata_url(resource)}"' + (f', scope="{scope}"' if scope else "")
+    error = "" if missing else f'error="invalid_token", error_description="{description}", '
+    challenge = f'Bearer {error}resource_metadata="{metadata_url(resource)}"' + (
+        f', scope="{scope}"' if scope else ""
     )
     await send(
         {
@@ -237,9 +243,8 @@ PROTECTED_TOOLS = frozenset({"dmd_whoami"})
 MAX_PEEK_BYTES = 1024 * 1024
 
 
-def _calls_protected_tool(body: bytes, *, every_tool: bool = False) -> str | None:
-    """The scope a JSON-RPC request needs, if it calls a protected tool (``every_tool``: any
-    tool)."""
+def _calls_protected_tool(body: bytes) -> str | None:
+    """The scope a JSON-RPC request needs, if it calls a protected tool."""
     try:
         parsed = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -249,7 +254,7 @@ def _calls_protected_tool(body: bytes, *, every_tool: bool = False) -> str | Non
             isinstance(message, dict)
             and message.get("method") == "tools/call"
             and isinstance(message.get("params"), dict)
-            and (every_tool or message["params"].get("name") in PROTECTED_TOOLS)
+            and message["params"].get("name") in PROTECTED_TOOLS
         ):
             return "did:read"
     return None
@@ -285,7 +290,10 @@ class BearerTokens:
     access token (``Authorization: Bearer ...``), refused with 401 when it carries an invalid
     one, or none for a tool that needs it. While signing in is not open, tokens are ignored.
 
-    ``identity``: the identity endpoint, where every tool needs a token for that endpoint."""
+    ``identity``: the identity endpoint, where every request needs a token for that endpoint
+    (initialize and tools/list too): the plain MCP authorization flow, where a client that gets
+    a 401 when it connects signs in (Grok, Google and other clients that do not act on a tool's
+    sign-in hint). CORS preflights (OPTIONS) carry no token and pass."""
 
     def __init__(self, endpoint: ASGIApp, settings: Settings, *, identity: bool = False) -> None:
         self.endpoint = endpoint
@@ -306,11 +314,18 @@ class BearerTokens:
             resource = resources.get(scope["path"], main_resource(self.settings))
             audiences = list(resources.values())
         if header is None:
+            if self.identity and scope.get("method") != "OPTIONS":
+                await _refuse(
+                    send, resource, "Sign in with your DID-LLM", scope="did:read", missing=True
+                )
+                return
             if scope.get("method") == "POST":
                 body, receive = await _peek(receive)
-                needed = _calls_protected_tool(body, every_tool=self.identity)
+                needed = _calls_protected_tool(body)
                 if needed:
-                    await _refuse(send, resource, "Sign in with your DID-LLM", scope=needed)
+                    await _refuse(
+                        send, resource, "Sign in with your DID-LLM", scope=needed, missing=True
+                    )
                     return
             await self.endpoint(scope, receive, send)
             return

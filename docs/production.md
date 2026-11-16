@@ -560,7 +560,11 @@ The update (step 8) makes the key once and sets everything up, **with sign-in cl
 opens only once `DMD_GW_AUTH_HOST` is set, after Preska's go:
 
 1. **Cloudflare, DNS:** add a record `auth`, the same type and target as `api`, **Proxied**
-   (orange cloud).
+   (orange cloud), and add `auth.debitmydata.io` to the WAF Skip rule that `api` has
+   (Security → WAF → Custom rules: add `or (http.host eq "auth.debitmydata.io")` to its
+   expression and keep everything it already has; it skips Browser Integrity Check, Security
+   Level and Super Bot Fight Mode). Apps' servers fetch the metadata and call `/token`
+   themselves: without it Cloudflare answers them `403`, error **1010**.
 2. **Certificate:** the origin certificate must cover `auth.debitmydata.io`:
 
    ```bash

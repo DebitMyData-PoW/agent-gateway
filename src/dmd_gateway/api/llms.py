@@ -100,10 +100,11 @@ The server's metadata: `{auth}/.well-known/oauth-authorization-server`; the MCP 
 `{metadata_url(resource)}`.
 
 **The identity endpoint**, `{identity}`, is a separate MCP server with three read-only tools,
-every one for a signed-in DID-LLM: `dmd_whoami`, `dmd_get_profile` (your DID-LLM's record,
-owners, credentials, entitlements and listing) and `dmd_verify_agent` (another DID-LLM's
-public record). Nothing there buys, registers or changes anything. Its tokens are its own: ask
-for them with `resource={identity}` (metadata: `{metadata_url(identity)}`).
+for a signed-in DID-LLM only (every request there needs the token, from the first):
+`dmd_whoami`, `dmd_get_profile` (your DID-LLM's record, owners, credentials, entitlements and
+listing) and `dmd_verify_agent` (another DID-LLM's public record). Nothing there buys,
+registers or changes anything. Its tokens are its own: ask for them with
+`resource={identity}` (metadata: `{metadata_url(identity)}`).
 {_apps(state, auth)}"""
 
 

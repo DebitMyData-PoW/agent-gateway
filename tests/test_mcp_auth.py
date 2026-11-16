@@ -159,7 +159,7 @@ def test_without_a_token_everything_works_as_before(gateway: TestClient) -> None
         refused = gateway.post("/agenticsuperhighway", json=body, headers=HOST)
         assert refused.status_code == 401, refused.text
         challenge = refused.headers["www-authenticate"]
-        assert challenge.startswith('Bearer error="invalid_token"')
+        assert challenge.startswith("Bearer resource_metadata=")  # no token: no error named
         assert f'resource_metadata="http://localhost:8000{METADATA}"' in challenge
         assert challenge.endswith('scope="did:read"')
 

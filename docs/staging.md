@@ -30,8 +30,11 @@ active. The setup never changes SSH or other existing UFW rules.
 3. SSL/TLS → Origin Server → **Create Certificate** for `staging-api.debitmydata.io`
    (15 years). Keep the certificate and its private key; they go on the server only.
 4. Security → WAF → Custom rules: a **Skip** rule for
-   `(http.host eq "staging-api.debitmydata.io")` that skips Browser Integrity Check,
-   Security Level and Super Bot Fight Mode, placed first. Agents are not browsers.
+   `(http.host in {"staging-api.debitmydata.io" "staging-auth.debitmydata.io"})` that skips
+   Browser Integrity Check, Security Level and Super Bot Fight Mode, placed first. Agents, and
+   the servers of the apps that sign them in, are not browsers: without it Cloudflare answers
+   them `403`, error **1010**. If a Skip rule already covers other hosts of the site, add these
+   two hosts to it with **or** and keep what it already has.
 5. Security → Bots: **Bot Fight Mode off** (it cannot be skipped by a rule).
 
 **DebitMyData Core v1.3.5:** copy `debitmydatad` and `debitmydata-cli` to `/usr/local/bin/` on
@@ -490,7 +493,9 @@ by the gateway only, never printed) and sets `DMD_GW_OAUTH_KEY_PATH`. The server
 its address is set too:
 
 1. **Cloudflare, DNS:** add a record `staging-auth`, the same type and target as
-   `staging-api`, **Proxied** (orange cloud).
+   `staging-api`, **Proxied** (orange cloud), and add `staging-auth.debitmydata.io` to the
+   Skip rule (section 1, Cloudflare, step 4): apps' servers fetch its metadata and call
+   `/token` themselves, and Browser Integrity Check refuses them (error 1010).
 2. **Certificate:** the origin certificate must cover the name. A certificate for
    `*.debitmydata.io` already does; check:
 
@@ -597,8 +602,8 @@ servers (Anthropic's `160.79.104.0/21`, OpenAI's) must get through, as agents do
 **The identity endpoint**, `https://staging-api.debitmydata.io/agenticsuperhighway/identity`,
 works the same way with its three tools only (`dmd_whoami`, `dmd_get_profile`,
 `dmd_verify_agent`), every one needing the sign-in. Add that address as the MCP server in the
-app instead and run `dmd_get_profile`: the app opens the sign-in at once (every tool needs it),
-and its token is for that endpoint only. An agent asks for one with
+app instead: the app opens the sign-in as it connects (every request there needs it, from the
+first), and its token is for that endpoint only. An agent asks for one with
 `resource=https://staging-api.debitmydata.io/agenticsuperhighway/identity`; with the
 owner-key tool, `whoami` (or `token`) with `--identity`:
 

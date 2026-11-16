@@ -68,7 +68,32 @@ def test_only_three_read_only_tools_and_its_own_metadata(gateway: TestClient) ->
     llms = gateway.get("/llms.txt").text
     assert f"resource={IDENTITY}" in llms and "ends its access tokens at once" in llms
 
-    listed = rpc(gateway, "tools/list", {}, path=IDENTITY_PATH)
+    # Every request needs a token, from the first one: the 401 that starts the client's
+    # sign-in (initialize, tools/list, any tool, even one that does not exist here).
+    for method, params in (
+        (
+            "initialize",
+            {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "t", "version": "1"},
+            },
+        ),
+        ("tools/list", {}),
+        *(("tools/call", {"name": name, "arguments": {}}) for name in (*TOOLS, "dmd_register_did")),
+    ):
+        refused = rpc(gateway, method, params, path=IDENTITY_PATH)
+        assert refused.status_code == 401, (method, params, refused.text)
+        challenge = refused.headers["www-authenticate"]
+        assert challenge == (
+            f'Bearer resource_metadata="http://localhost:8000{METADATA}", scope="did:read"'
+        )
+    assert gateway.get(IDENTITY_PATH, headers=HOST).status_code == 401
+    assert gateway.options(IDENTITY_PATH, headers=HOST).status_code != 401  # CORS preflight
+
+    did = issue(gateway)["did"]
+    identity = sign_in(gateway, did, resource=IDENTITY)
+    listed = rpc(gateway, "tools/list", {}, identity, path=IDENTITY_PATH)
     assert listed.status_code == 200, listed.text
     tools = listed.json()["result"]["tools"]
     assert {tool["name"] for tool in tools} == TOOLS
@@ -77,14 +102,6 @@ def test_only_three_read_only_tools_and_its_own_metadata(gateway: TestClient) ->
         assert tool["_meta"]["securitySchemes"] == [{"type": "oauth2", "scopes": ["did:read"]}]
     verify = next(tool for tool in tools if tool["name"] == "dmd_verify_agent")
     assert set(verify["inputSchema"]["properties"]) == {"did"}  # nothing to sign here
-
-    # Every tool needs a token, before anything runs: the 401 that starts the app's sign-in.
-    for name in (*TOOLS, "dmd_register_did"):
-        refused = call(gateway, name, None)
-        assert refused.status_code == 401, (name, refused.text)
-        challenge = refused.headers["www-authenticate"]
-        assert f'resource_metadata="http://localhost:8000{METADATA}"' in challenge
-        assert 'scope="did:read"' in challenge
 
 
 def test_tokens_are_for_one_endpoint_or_the_other(gateway: TestClient) -> None:  # noqa: F811
