@@ -316,6 +316,8 @@
   const SHOW_AGENTIC_HUB = false;
   // The DID-LLM directory's listing page (on this server), offered once the DID-LLM is issued.
   const DIRECTORY_LIST = "/directory/list";
+  // Where its owner changes its owners or revokes it later (api/manage_page.py).
+  const MANAGE = "/manage";
   // The owner-key tool, for people who sign with their own key rather than a wallet.
   const OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md";
   // Card payments: the quote links to Stripe's payment page (Stripe Checkout), which sends the
@@ -900,6 +902,14 @@
           { class: "next" },
           element("p", {}, "Next, if you like: list it in the DID-LLM directory, so that people and agents can find it. It is optional and public, and you can remove it at any time."),
           element("a", { class: "button go", href: `${DIRECTORY_LIST}?did=${encodeURIComponent(issued.did)}` }, "List it in the directory")
+        ),
+        // Later: a new wallet or key, a second owner, or revoking it (signed by its owner).
+        element(
+          "p",
+          { class: "small" },
+          "Later, to move it to a new wallet or key, or to revoke it: ",
+          element("a", { href: `${MANAGE}?did=${encodeURIComponent(issued.did)}` }, "Manage your DID-LLM"),
+          "."
         ),
         // The Agentic Hub, once it shows the directory.
         SHOW_AGENTIC_HUB

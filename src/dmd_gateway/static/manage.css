@@ -1,0 +1,19 @@
+/* "Manage your DID-LLM": on top of get-did.css and directory.css. */
+.warning{background:var(--warn-bg);border:1px solid var(--pink-line);border-radius:12px;padding:10px 14px;margin:0 0 14px}
+.warning p{margin:0;color:var(--warn-text)}
+.owners-change{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0 0 12px}
+.owners-change dt{color:var(--muted)}
+.owners-change dd{margin:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem}
+.messages{list-style:none;display:grid;gap:12px;padding:0;margin:12px 0}
+.messages>li{background:var(--card-2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+.messages .who{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;margin:0 0 6px}
+.messages .role{font-weight:700}
+.messages .signer{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;overflow-wrap:anywhere}
+.messages .state{font-size:.85rem;font-weight:700;color:var(--muted)}
+.messages .state.ok{color:var(--green-text)}
+.messages .state.bad{color:var(--red-text)}
+.messages details{margin:6px 0 0}
+.messages pre.message{margin:6px 0}
+.use-wallet{display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 14px}
+.use-wallet button{flex:0 1 auto}
+.use-wallet img{width:18px;height:18px;vertical-align:middle;margin-right:6px}

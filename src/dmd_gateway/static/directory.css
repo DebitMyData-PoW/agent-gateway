@@ -34,7 +34,7 @@ background:var(--card);border:1px solid var(--input-line);border-radius:8px}
 .count{float:right;font-weight:400;color:var(--muted);font-size:.85rem}
 .count.over{color:var(--red-brand);font-weight:700}
 .found-did{background:var(--card-2);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:10px 0 0}
-.found-did p{margin:0 0 4px}
+.found-did p{margin:0 0 4px;overflow-wrap:anywhere}
 @media (max-width:760px){
 .entries{grid-template-columns:minmax(0,1fr)}
 .search{grid-template-columns:minmax(0,1fr)}

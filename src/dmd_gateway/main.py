@@ -32,6 +32,7 @@ from dmd_gateway.api import (
     health,
     identities,
     llms,
+    manage_page,
     mcp_auth,
     oauth,
     oauth_browser,
@@ -202,6 +203,7 @@ def create_app(
     app.include_router(identities.router)
     app.include_router(directory.router)  # /v1/directory
     app.include_router(directory_page.router)  # /directory pages
+    app.include_router(manage_page.router)  # /manage: owners change owners or revoke
     app.include_router(policies.router)
     app.include_router(docs_pages.router)
     app.include_router(get_did_page.router)  # /get-did on every server

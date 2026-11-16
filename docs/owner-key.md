@@ -80,6 +80,18 @@ the tool asks the production gateway, which does not know staging's messages.
 
 ## Change the owner key, or add a wallet
 
+**On the page:** <https://id.debitmydata.io/manage> ("My DID-LLM" in the top bar) changes the
+owners of a DID-LLM, or revokes it, for owners with a wallet or a key. It prepares the change and
+shows each message to sign: wallets sign there, and keys with the tool, which signs what your
+keys can sign in a change made on the page:
+
+```bash
+python3 did-owner-key.py sign-change ~/did-keys did:web:api.debitmydata.io:agents:... dmd_owner_change_...
+```
+
+The page shows this command with the change's ID filled in: copy it, run it, then click
+Continue. The rest of this section does it all from the tool.
+
 To move the DID-LLM to a new key (a key that may have leaked, a new machine), make the new key,
 then name every owner the DID-LLM will have afterwards:
 
@@ -116,7 +128,8 @@ python3 did-owner-key.py revoke ~/did-keys did:web:api.debitmydata.io:agents:...
 ```
 
 The tool shows the message and asks you to type `REVOKE`. It cannot be undone: the DID-LLM, its
-credential and its entitlements stop working forever (MCP: `debitmydata_revoke_did`).
+credential and its entitlements stop working forever (MCP: `debitmydata_revoke_did`). The
+"Manage your DID-LLM" page does it too: a wallet signs there, a key with this command.
 
 ## Sign in as the DID-LLM (OAuth)
 

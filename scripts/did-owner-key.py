@@ -39,6 +39,12 @@
         a new owner key accepts. A wallet's message is shown for you to sign in the wallet and
         paste its signature. Earlier sign-ins end once the change applies.
 
+    python3 did-owner-key.py sign-change  KEYS  did:web:...  dmd_owner_change_...
+        Signs an owner change made on the "Manage your DID-LLM" page: shows the owners now and
+        the new ones, asks you to confirm, then signs what your keys can sign (the current owner
+        key approves, a new owner key accepts) and sends the signatures. Wallets sign on the
+        page. Then click Continue there.
+
     python3 did-owner-key.py revoke  KEYS  did:web:...
         Revokes the DID-LLM for good, with the owner key: it cannot be undone. Shows what you are
         signing and asks you to type REVOKE first.
@@ -79,6 +85,7 @@ WALLET = re.compile(r"^(0x[0-9a-fA-F]{40}|eip155:[0-9]{1,12}:0x[0-9a-fA-F]{40})$
 # Only https (or a gateway running on this machine, for testing).
 GATEWAY = re.compile(r"^(https://[^/\s]+|http://(localhost|127\.0\.0\.1)(:\d+)?)$")
 AGENT_DID = re.compile(r"^did:web:([A-Za-z0-9.%-]+):agents:([A-Za-z0-9_-]+)$")
+CHANGE_ID = re.compile(r"^dmd_owner_change_[0-9A-HJKMNP-TV-Z]{26}$")
 ASSERTION_TYPE = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
 
@@ -578,14 +585,7 @@ def _checked(message: str, did: str, change_id: str, signer: str) -> list[str]:
     return lines
 
 
-def change_owner(path: str, did: str, values: list[str], confirm=input, paste=input) -> None:
-    where = did_path(did)
-    if not os.path.exists(path):
-        sys.exit(f"No key file or folder at {path}.")
-    status, change = call("POST", f"/v1/dids/{where}/owner-changes", new_owners(values))
-    if status != 201:
-        sys.exit(f"The change was refused (HTTP {status}): {problem(change)}{elsewhere(status)}")
-
+def _show_change(change: dict, did: str, confirm) -> None:
     def owners(items: list) -> str:
         return ", ".join(f"{item['type']} {item['value']}" for item in items) or "-"
 
@@ -595,10 +595,19 @@ def change_owner(path: str, did: str, values: list[str], confirm=input, paste=in
     print("Only the new owners will control it, and every sign-in made before ends.")
     if confirm("Change the owners? Type yes: ").strip().lower() not in ("y", "yes"):
         sys.exit("Nothing was signed.")
+
+
+def _sign_change(path: str, did: str, change: dict, paste=None) -> dict:
+    """Signs the change's open messages that the keys in ``path`` can sign; a wallet's message
+    is shown for its signature to be pasted (``paste``), or left to the page (None). Returns
+    the change as it stands after."""
+    where = did_path(did)
     view = change
     for item in change["messages"]:
         if view.get("status") != "open":
             break
+        if item.get("status", "open") != "open":
+            continue  # signed already (or used up)
         if item["role"] == "approve" and not view["waiting_for"]["approval"]:
             continue  # one approval is enough
         lines = _checked(item["message"], did, change["change_id"], item["signer"])
@@ -609,6 +618,8 @@ def change_owner(path: str, did: str, values: list[str], confirm=input, paste=in
                 continue
             signature = base64.urlsafe_b64encode(key.sign(item["message"].encode("utf-8")))
             answer = signature.rstrip(b"=").decode("ascii")
+        elif paste is None:
+            continue  # a wallet signs on the page
         else:
             print(f"\nSign this message with the wallet {item['signer']} ({item['role']}):")
             print("  " + "\n  ".join(lines))
@@ -624,18 +635,58 @@ def change_owner(path: str, did: str, values: list[str], confirm=input, paste=in
         if status != 201:
             sys.exit(f"The signature was refused (HTTP {status}): {problem(view)}")
         print(f"Signed ({item['role']}) by {item['signer']}.")
-    if view.get("status") == "applied":
-        print("Done: the DID-LLM has its new owners. Earlier sign-ins have ended.")
-        return
+    return view
+
+
+def _still_needed(view: dict) -> str:
     waiting = view.get("waiting_for", {})
     missing = (["a current owner's approval"] if waiting.get("approval") else []) + [
         f"the acceptance of {owner}" for owner in waiting.get("acceptances", [])
     ]
+    return ", ".join(missing)
+
+
+def change_owner(path: str, did: str, values: list[str], confirm=input, paste=input) -> None:
+    where = did_path(did)
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    status, change = call("POST", f"/v1/dids/{where}/owner-changes", new_owners(values))
+    if status != 201:
+        sys.exit(f"The change was refused (HTTP {status}): {problem(change)}{elsewhere(status)}")
+    _show_change(change, did, confirm)
+    view = _sign_change(path, did, change, paste)
+    if view.get("status") == "applied":
+        print("Done: the DID-LLM has its new owners. Earlier sign-ins have ended.")
+        return
     sys.exit(
-        "Not applied yet: still needed: " + ", ".join(missing) + f". The change "
+        "Not applied yet: still needed: " + _still_needed(view) + f". The change "
         f"{change['change_id']} waits until {change['expires_at']} (the MCP tool "
         "debitmydata_change_owner takes the other signatures)."
     )
+
+
+def sign_change(path: str, did: str, change_id: str, confirm=input) -> None:
+    """Signs an owner change made elsewhere (the Manage your DID-LLM page): the messages of the
+    keys in ``path``; wallets sign on the page."""
+    where = did_path(did)
+    if not CHANGE_ID.match(change_id):
+        sys.exit("Give the owner change's ID: dmd_owner_change_... (the page shows it).")
+    if not os.path.exists(path):
+        sys.exit(f"No key file or folder at {path}.")
+    status, change = call("GET", f"/v1/dids/{where}/owner-changes/{change_id}")
+    if status != 200:
+        sys.exit(f"No such owner change (HTTP {status}): {problem(change)}{elsewhere(status)}")
+    if change.get("did") != did or change.get("change_id") != change_id:
+        sys.exit(f"This is not an owner change of {did}: nothing was signed.")
+    if change.get("status") != "open":
+        sys.exit(f"This owner change is {change.get('status')}: nothing to sign.")
+    _show_change(change, did, confirm)
+    view = _sign_change(path, did, change)
+    if view.get("status") == "applied":
+        print("Done: the DID-LLM has its new owners. Earlier sign-ins have ended.")
+    elif _still_needed(view):
+        print("Signed what your keys can sign. Still needed: " + _still_needed(view) + ".")
+    print("Back on the page, click Continue.")
 
 
 def revoke(path: str, did: str, confirm=input) -> None:
@@ -699,6 +750,8 @@ if __name__ == "__main__":
         approve(sys.argv[2], sys.argv[3])
     elif len(sys.argv) in (5, 6) and sys.argv[1] == "change-owner":
         change_owner(sys.argv[2], sys.argv[3], sys.argv[4:])
+    elif len(sys.argv) == 5 and sys.argv[1] == "sign-change":
+        sign_change(sys.argv[2], sys.argv[3], sys.argv[4])
     elif len(sys.argv) == 4 and sys.argv[1] == "revoke":
         revoke(sys.argv[2], sys.argv[3])
     else:

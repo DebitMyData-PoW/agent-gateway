@@ -225,7 +225,7 @@ last one needed, only the new owners control it, and every sign-in made before e
 can also revoke it for good (`debitmydata_revoke_did`, `POST
 {base}/v1/dids/{{did}}/revocations`, then the signed message): it cannot be undone. Sign only a
 "DebitMyData owner change" or "DebitMyData revocation" message that names your own DID-LLM and
-the change you want.
+the change you want. People do the same on the page {pages_base(settings)}/manage.
 
 ## The DID-LLM directory
 

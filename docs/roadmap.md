@@ -168,6 +168,9 @@ place; the application logic comes with the related phase.
 - [x] The token signer checks a DID-LLM's owners against its credential and the owner changes
   its owners signed, not the database alone; the issuer key can be replaced, its earlier keys
   kept as retired keys so what they signed keeps verifying (0.53.0)
+- [x] "Manage your DID-LLM" (`/manage`): owners change a DID-LLM's owners or revoke it in the
+  browser, wallets signing there, keys with the owner-key tool (`sign-change`, `revoke`)
+  (0.54.0)
 
 ## Phase 7 – x402 / USDC on Base
 
