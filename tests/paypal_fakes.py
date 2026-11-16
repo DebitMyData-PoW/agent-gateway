@@ -42,6 +42,7 @@ class FakePayPal:
         self.refuse: tuple[int, dict[str, Any]] | None = None  # answer every request with this
         self.decline_next_capture = False
         self.refuse_next_capture: str | None = None  # the issue PayPal answers with
+        self.refuse_every_capture: str | None = None
         self.hold_next_capture: str | None = None  # a capture PENDING for this reason
         self._ids = _IDS
 
@@ -114,7 +115,6 @@ class FakePayPal:
             "intent": body["intent"],
             "status": "PAYER_ACTION_REQUIRED",
             "create_time": _now(),
-            "update_time": _now(),
             "purchase_units": [unit],
             "links": [
                 {
@@ -140,8 +140,9 @@ class FakePayPal:
         if self.decline_next_capture:
             self.decline_next_capture = False
             return _error(422, "UNPROCESSABLE_ENTITY", "INSTRUMENT_DECLINED")
-        if self.refuse_next_capture:
-            issue, self.refuse_next_capture = self.refuse_next_capture, None
+        if self.refuse_next_capture or self.refuse_every_capture:
+            issue = self.refuse_next_capture or self.refuse_every_capture or ""
+            self.refuse_next_capture = None
             return _error(
                 422, "UNPROCESSABLE_ENTITY", issue, "The requested transaction was refused."
             )
@@ -161,7 +162,7 @@ class FakePayPal:
             capture.update(status="PENDING", status_details={"reason": self.hold_next_capture})
             self.hold_next_capture = None
         unit["payments"] = {"captures": [capture]}
-        order.update(status="COMPLETED", update_time=_now())
+        order.update(status="COMPLETED")
         # Like PayPal's capture answer: parts of the order only (no amount, no custom_id).
         short_unit = {"reference_id": unit["reference_id"], "payments": unit["payments"]}
         return httpx.Response(
@@ -176,7 +177,8 @@ class FakePayPal:
 
     def approve(self, order_id: str) -> None:
         """The payer signs in on PayPal's page and approves the payment."""
-        self.orders[order_id].update(status="APPROVED", update_time=f"{_now()}-{next(self._ids)}")
+        # PayPal's order shows no update_time: approving again looks the same.
+        self.orders[order_id]["status"] = "APPROVED"
 
     def capture_of(self, order_id: str) -> dict[str, Any]:
         return self.orders[order_id]["purchase_units"][0]["payments"]["captures"][0]

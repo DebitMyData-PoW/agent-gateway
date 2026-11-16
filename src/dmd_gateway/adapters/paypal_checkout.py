@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -68,8 +69,12 @@ ORDER_ID = re.compile(r"^[A-Z0-9]{8,40}$")
 # and is being claimed back (a dispute).
 DISPUTE_REASONS = frozenset({"BUYER_COMPLAINT", "CHARGEBACK"})
 # Capture answers where PayPal refuses this payment as the payer approved it (what they chose
-# to pay with, or PayPal's own checks): tried once per approval, and again only once the
-# payer approves again on PayPal's page.
+# to pay with, or PayPal's own checks), or finds the order not approved (the payer is on
+# PayPal's page again). PayPal counts every capture attempt and refuses an order for good after
+# too many (MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED): a refused capture is tried again only
+# after a wait that doubles each time (1, 2, 4, 8 minutes), at most MAX_CAPTURE_ATTEMPTS times
+# for one order. Meanwhile the payer can open PayPal's page again and choose another way to
+# pay.
 PAYER_AGAIN = frozenset(
     {
         "INSTRUMENT_DECLINED",
@@ -77,8 +82,11 @@ PAYER_AGAIN = frozenset(
         "TRANSACTION_REFUSED",
         "PAYER_CANNOT_PAY",
         "MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED",
+        "ORDER_NOT_APPROVED",
     }
 )
+MAX_CAPTURE_ATTEMPTS = 5
+RETRY_AFTER_SECONDS = 60
 
 T = TypeVar("T")
 
@@ -116,6 +124,7 @@ class PayPalCheckoutAdapter(PaymentAdapter):
         environ: Mapping[str, str],
         *,
         client: PayPalClient | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(rail_id, rail, environ)
         if (
@@ -129,8 +138,9 @@ class PayPalCheckoutAdapter(PaymentAdapter):
         self.live = rail.network == "paypal:live"
         self._client = client
         self._ready = False
-        # Approvals PayPal refused to capture: order ID -> the order's update_time then.
-        self._refused: dict[str, str] = {}
+        self._clock = clock
+        # Refused captures: order ID -> (how many, when the next try may be).
+        self._refused: dict[str, tuple[int, float]] = {}
 
     # ------------------------------------------------------------------ PayPal
 
@@ -248,30 +258,41 @@ class PayPalCheckoutAdapter(PaymentAdapter):
             if ends is None or now + CAPTURE_MARGIN > ends:
                 note = f"{order_id}: approved after the quote ended, not captured: nothing taken"
                 return PaymentObservation(payment_id, self.name, now, notes=(note,))
-            approval = str(order.get("update_time") or "")
-            if self._refused.get(order_id) == approval:
-                note = f"{order_id}: refused by PayPal; waiting for the payer to approve again"
+            refused, next_try = self._refused.get(order_id, (0, 0.0))
+            if refused >= MAX_CAPTURE_ATTEMPTS:
+                note = (
+                    f"{order_id}: refused by PayPal {refused} times, not tried again: nothing taken"
+                )
                 return PaymentObservation(payment_id, self.name, now, notes=(note,))
-            # A new ID when the payer approved again (another way to pay): PayPal would
-            # otherwise answer with the first attempt's refusal.
-            request_id = f"dmd-capture-{payment_id}-{approval}"
+            if self._clock() < next_try:
+                wait = int(next_try - self._clock()) + 1
+                note = f"{order_id}: refused by PayPal; tried again in {wait} s at the earliest"
+                return PaymentObservation(payment_id, self.name, now, notes=(note,))
+            # One ID per attempt: PayPal answers a repeated ID with that attempt's answer.
+            request_id = f"dmd-capture-{payment_id}-{refused}"
             try:
                 self.client().post(f"{ORDERS}/{order_id}/capture", {}, request_id=request_id)
             except PayPalUnavailable as exc:
                 if exc.issue in PAYER_AGAIN:
-                    self._refused[order_id] = approval
+                    refused += 1
+                    if exc.issue == "MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED":
+                        refused = MAX_CAPTURE_ATTEMPTS  # PayPal will not take this order
+                    wait = RETRY_AFTER_SECONDS * 2 ** (refused - 1)
+                    self._refused[order_id] = (refused, self._clock() + wait)
                     log.warning(
                         "paypal refused a capture",
-                        extra={"event": {"payment_intent_id": payment_id, "error": str(exc)}},
+                        extra={
+                            "event": {
+                                "payment_intent_id": payment_id,
+                                "attempt": refused,
+                                "error": str(exc),
+                            }
+                        },
                     )
                     note = (
                         f"{order_id}: PayPal refused the payment ({exc.issue}); the payer can "
                         "open the payment page again and choose another way to pay"
                     )
-                    return PaymentObservation(payment_id, self.name, now, notes=(note,))
-                if exc.issue == "ORDER_NOT_APPROVED":
-                    # The payer is on PayPal's page again: the order is approved anew soon.
-                    note = f"{order_id}: not approved (yet) on PayPal's page"
                     return PaymentObservation(payment_id, self.name, now, notes=(note,))
                 if exc.issue != "ORDER_ALREADY_CAPTURED":
                     raise AdapterUnavailable(str(exc), rate_limited=exc.rate_limited) from exc

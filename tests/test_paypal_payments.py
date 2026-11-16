@@ -61,9 +61,21 @@ def _rail() -> Any:
     return registry.rails["paypal"]
 
 
-def _adapter(paypal: FakePayPal) -> PayPalCheckoutAdapter:
+class Clock:
+    """The adapter's clock, moved by hand."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _adapter(paypal: FakePayPal, clock: Clock | None = None) -> PayPalCheckoutAdapter:
     client = PayPalClient(CLIENT_ID, SECRET, live=False, transport=paypal.transport)
-    return PayPalCheckoutAdapter("paypal", _rail(), PAYPAL_ENV, client=client)
+    return PayPalCheckoutAdapter(
+        "paypal", _rail(), PAYPAL_ENV, client=client, clock=clock or Clock()
+    )
 
 
 def _quote(payment_id: str = PAYMENT, expires_in: int = 1860) -> QuotedPayment:
@@ -91,8 +103,10 @@ def _expected(
     )
 
 
-def _quoted(paypal: FakePayPal) -> tuple[PayPalCheckoutAdapter, PaymentDestination]:
-    adapter = _adapter(paypal)
+def _quoted(
+    paypal: FakePayPal, clock: Clock | None = None
+) -> tuple[PayPalCheckoutAdapter, PaymentDestination]:
+    adapter = _adapter(paypal, clock)
     return adapter, adapter.prepare_quote(_quote())
 
 
@@ -267,59 +281,74 @@ def test_an_order_approved_after_the_quote_ended_is_never_captured() -> None:
     assert paypal.capture_requests() == []
 
 
-def test_a_declined_way_to_pay_lets_the_payer_choose_again() -> None:
-    paypal = FakePayPal()
-    adapter, destination = _quoted(paypal)
+def test_a_declined_way_to_pay_is_tried_again_a_minute_later() -> None:
+    paypal, clock = FakePayPal(), Clock()
+    adapter, destination = _quoted(paypal, clock)
     order_id = destination.payment_reference or ""
     paypal.approve(order_id)
     paypal.decline_next_capture = True
     observation = adapter.observe(_expected(destination))
     assert observation.outputs == () and "INSTRUMENT_DECLINED" in observation.notes[0]
-    # Not tried again until the payer approves again.
+    # Not tried again at the worker's next pass (10 seconds later)...
+    clock.now += 10
     waiting = adapter.observe(_expected(destination))
-    assert "approve again" in waiting.notes[0] and len(paypal.capture_requests()) == 1
-    # The payer approves again with another way to pay: a new capture request, which works
-    # (PayPal would answer the same request ID with the first refusal).
-    paypal.approve(order_id)
+    assert "tried again in" in waiting.notes[0] and len(paypal.capture_requests()) == 1
+    # ... but a minute after the refusal, with a new request ID (PayPal answers a repeated ID
+    # with that attempt's answer): meanwhile the payer chose another way to pay.
+    clock.now += 51
     assert len(adapter.observe(_expected(destination)).outputs) == 1
     first, second = paypal.capture_requests()
-    assert first.headers["PayPal-Request-Id"] != second.headers["PayPal-Request-Id"]
+    assert first.headers["PayPal-Request-Id"] == f"dmd-capture-{PAYMENT}-0"
+    assert second.headers["PayPal-Request-Id"] == f"dmd-capture-{PAYMENT}-1"
 
 
-def test_a_refused_payment_is_tried_once_per_approval(
+def test_refused_payments_are_tried_five_times_at_most(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Alembic's logging setup (migrations/env.py) turns off loggers made before it, in tests.
     monkeypatch.setattr(paypal_checkout.log, "disabled", False)
-    paypal = FakePayPal()
-    adapter, destination = _quoted(paypal)
-    order_id = destination.payment_reference or ""
-    paypal.approve(order_id)
-    paypal.refuse_next_capture = "TRANSACTION_REFUSED"
+    paypal, clock = FakePayPal(), Clock()
+    adapter, destination = _quoted(paypal, clock)
+    paypal.approve(destination.payment_reference or "")
+    paypal.refuse_every_capture = "TRANSACTION_REFUSED"
+    tried_at = []
     with caplog.at_level("WARNING"):
-        refused = adapter.observe(_expected(destination))
-    assert refused.outputs == () and "TRANSACTION_REFUSED" in refused.notes[0]
-    logged = [
-        record for record in caplog.records if record.getMessage() == "paypal refused a capture"
-    ]
+        for _ in range(200):  # the worker's passes, 10 seconds apart: over 30 minutes
+            before = len(paypal.capture_requests())
+            observation = adapter.observe(_expected(destination, ends_in=3600))
+            assert observation.outputs == ()
+            if len(paypal.capture_requests()) > before:
+                tried_at.append(clock.now - 1000)
+            clock.now += 10
+    # Right away, then after waiting 1, 2, 4 and 8 minutes: PayPal never sees a stream of
+    # attempts (it refuses an order for good after too many).
+    assert tried_at == [0, 60, 180, 420, 900]
+    assert "not tried again: nothing taken" in observation.notes[0]
+    logged = [r for r in caplog.records if r.getMessage() == "paypal refused a capture"]
+    assert len(logged) == 5
     assert "The requested transaction was refused." in logged[0].event["error"]  # type: ignore[attr-defined]
-    for _ in range(3):  # every pass of the worker: no new capture, nothing taken
-        assert adapter.observe(_expected(destination)).outputs == ()
-    assert len(paypal.capture_requests()) == 1
-    paypal.approve(order_id)
-    assert len(adapter.observe(_expected(destination)).outputs) == 1
-    assert len(paypal.capture_requests()) == 2
+
+
+def test_too_many_attempts_stops_at_once() -> None:
+    paypal, clock = FakePayPal(), Clock()
+    adapter, destination = _quoted(paypal, clock)
+    paypal.approve(destination.payment_reference or "")
+    paypal.refuse_next_capture = "MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED"
+    adapter.observe(_expected(destination))
+    clock.now += 3600
+    stopped = adapter.observe(_expected(destination))
+    assert "not tried again" in stopped.notes[0] and len(paypal.capture_requests()) == 1
 
 
 def test_an_order_being_approved_again_is_waited_for() -> None:
-    paypal = FakePayPal()
-    adapter, destination = _quoted(paypal)
+    paypal, clock = FakePayPal(), Clock()
+    adapter, destination = _quoted(paypal, clock)
     order_id = destination.payment_reference or ""
     paypal.approve(order_id)
     paypal.refuse_next_capture = "ORDER_NOT_APPROVED"
     waiting = adapter.observe(_expected(destination))
-    assert waiting.outputs == () and "not approved (yet)" in waiting.notes[0]
-    paypal.approve(order_id)  # the payer finishes on PayPal's page
+    assert waiting.outputs == () and "ORDER_NOT_APPROVED" in waiting.notes[0]
+    clock.now += 60  # the payer finishes on PayPal's page meanwhile
     assert len(adapter.observe(_expected(destination)).outputs) == 1
 
 
