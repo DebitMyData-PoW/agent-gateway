@@ -26,6 +26,7 @@ from sqlalchemy import Engine, text
 from sqlalchemy.orm import sessionmaker
 
 from dmd_gateway.identity.crypto import encode_signature
+from dmd_gateway.identity.issuer import issuer_keys
 from dmd_gateway.identity.wallets import ERC1271, WalletVerifier
 from dmd_gateway.oauth import grants
 from dmd_gateway.oauth.clients import ClientDirectory
@@ -223,7 +224,9 @@ def production(
     tmp_path: Path,
 ) -> Iterator[tuple[TestClient, Path]]:
     """The gateway as in production: tokens and grants signed by the signer service."""
-    tokens = TokenIssuer(key=TOKEN_KEY, issuer=ISS, resources=resources_for(DID))
+    tokens = TokenIssuer(
+        key=TOKEN_KEY, issuer=ISS, resources=resources_for(DID), credentials=issuer_keys(KEY)
+    )
     path, server = _running(Signer(key=KEY, sessions=sessionmaker(engine), tokens=tokens))
     try:
         with _gateway(ready_registry, engine, path, TOKEN_KEY.public_key(), tmp_path) as client:

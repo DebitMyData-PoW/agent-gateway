@@ -100,6 +100,11 @@ python3 did-owner-key.py change-owner ~/did-keys did:web:api.debitmydata.io:agen
   server, the tool is `debitmydata_change_owner`.
 - With no owner key or wallet left that can sign, nothing can be changed: keep a backup of the
   key file.
+- A **smart wallet** (a contract wallet, such as a Coinbase Smart Wallet) can be an owner, but
+  the production sign-in service checks signatures with no network and cannot check a smart
+  wallet's. So when a key is an owner, let the **key approve** the change: a change only a
+  smart wallet approved cannot be checked there, and the DID-LLM can no longer sign in to
+  apps or as an agent (its DID document, credential and directory listing are not affected).
 
 ## Revoke the DID-LLM for good
 

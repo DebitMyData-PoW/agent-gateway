@@ -6,7 +6,10 @@ signing it:
 * a registration credential (``DebitMyDataRegistrationCredential``): the registration exists
   and is not already issued, the payment it names belongs to it and is settled, a controller
   proof for it is verified, the display name and participant type are the registration's,
-  and no credential exists for it yet;
+  and no credential exists for it yet. Its subject is a new DID-LLM of this issuer (none
+  exists with that DID), and the owners it names are exactly the registration's, each with a
+  verified proof: the credential is what the signer later trusts for who owns the DID-LLM
+  (signer/owners.py), so it is never signed for an existing DID-LLM or for other owners;
 * a donation receipt (``DebitMyDataDonationReceipt``): the donation exists, is paid and has no
   receipt yet, and the payment it names belongs to it and is settled;
 * a product receipt (``DebitMyDataProductReceipt``, a BottyBotty tier): the purchase exists,
@@ -25,6 +28,7 @@ from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.db.models import (
+    AgentIdentity,
     ControllerChallenge,
     ControllerProof,
     Credential,
@@ -39,6 +43,9 @@ from dmd_gateway.identity.credentials import (
     RECEIPT_TYPE,
     VC_CONTEXT,
 )
+from dmd_gateway.identity.did import AGENTS_SEGMENT
+from dmd_gateway.services.controller_proofs import declared_controllers, verified_proofs
+from dmd_gateway.signer.owners import OwnersRefused, canonical_owner, credential_owners
 
 SETTLED = PaymentStatus.SETTLED.value
 
@@ -84,7 +91,7 @@ def check(session: Session, document: Mapping[str, Any], issuer_did: str) -> dic
     """Refuse unless the document's facts are true. Returns what it was checked against."""
     kind = kind_of(document, issuer_did)
     if kind == "registration_credential":
-        return _check_registration(session, document)
+        return _check_registration(session, document, issuer_did)
     if kind == "product_receipt":
         return _check_product(session, document)
     return _check_donation(session, document)
@@ -99,7 +106,9 @@ def _settled_payment(session: Session, payment_id: str) -> PaymentIntent:
     return payment
 
 
-def _check_registration(session: Session, document: Mapping[str, Any]) -> dict[str, str]:
+def _check_registration(
+    session: Session, document: Mapping[str, Any], issuer_did: str
+) -> dict[str, str]:
     subject = _field(document, "credentialSubject")
     registration_id = _text(subject, "registration", "registrationIntentId")
     payment_id = _text(subject, "registration", "payment", "paymentIntentId")
@@ -132,11 +141,34 @@ def _check_registration(session: Session, document: Mapping[str, Any]) -> dict[s
     )
     if issued:
         raise Refused("a credential already exists for this registration")
+    did = _text(subject, "id")
+    if not did.startswith(f"{issuer_did}:{AGENTS_SEGMENT}:"):
+        raise Refused("the subject is not a DID-LLM of this issuer")
+    if session.scalar(select(exists().where(AgentIdentity.public_identifier == did))):
+        raise Refused("this DID-LLM already exists: a credential is signed for a new one only")
+    _check_owners(session, registration, subject)
     return {
         "kind": "registration_credential",
         "registration": registration.id,
         "payment": payment.id,
     }
+
+
+def _check_owners(session: Session, registration: RegistrationIntent, subject: Any) -> None:
+    """The credential names exactly the registration's owners, each of which proved control."""
+    try:
+        declared = {
+            kind: canonical_owner(kind, value)
+            for kind, value in declared_controllers(registration).items()
+        }
+        named = credential_owners(subject)
+    except OwnersRefused as exc:
+        raise Refused(str(exc)) from exc
+    if named != declared:
+        raise Refused("the credential names other owners than the registration's")
+    proofs = verified_proofs(session, registration)
+    if any(kind not in proofs for kind in declared):
+        raise Refused("an owner the credential names has no verified controller proof")
 
 
 def _check_donation(session: Session, document: Mapping[str, Any]) -> dict[str, str]:

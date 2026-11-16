@@ -92,12 +92,17 @@ def create_app(
     registry = runtime.registry
     engine = engine or build_engine(settings)
     if issuer_key is None and settings.issuer_key_path is not None:
-        issuer_key = load_issuer_key(settings.issuer_key_path, issuer_did(settings.public_base_url))
+        issuer_key = load_issuer_key(
+            settings.issuer_key_path,
+            issuer_did(settings.public_base_url),
+            settings.retired_issuer_keys,
+        )
     if issuer_key is None and settings.issuer_signer_socket and settings.issuer_public_key:
         issuer_key = RemoteIssuer(
             socket_path=settings.issuer_signer_socket,
             did=issuer_did(settings.public_base_url),
             public_key_multibase=settings.issuer_public_key,
+            retired_keys=settings.retired_issuer_keys,
         )
 
     # OAuth phase 1 (api/oauth.py): what signs access tokens, while auth_host is set. A key of

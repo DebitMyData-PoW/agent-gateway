@@ -117,7 +117,7 @@ place; the application logic comes with the related phase.
   tier includes and BottyBotty's activation API (Suyash), USDC through x402
 - [x] Get a DID: the DMD payment as a QR code and an "Open in my DMD wallet" link
   (`debitmydata:<address>?amount=<amount>`, the prefix DMD Core registers)
-- [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); open: key rotation procedure
+- [x] ID-15 Issuer key custody: key file for development/staging (refused in production); production signer `dmd-gateway-signer` (own user, no network, checks the database before signing, every signature checked by the API); key replacement with the earlier keys kept as retired keys, so what they signed keeps verifying (0.53.0, production.md section 16); the signer checks a DID-LLM's owners against its credential and signed owner changes before signing a token or sign-in (0.53.0)
 
 ## Phase 6 – MCP server
 
@@ -165,6 +165,9 @@ place; the application logic comes with the related phase.
   endpoint for Google's return addresses only, client secrets, one refresh token per link,
   the identity endpoint only (0.52.0)
 - [ ] The app in Google's console, once DebitMyData has access to it
+- [x] The token signer checks a DID-LLM's owners against its credential and the owner changes
+  its owners signed, not the database alone; the issuer key can be replaced, its earlier keys
+  kept as retired keys so what they signed keeps verifying (0.53.0)
 
 ## Phase 7 – x402 / USDC on Base
 

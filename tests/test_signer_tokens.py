@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
+from dmd_gateway.identity.issuer import IssuerKey, issuer_keys
 from dmd_gateway.oauth import keys
 from dmd_gateway.oauth.tokens import verify_token
 from dmd_gateway.signer.client import SignerRefused, SignerUnavailable, call_signer
@@ -60,17 +61,19 @@ def test_the_signer_signs_tokens_only_with_its_key_and_the_authorization_server(
 ) -> None:
     path = tmp_path / "oauth.pem"
     keys.write_new_key(path)
-    did = "did:web:api.debitmydata.io"
-    assert _token_issuer({}, did) is None
-    assert _token_issuer({"DMD_SIGNER_OAUTH_KEY_PATH": str(path)}, did) is None
+    key = IssuerKey(Ed25519PrivateKey.generate(), "did:web:api.debitmydata.io")
+    assert _token_issuer({}, key) is None
+    assert _token_issuer({"DMD_SIGNER_OAUTH_KEY_PATH": str(path)}, key) is None
     issuer = _token_issuer(
-        {"DMD_SIGNER_OAUTH_KEY_PATH": str(path), "DMD_SIGNER_OAUTH_ISSUER": ISS}, did
+        {"DMD_SIGNER_OAUTH_KEY_PATH": str(path), "DMD_SIGNER_OAUTH_ISSUER": ISS}, key
     )
     assert issuer is not None and issuer.issuer == ISS
+    # It checks the DID-LLMs' owners against the credentials this issuer key signs.
+    assert issuer.credentials == issuer_keys(key)
     for bad in ("http://auth.debitmydata.io", "https://auth.debitmydata.io/token"):
         with pytest.raises(RuntimeError, match="https://<host> only"):
             _token_issuer(
-                {"DMD_SIGNER_OAUTH_KEY_PATH": str(path), "DMD_SIGNER_OAUTH_ISSUER": bad}, did
+                {"DMD_SIGNER_OAUTH_KEY_PATH": str(path), "DMD_SIGNER_OAUTH_ISSUER": bad}, key
             )
 
 
@@ -130,7 +133,9 @@ def test_settings_for_tokens_signed_by_the_signer(tmp_path: Path) -> None:
 
 @pytest.fixture
 def token_signer(engine: Engine) -> Iterator[Path]:  # noqa: F811
-    tokens = TokenIssuer(key=TOKEN_KEY, issuer=ISS, resources=resources_for(DID))
+    tokens = TokenIssuer(
+        key=TOKEN_KEY, issuer=ISS, resources=resources_for(DID), credentials=issuer_keys(KEY)
+    )
     path, server = _running(Signer(key=KEY, sessions=sessionmaker(engine), tokens=tokens))
     yield path
     server.shutdown()
@@ -262,7 +267,9 @@ def test_when_the_signer_cannot_sign_tokens_nobody_signs_in(
 
     # A signer whose token key is not the one the API expects: its tokens are never used.
     other = generate_private_key(public_exponent=65537, key_size=2048)
-    tokens = TokenIssuer(key=other, issuer=ISS, resources=resources_for(DID))
+    tokens = TokenIssuer(
+        key=other, issuer=ISS, resources=resources_for(DID), credentials=issuer_keys(KEY)
+    )
     path, server = _running(Signer(key=KEY, sessions=sessionmaker(engine), tokens=tokens))
     try:
         with _gateway(ready_registry, engine, path, TOKEN_KEY.public_key(), tmp_path) as client:

@@ -5,6 +5,8 @@
     dmd-gateway-admin did reactivate ID --reason "..." --by NAME
     dmd-gateway-admin did revoke ID --reason "..." --by NAME     permanent: asks to confirm
     dmd-gateway-admin names check     the issued DIDs whose name the quote check would refuse
+    dmd-gateway-admin owners check    each DID-LLM's owners, as the signer checks them before a
+                                      sign-in: proven by its credential and signed owner changes
     dmd-gateway-admin directory show ID            a DID-LLM's directory listing
     dmd-gateway-admin directory hide ID --reason "..." --by NAME     a listing breaks the rules
     dmd-gateway-admin directory unhide ID --reason "..." --by NAME   show it again
@@ -28,8 +30,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.db.models import AgentIdentity, Credential, DirectoryListing, Entitlement
 from dmd_gateway.db.session import build_engine, session_factory, transaction
+from dmd_gateway.identity.did import issuer_did
+from dmd_gateway.identity.issuer import IssuerKeys, load_issuer_key
 from dmd_gateway.identity.names import NameRefused, brand_owners, check_display_name, is_brand_owner
 from dmd_gateway.services import directory
+from dmd_gateway.services.directory import controllers
 from dmd_gateway.services.identity_status import (
     STATUS_CHANGED,
     StatusChangeError,
@@ -37,7 +42,8 @@ from dmd_gateway.services.identity_status import (
     find_identity,
     history,
 )
-from dmd_gateway.settings import get_settings
+from dmd_gateway.settings import Settings, get_settings
+from dmd_gateway.signer.owners import OwnersRefused, proven_owners
 
 DONE = {"suspended": "Suspended", "active": "Reactivated", "revoked": "Revoked"}
 PUBLIC = {
@@ -100,7 +106,26 @@ def parser() -> argparse.ArgumentParser:
     names.add_subparsers(dest="command", required=True).add_parser(
         "check", help="list the active and suspended DID-LLMs whose name a quote would refuse today"
     )
+    owners = groups.add_parser(
+        "owners", help="check the DID-LLMs' owners against their signed records"
+    )
+    owners.add_subparsers(dest="command", required=True).add_parser(
+        "check",
+        help="list the active and suspended DID-LLMs whose owners the signer would not sign in",
+    )
     return top
+
+
+def issuer_public_keys(settings: Settings) -> IssuerKeys | None:
+    """The issuer's public keys, current and retired, from the gateway's settings."""
+    did = issuer_did(settings.public_base_url)
+    if settings.issuer_public_key:
+        current = settings.issuer_public_key
+    elif settings.issuer_key_path is not None:
+        current = load_issuer_key(settings.issuer_key_path, did).public_key_multibase
+    else:
+        return None
+    return IssuerKeys(did, current, settings.retired_issuer_keys)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -109,7 +134,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     engine = build_engine(settings)
     try:
         return run(
-            args, session_factory(engine), brand=brand_owners(settings.brand_name_controllers)
+            args,
+            session_factory(engine),
+            brand=brand_owners(settings.brand_name_controllers),
+            keys=issuer_public_keys(settings) if args.group == "owners" else None,
         )
     finally:
         engine.dispose()
@@ -123,10 +151,17 @@ def run(
     ask: Callable[[str], str] = input,
     now: datetime | None = None,
     brand: frozenset[str] = frozenset(),
+    keys: IssuerKeys | None = None,
 ) -> int:
     if args.group == "names":
         with transaction(factory) as session:
             return _check_names(session, brand, out)
+    if args.group == "owners":
+        if keys is None:
+            out("DID-LLM issuance is not set up here: no issuer key to check credentials with.")
+            return 1
+        with transaction(factory) as session:
+            return _check_owners(session, keys, out)
     if args.group == "directory":
         return _directory(args, factory, out, now or datetime.now(UTC))
     try:
@@ -240,6 +275,38 @@ def _check_names(session: Session, brand: frozenset[str], out: Callable[[str], N
         out(f"    {reason}")
     out('To suspend one: dmd-gateway-admin did suspend <identity> --reason "..." --by "<you>"')
     return 0
+
+
+def _check_owners(session: Session, keys: IssuerKeys, out: Callable[[str], None]) -> int:
+    """Each active or suspended DID-LLM's owners, checked as the signer checks them before it
+    signs a sign-in (signer/owners.py). Read-only."""
+    identities = session.scalars(
+        select(AgentIdentity)
+        .where(AgentIdentity.status != "revoked")
+        .order_by(AgentIdentity.created_at)
+    ).all()
+    problems: list[tuple[AgentIdentity, str]] = []
+    for identity in identities:
+        try:
+            owners = proven_owners(session, identity, keys)
+        except OwnersRefused as exc:
+            problems.append((identity, str(exc)))
+            continue
+        unproven = [
+            value for kind, value in controllers(identity).items() if kind not in owners.proven
+        ]
+        if unproven:
+            problems.append(
+                (identity, "not proven, cannot sign in through the signer: " + ", ".join(unproven))
+            )
+    if not problems:
+        out(f"Checked {len(identities)} DID-LLMs: every owner is proven by its signed records.")
+        return 0
+    out(f"Checked {len(identities)} DID-LLMs: {len(problems)} with owners the signer refuses.")
+    for identity, reason in problems:
+        out(f"  {identity.public_identifier} ({identity.status}) {identity.display_name!r}")
+        out(f"    {reason}")
+    return 1
 
 
 def _directory(

@@ -10,6 +10,10 @@ in production):
     DMD_SIGNER_DATABASE_URL    the gateway's database through a read-only role, e.g.
                                postgresql+psycopg://dmd_signer@/agent_gateway?host=/var/run/postgresql
     DMD_SIGNER_ISSUER_DID      the issuer's DID, e.g. did:web:api.debitmydata.io
+    DMD_SIGNER_ISSUER_RETIRED_KEYS
+                               optional: earlier issuer public keys (z6Mk..., commas), never
+                               used to sign again; the DID-LLM credentials they signed still
+                               prove their owners (signer/owners.py)
     DMD_SIGNER_OAUTH_KEY_PATH  optional: the OAuth token-signing key (RSA PEM, signer only)
     DMD_SIGNER_OAUTH_ISSUER    optional: the authorization server, e.g. https://auth.debitmydata.io;
                                with the key, the signer signs access tokens and the grants of
@@ -38,7 +42,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
-from dmd_gateway.identity.issuer import IssuerKey, IssuerKeyError, load_issuer_key
+from dmd_gateway.identity.issuer import (
+    IssuerKey,
+    IssuerKeyError,
+    issuer_keys,
+    load_issuer_key,
+    parse_retired_keys,
+)
 from dmd_gateway.oauth.keys import OAuthKeyError, load_private_key, public_jwk
 from dmd_gateway.observability import configure_logging
 from dmd_gateway.signer import policy
@@ -63,6 +73,8 @@ class Signer:
                 "did": self.key.did,
                 "public_key_multibase": self.key.public_key_multibase,
             }
+            if self.key.retired_keys:
+                described["retired_keys"] = list(self.key.retired_keys)
             if self.tokens is not None:
                 described["token_key"] = self.tokens.public_jwk
             return described
@@ -173,7 +185,11 @@ def build(environ: Mapping[str, str]) -> tuple[Signer, Path, Engine]:
     did = environ["DMD_SIGNER_ISSUER_DID"].strip()
     if not did.startswith("did:web:"):
         raise RuntimeError("DMD_SIGNER_ISSUER_DID must be a did:web identifier")
-    key = load_issuer_key(Path(environ["DMD_SIGNER_KEY_PATH"].strip()), did)
+    try:
+        retired = parse_retired_keys(environ.get("DMD_SIGNER_ISSUER_RETIRED_KEYS", ""))
+    except ValueError as exc:
+        raise RuntimeError(f"DMD_SIGNER_ISSUER_RETIRED_KEYS: {exc}") from exc
+    key = load_issuer_key(Path(environ["DMD_SIGNER_KEY_PATH"].strip()), did, retired)
     engine = create_engine(
         environ["DMD_SIGNER_DATABASE_URL"].strip(),
         pool_pre_ping=True,
@@ -182,11 +198,11 @@ def build(environ: Mapping[str, str]) -> tuple[Signer, Path, Engine]:
         connect_args={"connect_timeout": 3},
     )
     sessions = sessionmaker(engine, expire_on_commit=False)
-    signer = Signer(key=key, sessions=sessions, tokens=_token_issuer(environ, did))
+    signer = Signer(key=key, sessions=sessions, tokens=_token_issuer(environ, key))
     return signer, Path(environ["DMD_SIGNER_SOCKET"].strip()), engine
 
 
-def _token_issuer(environ: Mapping[str, str], did: str) -> TokenIssuer | None:
+def _token_issuer(environ: Mapping[str, str], key: IssuerKey) -> TokenIssuer | None:
     """The access-token signer, when both its key and the authorization server are set."""
     key_path = environ.get("DMD_SIGNER_OAUTH_KEY_PATH", "").strip()
     issuer = environ.get("DMD_SIGNER_OAUTH_ISSUER", "").strip().rstrip("/")
@@ -195,7 +211,10 @@ def _token_issuer(environ: Mapping[str, str], did: str) -> TokenIssuer | None:
     if not issuer.startswith("https://") or "/" in issuer.removeprefix("https://"):
         raise RuntimeError("DMD_SIGNER_OAUTH_ISSUER must be https://<host> only")
     return TokenIssuer(
-        key=load_private_key(Path(key_path)), issuer=issuer, resources=resources_for(did)
+        key=load_private_key(Path(key_path)),
+        issuer=issuer,
+        resources=resources_for(key.did),
+        credentials=issuer_keys(key),
     )
 
 

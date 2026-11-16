@@ -32,8 +32,8 @@ from sqlalchemy.orm import Session
 
 from dmd_gateway.db.models import AgentIdentity, Credential
 from dmd_gateway.errors import ApiError
-from dmd_gateway.identity.crypto import verify_proof, xml_datetime
-from dmd_gateway.identity.issuer import Issuer
+from dmd_gateway.identity.crypto import xml_datetime
+from dmd_gateway.identity.issuer import Issuer, issuer_keys
 from dmd_gateway.identity.wallets import WalletVerifier
 from dmd_gateway.oauth.grants import GrantRefused, message_time
 from dmd_gateway.services.controller_proofs import ED25519, EIP155, check_signature
@@ -128,14 +128,13 @@ def _credential(
     if record is None:
         return None
     payload = record.payload if isinstance(record.payload, dict) else {}
-    proof = payload.get("proof") if isinstance(payload.get("proof"), dict) else {}
     subject = payload.get("credentialSubject")
     subject_id = subject.get("id") if isinstance(subject, dict) else None
+    # Signed with the issuer key, or with a retired one before it was replaced.
     valid = (
         issuer is not None
-        and proof.get("verificationMethod") == issuer.verification_method
         and subject_id in (None, identity.public_identifier)
-        and verify_proof(payload, issuer.public_key_multibase)
+        and issuer_keys(issuer).verifies(payload)
     )
     status = "revoked" if record.revoked_at else identity.status
     return {

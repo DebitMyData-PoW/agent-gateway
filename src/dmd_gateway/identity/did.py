@@ -11,6 +11,7 @@ tooling. A dedicated ``did:dmd`` method is not claimed until its specification i
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote, urlsplit
 
@@ -98,18 +99,24 @@ def agent_did_document(
     }
 
 
-def issuer_did_document(did: str, public_key_multibase: str) -> dict[str, Any]:
-    key_id = f"{did}#{public_key_multibase}"
+def issuer_did_document(
+    did: str, public_key_multibase: str, retired_keys: Sequence[str] = ()
+) -> dict[str, Any]:
+    """The issuer's DID document: the key DebitMyData signs with now, then its retired keys
+    (newest first), which stay assertion methods so what they signed keeps verifying."""
+    keys = [public_key_multibase, *(key for key in retired_keys if key != public_key_multibase)]
+    methods = [
+        {
+            "id": f"{did}#{key}",
+            "type": "Multikey",
+            "controller": did,
+            "publicKeyMultibase": key,
+        }
+        for key in dict.fromkeys(keys)
+    ]
     return {
         "@context": DID_CONTEXT,
         "id": did,
-        "verificationMethod": [
-            {
-                "id": key_id,
-                "type": "Multikey",
-                "controller": did,
-                "publicKeyMultibase": public_key_multibase,
-            }
-        ],
-        "assertionMethod": [key_id],
+        "verificationMethod": methods,
+        "assertionMethod": [method["id"] for method in methods],
     }

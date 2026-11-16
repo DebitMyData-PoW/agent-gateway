@@ -61,6 +61,8 @@ class RemoteIssuer:
     did: str
     public_key_multibase: str
     timeout: float = TIMEOUT_SECONDS
+    # Earlier issuer keys, listed in the DID document; the signer never signs with them.
+    retired_keys: tuple[str, ...] = ()
 
     @property
     def verification_method(self) -> str:

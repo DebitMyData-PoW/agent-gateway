@@ -19,6 +19,8 @@ from dotenv import dotenv_values
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from dmd_gateway.identity.issuer import MULTIKEY, parse_retired_keys
+
 DEV_DATABASE_URL = "postgresql+psycopg://gateway:gateway-dev-only@localhost:5432/agent_gateway"
 ENV_FILE = ".env"
 _LABEL = r"[a-z0-9]([a-z0-9-]*[a-z0-9])?"
@@ -104,6 +106,10 @@ class Settings(BaseSettings):
     issuer_key_path: Path | None = None
     issuer_signer_socket: Path | None = None
     issuer_public_key: str | None = None
+    # Earlier issuer public keys (z6Mk..., separated by commas), after the key was replaced:
+    # listed in the issuer's DID document so the credentials and receipts they signed keep
+    # verifying; nothing new is signed with them (docs/production.md).
+    issuer_retired_keys: str = ""
 
     # How long an agent has to sign a controller challenge.
     controller_challenge_ttl_seconds: int = Field(default=300, ge=60, le=900)
@@ -204,6 +210,10 @@ class Settings(BaseSettings):
             )
         return value.rstrip("/")
 
+    @property
+    def retired_issuer_keys(self) -> tuple[str, ...]:
+        return parse_retired_keys(self.issuer_retired_keys)
+
     @model_validator(mode="after")
     def _guard_non_development(self) -> Settings:
         if self.environment != "development":
@@ -224,10 +234,14 @@ class Settings(BaseSettings):
             )
         if self.issuer_signer_socket is not None and self.issuer_key_path is not None:
             raise ValueError("set issuer_key_path or issuer_signer_socket, not both")
-        if self.issuer_public_key is not None and not re.fullmatch(
-            r"z6Mk[1-9A-HJ-NP-Za-km-z]{40,50}", self.issuer_public_key
-        ):
+        if self.issuer_public_key is not None and not MULTIKEY.fullmatch(self.issuer_public_key):
             raise ValueError("issuer_public_key must be an Ed25519 Multikey (z6Mk...)")
+        retired = parse_retired_keys(self.issuer_retired_keys)  # ValueError if one is not a key
+        if self.issuer_public_key is not None and self.issuer_public_key in retired:
+            raise ValueError(
+                "issuer_public_key is also in issuer_retired_keys: the current key is never a "
+                "retired one"
+            )
         if self.environment == "production" and self.oauth_key_path is not None:
             raise ValueError(
                 "production must not keep the token signing key on the API host: the signer "

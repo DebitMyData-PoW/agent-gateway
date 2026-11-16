@@ -211,7 +211,7 @@ if [ -z "$CONFIGURED" ]; then
     end_line
     printf 'DMD_GW_ISSUER_PUBLIC_KEY=%s\n' "$PUBLIC_KEY" >>"$ENV_FILE"
 elif [ "$CONFIGURED" != "$PUBLIC_KEY" ]; then
-    fail "the issuer key in $ISSUER_KEY does not match DMD_GW_ISSUER_PUBLIC_KEY: it was replaced. Restore the original key (docs/production.md, backups); a new key would make every credential issued so far unverifiable"
+    fail "the issuer key in $ISSUER_KEY does not match DMD_GW_ISSUER_PUBLIC_KEY: it was replaced. Restore the original key from the backups, or finish replacing it as docs/production.md says (the old public key goes into DMD_GW_ISSUER_RETIRED_KEYS, so what it signed keeps verifying)"
 fi
 # The OAuth token-signing key: made once, kept by the signer only; its public half for the API.
 if [ ! -s "$OAUTH_KEY" ]; then
@@ -242,6 +242,17 @@ EOF
 if [ -n "$AUTH_HOST" ]; then
     printf 'DMD_SIGNER_OAUTH_ISSUER=https://%s\n' "$AUTH_HOST" >>"$SIGNER_ENV"
 fi
+# Earlier issuer keys, after the key was replaced (docs/production.md): the signer still
+# trusts the DID-LLM credentials they signed.
+RETIRED_KEYS="$(env_value DMD_GW_ISSUER_RETIRED_KEYS | tr -d "'\" ")"
+[[ -z "$RETIRED_KEYS" || "$RETIRED_KEYS" =~ ^z6Mk[1-9A-HJ-NP-Za-km-z]{40,50}(,z6Mk[1-9A-HJ-NP-Za-km-z]{40,50})*$ ]] ||
+    fail "DMD_GW_ISSUER_RETIRED_KEYS must be issuer public keys (z6Mk...) separated by commas"
+case ",$RETIRED_KEYS," in
+*",$PUBLIC_KEY,"*) fail "the issuer key in $ISSUER_KEY is listed in DMD_GW_ISSUER_RETIRED_KEYS: a retired key never signs again" ;;
+esac
+if [ -n "$RETIRED_KEYS" ]; then
+    printf 'DMD_SIGNER_ISSUER_RETIRED_KEYS=%s\n' "$RETIRED_KEYS" >>"$SIGNER_ENV"
+fi
 chown root:dmd_signer "$SIGNER_ENV"
 chmod 640 "$SIGNER_ENV"
 
@@ -264,8 +275,9 @@ GRANT CONNECT ON DATABASE agent_gateway TO dmd_signer;
 GRANT USAGE ON SCHEMA public TO dmd_signer;
 GRANT SELECT ON registration_intents, payment_intents, controller_challenges,
     controller_proofs, credentials, purchases TO dmd_signer;
--- ... and, to check an agent's signed request before signing an access token, its DID-LLM.
-GRANT SELECT ON identities TO dmd_signer;
+-- ... and, to check an agent's signed request before signing an access token, its DID-LLM
+-- and the owner changes its owners signed (signer/owners.py).
+GRANT SELECT ON identities, owner_changes TO dmd_signer;
 SQL
 
 step "Starting the credential signer, the gateway API and the payment worker"

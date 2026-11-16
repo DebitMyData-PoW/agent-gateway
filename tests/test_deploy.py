@@ -324,10 +324,58 @@ def test_production_signer_holds_the_token_signing_key() -> None:
     assert "printf 'DMD_GW_OAUTH_PUBLIC_KEY_PATH=%s\\n' \"$OAUTH_PUBLIC\"" in production
     assert "DMD_SIGNER_OAUTH_KEY_PATH=$OAUTH_KEY" in production
     assert 'if [ -n "$AUTH_HOST" ]; then\n    printf \'DMD_SIGNER_OAUTH_ISSUER=' in production
-    assert "GRANT SELECT ON identities TO dmd_signer;" in production
+    # ... and the owner changes its owners signed, to check who owns it (signer/owners.py).
+    assert "GRANT SELECT ON identities, owner_changes TO dmd_signer;" in production
     assert '-e "s#@AUTH_HOSTNAME@#${AUTH_HOST:+ $AUTH_HOST}#g"' in production
     # The key is made before the API starts, which loads its public half.
     assert production.index('--public "$OAUTH_KEY"') < production.index("restart dmd-gateway-api")
+
+
+def _retired_keys_step() -> str:
+    production = SETUP_SCRIPTS[1].read_text(encoding="utf-8")
+    start = production.index("# Earlier issuer keys, after the key was replaced")
+    end = production.index('chown root:dmd_signer "$SIGNER_ENV"', start)
+    return production[start:end]
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+@pytest.mark.parametrize(
+    ("value", "written", "failure"),
+    [
+        ("", None, None),
+        ("z6Mk" + "a" * 44, "z6Mk" + "a" * 44, None),
+        (f"'z6Mk{'a' * 44}, z6Mk{'b' * 44}'", f"z6Mk{'a' * 44},z6Mk{'b' * 44}", None),
+        ("z6Mknope", None, "must be issuer public keys"),
+        (f"z6Mk{'a' * 44},z6Mk{'c' * 44}", None, "never signs again"),  # the current key
+    ],
+)
+def test_the_signer_gets_the_retired_issuer_keys(
+    tmp_path: Path, value: str, written: str | None, failure: str | None
+) -> None:
+    """Production: DMD_GW_ISSUER_RETIRED_KEYS (gateway settings) is passed to the signer, which
+    still trusts what those keys signed; the key in use is never one of them."""
+    signer_env = tmp_path / "signer.env"
+    signer_env.write_text("DMD_SIGNER_ISSUER_DID=did:web:api.debitmydata.io\n")
+    script = "\n".join(
+        [
+            'fail() { echo "FAIL: $*"; exit 1; }',
+            f"env_value() {{ printf '%s' {value!r}; }}" if value else "env_value() { :; }",
+            f"PUBLIC_KEY=z6Mk{'c' * 44}",
+            "ISSUER_KEY=/etc/dmd-signer/issuer-key.pem",
+            f"SIGNER_ENV={signer_env}",
+            _retired_keys_step(),
+        ]
+    )
+    result = subprocess.run(  # noqa: S603
+        [str(BASH), "-c", script], capture_output=True, text=True, check=False
+    )
+    if failure:
+        assert result.returncode == 1 and failure in result.stdout
+        return
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = signer_env.read_text().splitlines()
+    retired = [line for line in lines if line.startswith("DMD_SIGNER_ISSUER_RETIRED_KEYS=")]
+    assert retired == ([f"DMD_SIGNER_ISSUER_RETIRED_KEYS={written}"] if written else [])
 
 
 @pytest.mark.skipif(BASH is None, reason="bash is not installed")

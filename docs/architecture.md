@@ -480,9 +480,28 @@ keep part of the pass; within each group the least recently checked come first
   every returned signature against the published key (`DMD_GW_ISSUER_PUBLIC_KEY`), and answers
   503 `issuance_unavailable` (nothing issued, the payment kept) while the signer is down. A
   compromised API host can therefore neither copy the key nor obtain a credential for
-  something unpaid. The key is backed up encrypted with the nightly backup
-  ([production.md](production.md)); rotating it means publishing the new key while keeping
-  the old one verifiable, a procedure still to write.
+  something unpaid. A registration credential is only signed for a DID-LLM that does not
+  exist yet, naming exactly the owners that proved control (0.53.0). The key is backed up
+  encrypted with the nightly backup ([production.md](production.md)).
+* **Replacing the issuer key (0.53.0):** the earlier public keys stay listed as retired keys
+  (`DMD_GW_ISSUER_RETIRED_KEYS`): in the issuer's DID document (`verificationMethod` and
+  `assertionMethod`, the current key first), so every credential and receipt they signed keeps
+  verifying for anyone, and in the API's own checks. Nothing new is signed with them: the
+  settings, the signer and the setup refuse a key in use that is also listed as retired.
+  [production.md](production.md), section 16, is the procedure.
+* **Owners the signer trusts (0.53.0):** in production the signer also signs access tokens
+  and app sign-ins (OAuth). Before it does, it checks the owner key or wallet against the
+  DID-LLM's signed records rather than the database's word alone
+  (`src/dmd_gateway/signer/owners.py`): the registration credential, verified with the
+  issuer key (current or retired), names the first owners; then each owner change applied
+  since must be approved by a proven owner and accepted by each new one, with the exact
+  messages they signed, checked with no network (Ed25519, ordinary wallets). The owners at
+  the end must be the database's. An owner written into the database by a compromised API
+  signs in to nothing, an app sign-in from before a signed change stays ended, and a DID-LLM
+  its owner revoked with a signed message stays refused. A smart wallet's signature cannot
+  be checked without its chain: a smart wallet that becomes an owner is not proven to the
+  signer (it never signs in through it anyway), and a change only a smart wallet approved
+  proves no owner after it. The signer's read-only role may read `owner_changes` for this.
 
 ## Policy pages
 

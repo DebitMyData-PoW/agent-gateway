@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.52.3). Technical owner: Tyler
+here is live on production and on staging (gateway 0.53.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -49,7 +49,11 @@ a message signed by that owner.
   its `blockchainAccountId`. A suspended or revoked DID-LLM's document answers **410**.
 - Credential: W3C Verifiable Credential 2.0, type `DebitMyDataRegistrationCredential`, a
   `DataIntegrityProof` (`eddsa-jcs-2022`) by the issuer key in `/.well-known/did.json`
-  (`GET /v1/credentials/{credential_id}`).
+  (`GET /v1/credentials/{credential_id}`). Product receipts (`DebitMyDataProductReceipt`, for
+  example a BottyBotty tier) are signed the same way. To check one, take the key whose `id` is
+  the proof's `verificationMethod` and that `assertionMethod` lists: since 0.53.0 the document
+  can list more than one key, the current one first, then earlier ones kept after the key was
+  replaced, which still verify what they signed (never the first key blindly).
 - Status: `active`, `suspended` (DebitMyData, can be undone) or `revoked` (for good: by
   DebitMyData, or by the owner since 0.48.0).
 - Entitlements (`GET /v1/entitlements/{identity_id}`): `dmd_did_holder` for every DID-LLM, and
@@ -89,7 +93,8 @@ that asked), the DID-LLM, a random nonce, and when it was issued and expires, so
 made for one thing is never accepted for another. DebitMyData itself signs two things only:
 credentials (the issuer key) and OAuth tokens (the token key). In production both keys are in
 a separate signer service: the API server holds neither, and the signer checks the owner's
-signature itself before it signs anything for an app.
+signature itself before it signs anything for an app, and that this owner is the one the
+DID-LLM's credential and signed owner changes name (0.53.0).
 
 DebitMyData never asks for a private key, a seed phrase or wallet access.
 

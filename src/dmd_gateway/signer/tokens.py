@@ -28,6 +28,11 @@ People signing in to apps (phase 2), in two steps:
 * ``{"op": "token", "grant": ...}``: an access token under the grant, for the same app and MCP
   server and the same scope or less, while the DID-LLM is active.
 
+Whatever the request, the owner key or wallet must be one the DID-LLM's signed records prove
+(signer/owners.py): its registration credential, signed with DebitMyData's issuer key, then
+each owner change its owners signed. An owner the database names without them (written there
+by a compromised API) signs in to nothing.
+
 Every token is for this gateway's MCP server only (its address, or its first address /mcp),
 with known scopes, for 1 to 60 minutes. So even a fully compromised API server cannot have
 the signer make a token for a DID-LLM that did not sign in itself (or whose owner did not sign
@@ -49,23 +54,30 @@ from sqlalchemy.orm import Session
 
 from dmd_gateway.api.brand import IDENTITY_MCP_PATH, MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.db.models import AgentIdentity
+from dmd_gateway.identity.issuer import IssuerKeys
 from dmd_gateway.oauth import grants
 from dmd_gateway.oauth import wallet_sign_in as wallet
 from dmd_gateway.oauth.assertion import (
     CLOCK_SKEW_SECONDS,
     AssertionRejected,
+    KeyLookup,
     database_lookup,
     verify_assertion,
 )
 from dmd_gateway.oauth.grants import GrantRefused
 from dmd_gateway.oauth.keys import public_jwk
 from dmd_gateway.oauth.tokens import SCOPES, TOKEN_PATH, issue_token
+from dmd_gateway.signer.owners import OwnersRefused, ProvenOwners, proven_owners
 
 SID = re.compile(r"[a-z][a-z0-9_]{1,40}_[0-9A-HJKMNP-TV-Z]{26}")
 MIN_TTL_SECONDS = 60
 MAX_TTL_SECONDS = 3600
 # More signed requests than this within their few minutes of validity is not normal use.
 MAX_REMEMBERED = 100_000
+NOT_PROVEN = (
+    "this owner key or wallet is not one the DID-LLM's signed records prove (its credential "
+    "and the owner changes its owners signed)"
+)
 
 
 class TokenRefused(RuntimeError):
@@ -106,6 +118,8 @@ class TokenIssuer:
     key: RSAPrivateKey
     issuer: str
     resources: tuple[str, ...]
+    # The issuer keys that sign DID-LLM credentials (now and retired), to check owners with.
+    credentials: IssuerKeys
     used: UsedRequests = field(default_factory=UsedRequests)
 
     @property
@@ -148,7 +162,7 @@ class TokenIssuer:
             checked = verify_assertion(
                 assertion,
                 audience=[f"{self.issuer}{TOKEN_PATH}", self.issuer],
-                controller_key=database_lookup(session),
+                controller_key=self._proven_key(session),
                 now=now,
             )
         except AssertionRejected as exc:
@@ -171,6 +185,31 @@ class TokenIssuer:
         }
         facts = {"kind": "access_token", "did": checked.did, "token_id": issued.jti}
         return answer, facts
+
+    def _owners(self, session: Session, identity: AgentIdentity) -> ProvenOwners:
+        try:
+            return proven_owners(session, identity, self.credentials)
+        except OwnersRefused as exc:
+            raise TokenRefused(str(exc)) from exc
+
+    def _proven_key(self, session: Session) -> KeyLookup:
+        """The database's owner key of a DID-LLM (oauth/assertion.py), when its signed records
+        prove it."""
+        lookup = database_lookup(session)
+
+        def proven(did: str) -> str | AssertionRejected:
+            found = lookup(did)
+            if isinstance(found, AssertionRejected):
+                return found
+            try:
+                owners = self._owners(session, _active_identity(session, did))
+            except TokenRefused as exc:
+                return AssertionRejected(str(exc))
+            if owners.proven.get(grants.ED25519) != found:
+                return AssertionRejected(NOT_PROVEN)
+            return found
+
+        return proven
 
     # ----------------------------------------------------------------------- apps (phase 2)
 
@@ -201,7 +240,7 @@ class TokenIssuer:
         except GrantRefused as exc:
             raise TokenRefused(str(exc)) from exc
         identity = _active_identity(session, did)
-        controller = _controller(identity, controller_type)
+        controller = _controller(identity, controller_type, self._owners(session, identity))
         try:
             signed = grants.owner_signed(
                 controller_type, controller, message, str(values["signature"])
@@ -253,9 +292,13 @@ class TokenIssuer:
         except GrantRefused as exc:
             raise TokenRefused(str(exc)) from exc
         identity = _active_identity(session, grant.did)
-        if grant.issued_at is None or grants.before_owner_change(
-            grant.issued_at, identity.controller_changed_at
-        ):
+        # The owners' last change, by the database and by what they signed: whichever is later.
+        signed_change = self._owners(session, identity).changed_at
+        changed = max(
+            (moment for moment in (identity.controller_changed_at, signed_change) if moment),
+            default=None,
+        )
+        if grant.issued_at is None or grants.before_owner_change(grant.issued_at, changed):
             raise TokenRefused("this DID-LLM's owners changed after this sign-in: sign in again")
         issued = issue_token(
             self.key,
@@ -300,7 +343,7 @@ class TokenIssuer:
                 resource=resource,
             )
             identity = _active_identity(session, message.did)
-            owner = _controller(identity, grants.EIP155)
+            owner = _controller(identity, grants.EIP155, self._owners(session, identity))
             signed = grants.owner_signed(grants.EIP155, owner, text, signature)
         except GrantRefused as exc:
             raise TokenRefused(str(exc)) from exc
@@ -338,14 +381,20 @@ def _active_identity(session: Session, did: str) -> AgentIdentity:
     return identity
 
 
-def _controller(identity: AgentIdentity, controller_type: str) -> str:
-    """The DID-LLM's current owner key or wallet of that kind, from the database."""
+def _controller(identity: AgentIdentity, controller_type: str, owners: ProvenOwners) -> str:
+    """The DID-LLM's current owner key or wallet of that kind, from the database, once its
+    signed records prove it."""
+    found: str | None = None
     if controller_type == grants.ED25519 and identity.controller_public_key:
-        return identity.controller_public_key
-    if (
+        found = identity.controller_public_key
+    elif (
         controller_type == grants.EIP155
         and identity.controller_wallet_address
         and identity.controller_network
     ):
-        return f"{identity.controller_network}:{identity.controller_wallet_address}"
-    raise TokenRefused("this DID-LLM has no such owner key or wallet")
+        found = f"{identity.controller_network}:{identity.controller_wallet_address}"
+    if found is None:
+        raise TokenRefused("this DID-LLM has no such owner key or wallet")
+    if owners.proven.get(controller_type) != found:
+        raise TokenRefused(NOT_PROVEN)
+    return found

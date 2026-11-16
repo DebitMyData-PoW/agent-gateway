@@ -62,7 +62,10 @@ the signer checks the database itself (through a read-only role): only a settled
 a verified controller proof gets a DID credential, once; only a settled donation gets a
 receipt, once. Even a fully compromised API could neither copy the key nor have it sign
 something that was not paid. The API checks each signature against the public key in its
-settings (`DMD_GW_ISSUER_PUBLIC_KEY`), which is published at `/.well-known/did.json`.
+settings (`DMD_GW_ISSUER_PUBLIC_KEY`), which is published at `/.well-known/did.json`. Before
+the signer signs a sign-in (step 14), it also checks the DID-LLM's owner against its signed
+records: the credential, then each owner change its owners signed. An owner written into
+the database without them signs in to nothing.
 
 The node then downloads the DebitMyData chain. Follow it with:
 
@@ -149,7 +152,9 @@ The settings list and the DID count must match the server. Delete the scratch co
 **Restoring production** after losing the server: a new server (step 1), then put back
 `/etc/dmd-gateway`, `/etc/dmd-signer` and `/etc/debitmydata` from the settings backup before
 running `setup.sh`, then `pg_restore --clean -d agent_gateway` the database backup. Keeping
-the same issuer key matters: every credential already issued is checked against it. The
+the same issuer key matters: every credential already issued is checked against it. (If the
+issuer key itself were lost with no backup, section 16 replaces it: its public half, still in
+`DMD_GW_ISSUER_PUBLIC_KEY`, becomes a retired key and keeps the credentials valid.) The
 treasury's watch-only key is loaded again from `dmd-treasury-public.json` (treasury guide,
 section 5).
 
@@ -280,6 +285,12 @@ sudo dmd-gateway-admin did revoke <DID> --reason "Fraud confirmed" --by "Tyler"
 
 `<DID>` can be the DID (`did:web:api.debitmydata.io:agents:...`), its `did.json` address, its
 identity ID (`dmd_identity_...`) or its registration ID (`dmd_did_intent_...`).
+
+`sudo dmd-gateway-admin owners check` (read-only) checks every active or suspended DID-LLM's
+owners as the signer does before it signs a sign-in: proven by the DID-LLM's credential and the
+owner changes its owners signed. A DID-LLM it lists cannot sign in (agents or apps) until that
+is understood: an owner in the database that its signed records do not name is what a
+tampered database would look like.
 
 - **Suspend** is temporary: the DID document answers **410 Gone**, the DID's entitlements
   and credential show as suspended, until it is reactivated.
@@ -687,3 +698,87 @@ only.
 - [ ] The handshake check passes through Cloudflare, with the Registry (step 8)
 - [ ] Sign-in answers at `https://auth.debitmydata.io` (step 14), once Preska says
 - [ ] Preska is told it is live
+
+## 16. Replacing the issuer key
+
+The issuer key signs every DID-LLM credential and receipt. Replace it on a schedule you choose
+(for example once a year), when someone who had root access to the server leaves, or if its
+private key file was lost. The credentials and receipts signed so far stay valid: the old
+**public** key stays listed in the issuer's DID document as a **retired key**, where anyone can
+still verify what it signed, and the signer still trusts the DID-LLM credentials it signed.
+Nothing new is ever signed with a retired key.
+
+**If the old private key may have leaked** (copied off the server, in a backup someone else
+could decrypt), do not list it as retired: whoever has it could sign credentials that verify.
+That is an incident: tell Preska first; what to do with the credentials it signed is decided
+with her.
+
+As root on the production server:
+
+1. Check that last night's backup ran (step 4): it holds the current key.
+2. Note the current public key; it becomes the retired key:
+
+   ```bash
+   grep '^DMD_GW_ISSUER_PUBLIC_KEY=' /etc/dmd-gateway/gateway.env
+   ```
+
+3. Stop the signer, put the old key file aside (not deleted yet) and create the new key. The
+   last command prints the new public key (`Public key: z6Mk...`):
+
+   ```bash
+   systemctl stop dmd-gateway-signer
+   mv /etc/dmd-signer/issuer-key.pem /etc/dmd-signer/issuer-key.retired-$(date -u +%Y%m%d).pem
+   runuser -u dmd_signer -- /opt/agent-gateway/.venv/bin/dmd-gateway-issuer-key /etc/dmd-signer/issuer-key.pem
+   ```
+
+   While the signer is stopped, a DID-LLM cannot be issued (the agent is told to try again in
+   a minute; nothing is lost) and nobody signs in.
+
+4. In `/etc/dmd-gateway/gateway.env` (`nano`), set `DMD_GW_ISSUER_PUBLIC_KEY` to the **new**
+   public key, and add the **old** one as a retired key. If the line already exists (an earlier
+   replacement), put the old key first, then a comma, then the keys already there:
+
+   ```bash
+   DMD_GW_ISSUER_PUBLIC_KEY=z6Mk<new>
+   DMD_GW_ISSUER_RETIRED_KEYS=z6Mk<old>
+   ```
+
+5. Run the setup, which checks both, gives the retired keys to the signer and restarts
+   everything:
+
+   ```bash
+   /opt/agent-gateway/deploy/production/setup.sh
+   ```
+
+   If it stops with "does not match DMD_GW_ISSUER_PUBLIC_KEY", step 4 is not saved yet; with
+   "listed in DMD_GW_ISSUER_RETIRED_KEYS", the new key was put in the retired list by mistake.
+
+6. Check: the DID document lists the new key first, then the old one; the readiness check
+   says the signer is ready; an existing DID-LLM's credential still verifies (`true`):
+
+   ```bash
+   curl -s https://api.debitmydata.io/.well-known/did.json | jq '.assertionMethod'
+   curl -s https://api.debitmydata.io/readyz | jq '.checks.credential_signer'
+   curl -s -X POST https://api.debitmydata.io/v1/dids/verifications \
+     -H 'content-type: application/json' -d '{"did": "<an existing DID-LLM>"}' \
+     | jq '.credential.signature_valid'
+   dmd-gateway-admin owners check
+   ```
+
+   The last command checks every DID-LLM's owners as the signer does before a sign-in, with
+   the keys now in the settings: "every owner is proven by its signed records". If it lists
+   DID-LLMs whose credential is "not one DebitMyData signed for it", the old key is missing
+   from `DMD_GW_ISSUER_RETIRED_KEYS`.
+
+7. Then destroy the old private key file. It stays in the encrypted backups until they expire
+   (`DMD_BACKUP_KEEP_DAYS`, 30 days):
+
+   ```bash
+   shred -u /etc/dmd-signer/issuer-key.retired-*.pem
+   ```
+
+Staging works the same way with its key file (`DMD_GW_ISSUER_KEY_PATH`): note the old public
+key (the first `publicKeyMultibase` in staging's `/.well-known/did.json`), move the key file
+aside, create a new one at the same place with `dmd-gateway-issuer-key` (as the `gateway`
+user), add the old public key to `DMD_GW_ISSUER_RETIRED_KEYS`, then restart the API and the
+worker.

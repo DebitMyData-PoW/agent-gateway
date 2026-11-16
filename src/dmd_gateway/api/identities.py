@@ -361,6 +361,6 @@ def issuer_document(request: Request) -> JSONResponse:
     if issuer is None:
         raise ApiError(404, "not_found", "Credential issuance is not enabled on this gateway.")
     return JSONResponse(
-        content=issuer_did_document(issuer.did, issuer.public_key_multibase),
+        content=issuer_did_document(issuer.did, issuer.public_key_multibase, issuer.retired_keys),
         media_type=DID_JSON,
     )
