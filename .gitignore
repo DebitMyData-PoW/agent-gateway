@@ -30,3 +30,6 @@ pgdata/
 *.swp
 .DS_Store
 Thumbs.db
+
+# The owner-key tool, if downloaded here: it lives in scripts/
+/did-owner-key.py
