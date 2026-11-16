@@ -21,6 +21,7 @@ from sqlalchemy import Engine
 from dmd_gateway import __version__
 from dmd_gateway.adapters import PaymentAdapter
 from dmd_gateway.api import (
+    a2a,
     agent_skills,
     brand,
     directory,
@@ -214,6 +215,7 @@ def create_app(
     app.include_router(server_card.router)  # the MCP server's card and the AI Catalog
     app.include_router(site_files.router)  # robots.txt, sitemap.xml, the API catalog
     app.include_router(agent_skills.router)  # the Agent Skills index and its skill
+    app.include_router(a2a.router)  # A2A: the Agent Card and the JSON-RPC endpoint
     app.include_router(owners.router)  # owner changes and owner revocation (ID-12)
     if settings.staging_test_tools:
         app.include_router(staging.router)

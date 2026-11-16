@@ -7,7 +7,8 @@
   lists no tools: an MCP client asks the server for them (``tools/list``), as the extension
   requires.
 - The AI Catalog, ``/.well-known/ai-catalog.json``: the site's list of AI services, which
-  points to the card. Crawlers that only know the domain start there.
+  points to the card, and to the A2A Agent Card (api/a2a.py). Crawlers that only know the
+  domain start there.
 - The two files of DebitMyData's discovery runbook (the "AgenticSuperhighway Discovery &
   Publishing SOP"), written for earlier drafts of MCP discovery (SEP-1649, SEP-1960) before
   SEP-2127 replaced them: ``/.well-known/mcp/server-card.json``, the card in the runbook's
@@ -53,6 +54,9 @@ CATALOG_TYPE = "application/ai-catalog+json"
 JSON_TYPE = "application/json"
 CARD_SUFFIX = "/server-card"
 CATALOG_PATH = "/.well-known/ai-catalog.json"
+# The A2A Agent Card (api/a2a.py), and its type in the AI Catalog.
+A2A_CARD_PATH = "/.well-known/agent-card.json"
+A2A_CARD_TYPE = "application/a2a-agent-card+json"
 # The runbook's two files (SEP-1649 and SEP-1960 drafts).
 RUNBOOK_CARD_PATH = "/.well-known/mcp/server-card.json"
 RUNBOOK_MANIFEST_PATH = "/.well-known/mcp"
@@ -140,6 +144,24 @@ def registry_entry(settings: Settings) -> dict[str, Any]:
     return {"$schema": REGISTRY_SCHEMA, **_identity(settings), "remotes": [remote]}
 
 
+def a2a_card_url(settings: Settings) -> str:
+    return f"{settings.public_base_url.rstrip('/')}{A2A_CARD_PATH}"
+
+
+def a2a_catalog_entry(settings: Settings) -> dict[str, Any]:
+    """The same service for A2A agents: its Agent Card (api/a2a.py)."""
+    production = settings.environment == "production"
+    local = SERVER if production else f"{SERVER}-{settings.environment}"
+    identity = _identity(settings)
+    return {
+        "identifier": f"urn:air:{DOMAIN}:a2a:{local}",
+        "displayName": identity["title"],
+        "description": identity["description"],
+        "type": A2A_CARD_TYPE,
+        "url": a2a_card_url(settings),
+    }
+
+
 def ai_catalog(settings: Settings) -> dict[str, Any]:
     local_name = server_name(settings).split("/", 1)[1]
     identity = _identity(settings)
@@ -152,7 +174,8 @@ def ai_catalog(settings: Settings) -> dict[str, Any]:
                 "description": identity["description"],
                 "type": CARD_TYPE,
                 "url": card_url(settings),
-            }
+            },
+            a2a_catalog_entry(settings),
         ],
     }
 

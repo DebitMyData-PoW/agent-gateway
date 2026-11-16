@@ -164,6 +164,10 @@ def llms_txt(request: Request) -> str:
 - Gateway (REST API): {base}
 - MCP server, the Agentic Superhighway (streamable HTTP): {mcp_url(settings)}
 - Its MCP Server Card (what it is, how to connect): {card_url(settings)}
+- For A2A agents (Agent2Agent protocol 1.0 or 0.3): the Agent Card at
+  {base}/.well-known/agent-card.json, JSON-RPC at {base}{brand.MCP_PATH}/a2a. Its skills are
+  the MCP server's tools: send a message with a data part
+  `{{"skill": "<tool name>", "arguments": {{...}}}}`; the answer's data part is the result.
 - Gateway version: {__version__}
 
 DebitMyData never asks for a private key, a seed phrase or access to a wallet. Pay only the

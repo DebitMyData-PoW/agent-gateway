@@ -89,7 +89,7 @@ def test_the_ai_catalog_points_to_the_card(client: TestClient) -> None:
     assert response.headers["access-control-allow-origin"] == "*"
     catalog = response.json()
     assert catalog["specVersion"] == "1.0"
-    (entry,) = catalog["entries"]
+    entry, agent = catalog["entries"]
     assert entry == {
         "identifier": "urn:air:debitmydata.io:mcp:agenticsuperhighway-development",
         # What readers of Agentic Resource Discovery (ARD) catalogs show
@@ -98,6 +98,14 @@ def test_the_ai_catalog_points_to_the_card(client: TestClient) -> None:
         "DID-LLMs only.",
         "type": "application/mcp-server-card+json",
         "url": f"http://localhost:8000{CARD}",
+    }
+    # The same service for A2A agents: its Agent Card (api/a2a.py).
+    assert agent == {
+        "identifier": "urn:air:debitmydata.io:a2a:agenticsuperhighway-development",
+        "displayName": "DebitMyData Agentic Superhighway (development)",
+        "description": entry["description"],
+        "type": "application/a2a-agent-card+json",
+        "url": "http://localhost:8000/.well-known/agent-card.json",
     }
     assert client.options(CATALOG).status_code == 204
 

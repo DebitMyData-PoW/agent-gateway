@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.54.0). Technical owner: Tyler
+here is live on production and on staging (gateway 0.55.0). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -12,6 +12,7 @@ here is live on production and on staging (gateway 0.54.0). Technical owner: Tyl
 | REST API and its docs | <https://api.debitmydata.io/docs/advanced> (OpenAPI: `/openapi.json`) | <https://staging-api.debitmydata.io/docs/advanced>; `/docs` is the guided test page |
 | MCP server (Streamable HTTP) | <https://api.debitmydata.io/agenticsuperhighway> | <https://staging-api.debitmydata.io/agenticsuperhighway> |
 | Identity endpoint (MCP, sign-in only, section 6) | <https://api.debitmydata.io/agenticsuperhighway/identity> | <https://staging-api.debitmydata.io/agenticsuperhighway/identity> |
+| A2A (Agent2Agent, JSON-RPC, 1.0 and 0.3) | <https://api.debitmydata.io/agenticsuperhighway/a2a> | <https://staging-api.debitmydata.io/agenticsuperhighway/a2a> |
 | OAuth authorization server | <https://auth.debitmydata.io> | <https://staging-auth.debitmydata.io> |
 | Get a DID-LLM, for people | <https://id.debitmydata.io/> | <https://staging-api.debitmydata.io/get-did> |
 | Issuer DID | `did:web:api.debitmydata.io` | `did:web:staging-api.debitmydata.io` |
@@ -20,11 +21,20 @@ here is live on production and on staging (gateway 0.54.0). Technical owner: Tyl
 `/mcp` is the MCP server's first address and still works. Each DID-LLM belongs to the server
 that issued it: a staging DID-LLM is unknown to production, and the other way round.
 
+**A2A agents** (Agent2Agent protocol, 1.0, or 0.3 without an `A2A-Version` header) get the
+same tools as the MCP server, the ones that need no sign-in, as A2A skills with the same names
+and arguments. Send `SendMessage` (`message/send` in 0.3) with a data part
+`{"skill": "debitmydata_get_did_registration_offer", "arguments": {}}`; the answer is a message
+whose data part is the tool's result (its text part is the same JSON). A message without a
+skill gets the list of skills with their arguments. Every answer is immediate: no tasks, no
+streaming, no push notifications, and nothing to sign in to.
+
 Discovery files, on the API's address:
 
 | File | What |
 | --- | --- |
 | `/llms.txt` | the whole service in plain words, for agents |
+| `/.well-known/agent-card.json` | the A2A Agent Card: the A2A endpoint and its skills (below) |
 | `/.well-known/agent-skills/index.json` | the gateway's own Agent Skill, `debitmydata-did-llm` |
 | `/.well-known/mcp`, `/.well-known/mcp/server-card.json` | the MCP server card: tools, sign-in (`oauth2.1`, `wallet-signature`) |
 | `/.well-known/api-catalog` | the API catalog (RFC 9727) |

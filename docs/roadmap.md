@@ -171,6 +171,8 @@ place; the application logic comes with the related phase.
 - [x] "Manage your DID-LLM" (`/manage`): owners change a DID-LLM's owners or revoke it in the
   browser, wallets signing there, keys with the owner-key tool (`sign-change`, `revoke`)
   (0.54.0)
+- [x] A2A (Agent2Agent protocol 1.0 and 0.3): the Agent Card at `/.well-known/agent-card.json`
+  and JSON-RPC at `/agenticsuperhighway/a2a`, the MCP server's public tools as skills (0.55.0)
 
 ## Phase 7 – x402 / USDC on Base
 

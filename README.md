@@ -41,7 +41,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.54.0`). The whole registration flow (quote,
+This is an early development release (`0.55.0`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
 DMD or by card; USDC through x402 runs on Base Sepolia on staging and waits for DebitMyData's
@@ -124,6 +124,7 @@ Coinbase CDP key in production:
 | Google Connected Apps' sign-in (0.52.0): a registration endpoint (RFC 7591, `/register` at the auth host, off until `DMD_GW_OAUTH_REGISTRATION_ENABLED`) for Google's own return addresses only, at most 30 an hour, unused ones forgotten after 7 days; registered apps authenticate with a client secret (basic or post, kept as its SHA-256), get tokens for the identity endpoint only, and keep one refresh token (Google expects it back unchanged) until the sign-in's 30 days end; the person signs "Sign in to: ... (oauth-redirect.googleusercontent.com)", checked by the token signer as for every app | done (on once Google's console is set up) |
 | The signer trusts signed records, not the database's word (0.53.0): before it signs an access token or an app sign-in, it checks the DID-LLM's owner against its registration credential (verified with the issuer key) and each owner change its owners signed, with no network (`signer/owners.py`), so an owner written into the database by a compromised API signs in to nothing (`dmd-gateway-admin owners check` checks every DID-LLM the same way); a registration credential is only signed for a new DID-LLM and the owners that proved control. Replacing the issuer key keeps what it signed valid: the earlier public keys stay listed as retired keys (`DMD_GW_ISSUER_RETIRED_KEYS`) in `/.well-known/did.json` and are accepted by the gateway's own checks, never used to sign again ([docs/production.md](docs/production.md), section 16) | done |
 | "Manage your DID-LLM" (0.54.0, `/manage`, "My DID-LLM" in the top bar; [api/manage_page.py](src/dmd_gateway/api/manage_page.py)): owners change a DID-LLM's owners (a new wallet or key, a second owner, one less) or revoke it for good, in the browser. The page prepares the change and shows each message to sign: wallets sign there (EIP-6963 browser wallets, or a signature pasted from a wallet app), keys with the owner-key tool's new `sign-change` command (and `revoke`). Nothing changes without the owners' signatures; the page never asks for a private key and only calls the gateway's own API. Get a DID-LLM's last step links to it | done |
+| A2A, the Agent2Agent protocol (0.55.0, [api/a2a.py](src/dmd_gateway/api/a2a.py)): an Agent Card at `/.well-known/agent-card.json` (also in the AI Catalog) and a JSON-RPC endpoint at `/agenticsuperhighway/a2a`, A2A 1.0 and 0.3; its skills are the MCP server's public tools, run with a data part `{"skill": ..., "arguments": ...}` and answered at once with the result as a data part; checked with the official A2A SDK (1.0 and its 0.3 transport) | done |
 | Native DMD wallet proofs (DEC-07); lost-key recovery (ID-14) | next |
 
 Every payment rail is **off** by default. The native DMD rail can be switched on for a

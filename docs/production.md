@@ -486,6 +486,20 @@ curl -sf https://api.debitmydata.io/.well-known/mcp | jq '.endpoints[0].url'
 curl -sI https://api.debitmydata.io/.well-known/mcp/server-card.json | grep -i "content-type: application/json"
 ```
 
+A2A agents (Agent2Agent protocol) find the same service through its **Agent Card**, which the
+AI Catalog lists too; its endpoint shares the MCP server's rate limits (it is under
+`/agenticsuperhighway`). Check after an update:
+
+```bash
+curl -s https://api.debitmydata.io/.well-known/agent-card.json | jq '.supportedInterfaces'
+curl -s https://api.debitmydata.io/agenticsuperhighway/a2a -H 'content-type: application/json' -H 'A2A-Version: 1.0' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"SendMessage","params":{"message":{"messageId":"1","role":"ROLE_USER","parts":[{"data":{"skill":"debitmydata_get_did_registration_offer"}}]}}}' \
+  | jq '.result.message.parts[1].data.offer.price_text'
+```
+
+The first shows the A2A endpoint twice (versions 1.0 and 0.3), the second `"$25.00 USD, paid
+once"`.
+
 The **official MCP Registry** (registry.modelcontextprotocol.io), where MCP clients and
 directories look for servers, lists it from `server.json` at the repository root, under the
 name `io.debitmydata/agenticsuperhighway`. A test keeps that file the same as the card, and
