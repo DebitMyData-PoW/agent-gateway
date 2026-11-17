@@ -248,6 +248,21 @@ sed -e "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" -e "s#@APP_HOSTNAME@#${APP_HOST:+ $APP_
 if [ ! -e /proc/net/if_inet6 ]; then  # no IPv6 on this server: listen on IPv4 only
     sed -i '/listen \[::\]/d' /etc/nginx/sites-available/dmd-gateway
 fi
+# The Client ID Metadata Documents DebitMyData hosts for apps that cannot host their own (Grok
+# Build): deploy/staging/files/oauth-clients/, served at https://<host>/oauth/clients/<file>,
+# which is each app's client_id (docs/staging.md, section 10). The folder holds only these.
+CLIENTS_DIR=/var/www/dmd-gateway-clients
+install -d -m 755 "$CLIENTS_DIR"
+find "$CLIENTS_DIR" -maxdepth 1 -type f -name '*.json' -delete
+for doc in "$FILES"/oauth-clients/*.json; do
+    [ -e "$doc" ] || continue
+    name="$(basename "$doc")"
+    sed "s#@HOSTNAME@#$HOSTNAME_PUBLIC#g" "$doc" >"$CLIENTS_DIR/$name"
+    chmod 644 "$CLIENTS_DIR/$name"
+    want="https://$HOSTNAME_PUBLIC/oauth/clients/$name"
+    [ "$(jq -r .client_id "$CLIENTS_DIR/$name")" = "$want" ] ||
+        fail "deploy/staging/files/oauth-clients/$name: its client_id must be $want"
+done
 ln -sf /etc/nginx/sites-available/dmd-gateway /etc/nginx/sites-enabled/dmd-gateway
 rm -f /etc/nginx/sites-enabled/default
 "$APP_DIR/deploy/staging/cloudflare-ips.sh"

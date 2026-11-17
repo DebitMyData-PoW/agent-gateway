@@ -634,6 +634,30 @@ person sees and signs "Sign in to: <the app's name> (oauth-redirect.googleuserco
 and Google keeps one refresh token, which works until the sign-in's 30 days end. In Google's
 console, the MCP server's address is the identity endpoint's.
 
+**Apps that cannot host their own document (Grok Build), from 0.55.14.** An app's
+`client_id` is the address of its document, so normally the app's maker publishes it on its
+own site. For an app tested here whose maker does not, DebitMyData hosts it on staging's own
+site: one file per app in `deploy/staging/files/oauth-clients/`, installed by `setup.sh` (and
+so by `update.sh`) with `@HOSTNAME@` replaced, and served at
+`https://staging-api.debitmydata.io/oauth/clients/<file>`, which is the app's `client_id`.
+The setup stops if a file's `client_id` is not its own address, and the sign-in page then shows
+`(staging-api.debitmydata.io)`: DebitMyData vouches for the app. Grok Build's is
+`https://staging-api.debitmydata.io/oauth/clients/grok-build-staging.json` (a loopback return
+address, `http://127.0.0.1/callback`, any port). To check a document the way the gateway reads
+it, on the staging server:
+
+```bash
+U=https://staging-api.debitmydata.io/oauth/clients/grok-build-staging.json
+/opt/agent-gateway/.venv/bin/python -c 'import sys
+from dmd_gateway.oauth.clients import parse_document, safe_fetch
+c = parse_document(sys.argv[1], safe_fetch(sys.argv[1])[0])
+print(c.name, f"({c.host})", *c.redirect_uris)' "$U"
+```
+
+It prints `Grok Build (DebitMyData staging test) (staging-api.debitmydata.io)
+http://127.0.0.1/callback`. The gateway keeps a document it read for 5 minutes, and a change
+to the file reaches the next sign-in after that.
+
 ## 11. The handshake check (the runbook's Day 5)
 
 The discovery runbook ends with a check that an automated client completes, unsupervised,

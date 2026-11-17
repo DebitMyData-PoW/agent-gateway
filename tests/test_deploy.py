@@ -17,10 +17,13 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
+from dmd_gateway.oauth.clients import parse_document
+
 DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
 FILES = DEPLOY / "staging" / "files"
 SETUP_SCRIPTS = (DEPLOY / "staging" / "setup.sh", DEPLOY / "production" / "setup.sh")
 BASH = shutil.which("bash")
+JQ = shutil.which("jq")
 SITE = (FILES / "nginx-site.conf").read_text(encoding="utf-8")
 NGINX = shutil.which("nginx")
 
@@ -406,3 +409,56 @@ def test_every_update_ends_with_the_handshake_check(script: Path) -> None:
     assert setup.index('step "Checking the gateway through nginx"') < setup.index(command)
     assert setup.index(command) < setup.index("printf '\\nDone.")
     assert 'fail "agents may not find or use the gateway' in setup
+
+
+def test_the_hosted_client_documents_are_what_the_gateway_accepts() -> None:
+    """Each document staging hosts for an app (files/oauth-clients/) reads, once installed, as
+    the gateway needs it: its client_id its own address, a name, a return address; served from
+    the folder setup.sh fills, rate limited like any read."""
+    documents = sorted((FILES / "oauth-clients").glob("*.json"))
+    assert documents
+    for document in documents:
+        url = f"https://staging.test/oauth/clients/{document.name}"
+        text = document.read_text(encoding="utf-8").replace("@HOSTNAME@", "staging.test")
+        client = parse_document(url, text.encode())
+        assert client.host == "staging.test" and client.redirect_uris
+    block = next(b for b in SITE.split("location ")[1:] if b.startswith("/oauth/clients/ "))
+    assert "alias /var/www/dmd-gateway-clients/;" in block
+    assert "limit_req zone=dmd_reads" in block
+
+
+@pytest.mark.skipif(BASH is None or JQ is None, reason="bash and jq are needed")
+def test_staging_setup_installs_the_client_documents_and_refuses_a_wrong_one(
+    tmp_path: Path,
+) -> None:
+    script = SETUP_SCRIPTS[0]
+    lines = script.read_text(encoding="utf-8").splitlines()
+    start = next(n for n, line in enumerate(lines) if line.startswith("CLIENTS_DIR="))
+    end = next(n for n in range(start, len(lines)) if lines[n] == "done")
+    block = "\n".join(lines[start : end + 1]).replace(
+        "CLIENTS_DIR=/var/www/dmd-gateway-clients", 'CLIENTS_DIR="$OUT"'
+    )
+    out, files = tmp_path / "clients", tmp_path / "files"
+    shutil.copytree(FILES / "oauth-clients", files / "oauth-clients")
+    (tmp_path / "clients").mkdir()
+    (out / "removed-app.json").write_text("{}", encoding="utf-8")  # no longer in the repository
+    program = "\n".join(
+        (
+            'OUT="$1"; FILES="$2"; HOSTNAME_PUBLIC=api.test',
+            'fail() { echo "$*" >&2; exit 1; }',
+            block,
+        )
+    )
+    argv = [str(BASH), "-c", program, "_", str(out), str(files)]
+    subprocess.run(argv, check=True)  # noqa: S603 (fixed arguments, test files only)
+    installed = sorted(p.name for p in out.iterdir())
+    assert installed == sorted(p.name for p in (FILES / "oauth-clients").glob("*.json"))
+    grok = (out / "grok-build-staging.json").read_text(encoding="utf-8")
+    assert '"https://api.test/oauth/clients/grok-build-staging.json"' in grok
+    (files / "oauth-clients" / "copied.json").write_text(
+        '{"client_id": "https://api.test/oauth/clients/other.json"}', encoding="utf-8"
+    )
+    refused = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        argv, capture_output=True, text=True, check=False
+    )
+    assert refused.returncode == 1 and "its client_id must be" in refused.stderr
