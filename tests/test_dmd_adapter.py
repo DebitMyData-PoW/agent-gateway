@@ -14,7 +14,7 @@ import yaml
 
 from dmd_gateway.adapters.base import AdapterUnavailable, ExpectedPayment, PaymentDestination
 from dmd_gateway.adapters.dmd_native import DMDNativePaymentAdapter
-from dmd_gateway.adapters.dmd_rpc import DmdRpcClient, MethodNotAllowed
+from dmd_gateway.adapters.dmd_rpc import ALLOWED_METHODS, DmdRpcClient, MethodNotAllowed
 from dmd_gateway.domain.routes import RailConfig
 
 from .conftest import REPO_ROOT
@@ -153,6 +153,23 @@ def test_only_read_only_methods_can_be_called() -> None:
     for method in ("sendtoaddress", "dumpprivkey", "walletpassphrase", "stop", "generate"):
         with pytest.raises(MethodNotAllowed):
             client.call(method)
+
+
+def test_the_allowed_methods_are_reviewed() -> None:
+    # A method added here must not spend, unlock, export keys or administer the node: check it
+    # on DebitMyData Core before adding it.
+    assert ALLOWED_METHODS == {
+        "getblockchaininfo",
+        "getwalletinfo",
+        "getnewaddress",  # the next receiving address of the watch-only descriptor
+        "getaddressinfo",
+        "listreceivedbyaddress",
+        "gettransaction",
+        "getblockheader",
+        "decoderawtransaction",
+        "getblockhash",
+        "getchaintips",
+    }
 
 
 @pytest.mark.parametrize(

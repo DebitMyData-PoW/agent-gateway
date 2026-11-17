@@ -9,7 +9,15 @@ Each check looks at one thing and returns what is wrong, as findings (``alerts.F
              only refuses because of its rate limit (HTTP 429) usually recovers by itself, so
              that alerts only after RATE_LIMIT_ALERT_AFTER checks in a row
   price      the DMD price is fresh, and its parameters are not past their review
-  dmd_chain  the gateway's DebitMyData mainnet node agrees with the public explorer on the height
+  dmd_chain  the gateway's DebitMyData mainnet node agrees with the public explorer: on the
+             height, and on the block a little below it (BLOCK_CHECK_DEPTH); different blocks
+             at the same height mean one of them is on another chain, which alerts after
+             BLOCK_ALERT_AFTER checks in a row, since a race between two new blocks settles
+             by itself
+  dmd_forks  the node's own branches (getchaintips) that ended in the last
+             RECENT_BRANCH_BLOCKS blocks: a reorganization of BRANCH_ALERT_BLOCKS blocks or
+             more (critical from the DMD payments' confirmations), a competing branch, invalid
+             blocks; each one is sent once
   audit      alerts recorded by the worker (a payment reorganized out of the chain after its
              DID or receipt was issued), payments that need a refund, and every DID suspended,
              reactivated or revoked with dmd-gateway-admin
@@ -47,16 +55,18 @@ from dmd_gateway.db.models import (
 )
 from dmd_gateway.domain.money import format_base_units
 from dmd_gateway.domain.payment_status import PaymentStatus
+from dmd_gateway.domain.routes import RailConfig
 from dmd_gateway.monitoring.alerts import Finding, Severity, redact
 from dmd_gateway.monitoring.state import (
     AUDIT_CURSOR,
+    DMD_BLOCK,
     RATE_LIMITED,
     RECEIVING,
     WORKER_HEARTBEAT,
     get_state,
     put_state,
 )
-from dmd_gateway.pricing.mining_cost import DmdExplorerFigures, latest_record
+from dmd_gateway.pricing.mining_cost import BLOCK_HASH, DmdExplorerFigures, latest_record
 from dmd_gateway.runtime import Runtime
 from dmd_gateway.services import directory
 from dmd_gateway.services.identity_status import STATUS_CHANGED
@@ -69,6 +79,11 @@ DEFAULT_PRICE_AGE = timedelta(seconds=900)
 X402_UNKNOWN_AFTER = timedelta(minutes=30)
 CONFIRMING_TOO_LONG = timedelta(hours=2)
 HEIGHT_TOLERANCE = 3  # blocks between the node and the explorer
+BLOCK_CHECK_DEPTH = 2  # blocks below the lower of the two tips, where their blocks are compared
+BLOCK_ALERT_AFTER = 2  # checks in a row (every 2 minutes) with different blocks there
+BRANCH_ALERT_BLOCKS = 2  # a shorter branch is one stale block, which happens on any chain
+RECENT_BRANCH_BLOCKS = 60  # about 2.5 hours of DMD blocks; older branches are not reported
+DMD_CONFIRMATIONS = 6  # when the DMD payment option does not say
 RATE_LIMIT_ALERT_AFTER = 3  # checks in a row (every 2 minutes) refused by a rate limit
 AUDIT_BATCH = 200
 SHOWN_IDS = 5
@@ -244,26 +259,155 @@ def check_price(ctx: MonitorContext, session: Session, now: datetime) -> list[Fi
     return findings
 
 
-def check_dmd_chain(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
+DMD_KILL_SWITCH = (
+    "stop DMD payments at once: DMD_RAIL_DMD_POW_NATIVE_KILL=true in "
+    "/etc/dmd-gateway/gateway.env, then systemctl restart dmd-gateway-api (docs/emergencies.md, "
+    "part 3)"
+)
+
+
+def _dmd_mainnet(ctx: MonitorContext) -> RailConfig | None:
+    """The DMD payment option when it is on, on mainnet (the explorer is mainnet's)."""
     rail = ctx.runtime.registry.rails.get(DMD_RAIL)
     if DMD_RAIL not in ctx.runtime.adapters or rail is None or rail.network != "dmd:mainnet":
+        return None
+    return rail
+
+
+def check_dmd_chain(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
+    if _dmd_mainnet(ctx) is None:
         return []
-    node = int(ctx.rpc().call("getblockchaininfo")["blocks"])
-    explorer = DmdExplorerFigures(ctx.http, ctx.settings.dmd_explorer_url).read().height
-    if abs(node - explorer) <= HEIGHT_TOLERANCE:
+    rpc = ctx.rpc()
+    node = int(rpc.call("getblockchaininfo")["blocks"])
+    explorer = DmdExplorerFigures(ctx.http, ctx.settings.dmd_explorer_url)
+    explorer_height = explorer.read().height
+    findings = []
+    if abs(node - explorer_height) > HEIGHT_TOLERANCE:
+        behind = "behind" if node < explorer_height else "ahead of"
+        findings.append(
+            Finding(
+                "dmd_chain.height",
+                W,
+                f"The gateway's DebitMyData node is {abs(node - explorer_height)} blocks "
+                f"{behind} the explorer",
+                f"Node: block {node}. Public explorer: block {explorer_height}. A node behind "
+                "sees DMD payments late; a large difference can also mean the node or the "
+                "explorer is on another chain.",
+            )
+        )
+    height = min(node, explorer_height) - BLOCK_CHECK_DEPTH
+    if height >= 1:
+        findings.extend(_compare_blocks(rpc, explorer, height, session, now))
+    return findings
+
+
+def _compare_blocks(
+    rpc: Any, explorer: DmdExplorerFigures, height: int, session: Session, now: datetime
+) -> list[Finding]:
+    """The node's and the explorer's blocks at the same height, a little below both tips."""
+    ours = str(rpc.call("getblockhash", {"height": height})).strip().lower()
+    if not BLOCK_HASH.fullmatch(ours):
+        raise AdapterUnavailable(f"the DebitMyData node gave no block hash at height {height}")
+    theirs = explorer.block_hash(height)
+    stored = get_state(session, DMD_BLOCK)
+    before = int(stored[0].get("checks", 0)) if stored else 0
+    if ours == theirs:
+        if before:
+            put_state(session, DMD_BLOCK, {}, now)
         return []
-    behind = "behind" if node < explorer else "ahead of"
+    checks = before + 1
+    put_state(session, DMD_BLOCK, {"checks": checks, "height": height}, now)
+    if checks < BLOCK_ALERT_AFTER and not _open(session, "dmd_chain.block"):
+        return []  # two new blocks racing at the tip: one wins within a minute or two
     return [
         Finding(
-            "dmd_chain.height",
-            W,
-            f"The gateway's DebitMyData node is {abs(node - explorer)} blocks {behind} the "
-            "explorer",
-            f"Node: block {node}. Public explorer: block {explorer}. A node behind sees DMD "
-            "payments late; a large difference can also mean the node or the explorer is on "
-            "another chain.",
+            "dmd_chain.block",
+            C,
+            "The gateway's DebitMyData node and the explorer are on different chains",
+            f"At block {height}, the node has {ours} and the public explorer {theirs} "
+            f"({checks} checks in a row). One of them follows another chain since a block "
+            f"below {height}. Ask a third node, such as the DebitMyData pool's, for the same "
+            f"block (dmd-cli getblockhash {height}). If the gateway's node is the one alone, "
+            f"{DMD_KILL_SWITCH}.",
         )
     ]
+
+
+def check_dmd_forks(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
+    rail = _dmd_mainnet(ctx)
+    if rail is None:
+        return []
+    tips = ctx.rpc().call("getchaintips")
+    active = max(int(tip["height"]) for tip in tips if tip.get("status") == "active")
+    confirmations = rail.confirmation_policy.required_confirmations or DMD_CONFIRMATIONS
+    findings = []
+    for tip in tips:
+        status, height = tip.get("status"), int(tip["height"])
+        length, tip_hash = int(tip["branchlen"]), str(tip.get("hash", ""))
+        fork = height - length  # the last block the branch shares with the node's chain
+        if status == "active" or height < active - RECENT_BRANCH_BLOCKS:
+            continue
+        branch = f"Its last block: {height} ({tip_hash}). The node's chain: block {active}."
+        if status == "valid-fork" and length >= BRANCH_ALERT_BLOCKS:
+            # Blocks the node had in its chain, then left for a branch with more work.
+            deep = length >= confirmations
+            findings.append(
+                Finding(
+                    f"dmd_forks.reorg.{fork}" + (".deep" if deep else ""),
+                    C if deep else W,
+                    f"The DebitMyData chain was reorganized: {length} blocks after block "
+                    f"{fork} were replaced",
+                    f"{branch} "
+                    + (
+                        f"DMD payments are settled after {confirmations} confirmations, so a "
+                        "payment the gateway took as final may be gone; the worker alerts for "
+                        "each one it issued something for. On a chain with little mining power "
+                        "this can be an attack (a double spend): "
+                        f"{DMD_KILL_SWITCH}, and find out who mined the replacing blocks."
+                        if deep
+                        else f"No settled payment can have left: DMD payments need "
+                        f"{confirmations} confirmations, and payments still confirming in "
+                        "those blocks wait for them again. Two or more blocks replaced at "
+                        "once is rare: someone mined a chain of their own. If it happens "
+                        "again, look at who mined the replacing blocks."
+                    ),
+                    kind="event",
+                )
+            )
+        elif status in ("valid-headers", "headers-only") and length >= BRANCH_ALERT_BLOCKS:
+            if fork >= active:
+                continue  # the node's own chain, ahead of it: it is still downloading blocks
+            heavier = height > active
+            findings.append(
+                Finding(
+                    f"dmd_forks.competing.{fork}",
+                    W,
+                    f"A competing DebitMyData branch of {length} blocks, from block {fork}",
+                    f"{branch} Someone mines another chain from block {fork}. "
+                    + (
+                        "It is longer than the node's own, which the node has not switched "
+                        "to (yet): if it does, that is a reorganization, and an alert follows."
+                        if heavier
+                        else "It is shorter, so the node stays on its own chain; a longer one "
+                        "later would replace the node's blocks after block "
+                        f"{fork}."
+                    ),
+                    kind="event",
+                )
+            )
+        elif status == "invalid":
+            findings.append(
+                Finding(
+                    f"dmd_forks.invalid.{fork}",
+                    W,
+                    f"Invalid DebitMyData blocks after block {fork}",
+                    f"{branch} The node refused {length} block{'s' if length > 1 else ''} "
+                    "that break the chain's rules. A miner on another version of DebitMyData "
+                    "Core, or a broken one: if more follow, compare the nodes' versions.",
+                    kind="event",
+                )
+            )
+    return findings
 
 
 def check_audit(ctx: MonitorContext, session: Session, now: datetime) -> list[Finding]:
@@ -582,6 +726,7 @@ CHECKS: dict[str, Check] = {
     "rails": check_rails,
     "price": check_price,
     "dmd_chain": check_dmd_chain,
+    "dmd_forks": check_dmd_forks,
     "audit": check_audit,
     "payments": check_payments,
     "receiving": check_receiving,

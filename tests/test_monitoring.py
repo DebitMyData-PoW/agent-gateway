@@ -46,12 +46,14 @@ from dmd_gateway.monitoring.cli import run
 from dmd_gateway.monitoring.reconcile import build_report
 from dmd_gateway.monitoring.state import (
     AUDIT_CURSOR,
+    DMD_BLOCK,
     RATE_LIMITED,
     RECEIVING,
     WORKER_HEARTBEAT,
     get_state,
     put_state,
 )
+from dmd_gateway.pricing.mining_cost import InputUnavailable
 from dmd_gateway.runtime import Runtime
 from dmd_gateway.settings import Settings
 from dmd_gateway.worker import _heartbeat
@@ -64,6 +66,7 @@ from .x402_fakes import CHAIN, MERCHANT, NETWORK, TOKEN, TestPayer, reset_chain
 C, W = Severity.CRITICAL, Severity.WARNING
 NOW = datetime(2026, 10, 27, 7, 0, tzinfo=UTC)
 WEBHOOK = "https://discord.com/api/webhooks/123/secret-token"
+BLOCK_A, BLOCK_B = "a" * 64, "b" * 64
 needs_db = pytest.mark.skipif(not TEST_DATABASE_URL, reason="TEST_DATABASE_URL not set")
 
 
@@ -390,14 +393,28 @@ class StubAdapter:
 
 
 class StubRpc:
-    def __init__(self, height: int = 100, parent_desc: str = "") -> None:
-        self.height, self.parent_desc = height, parent_desc
+    def __init__(
+        self,
+        height: int = 100,
+        parent_desc: str = "",
+        block: str = BLOCK_A,
+        tips: list[dict[str, Any]] | None = None,
+    ) -> None:
+        self.height, self.parent_desc, self.block = height, parent_desc, block
+        self.tips = tips
+        self.calls: list[tuple[str, Any]] = []
 
     def call(self, method: str, params: Any = None) -> Any:
+        self.calls.append((method, params))
         if method == "getblockchaininfo":
             return {"blocks": self.height}
         if method == "getaddressinfo":
             return {"ismine": True, "parent_desc": self.parent_desc}
+        if method == "getblockhash":
+            return self.block.upper()  # compared without case
+        if method == "getchaintips":
+            active = {"height": self.height, "hash": BLOCK_A, "branchlen": 0, "status": "active"}
+            return self.tips if self.tips is not None else [active]
         raise AssertionError(method)
 
 
@@ -407,6 +424,7 @@ def context(
     api: Any = None,
     rpc: StubRpc | None = None,
     explorer_height: int = 100,
+    explorer_block: str = BLOCK_A,
     environ: dict[str, str] | None = None,
     **settings: Any,
 ) -> mc.MonitorContext:
@@ -425,6 +443,11 @@ def context(
             return httpx.Response(200, text=str(explorer_height))
         if request.url.path == "/api/getdifficulty":
             return httpx.Response(200, text="1000")
+        if request.url.path == "/api/getblockhash":
+            # Only below the explorer's tip, as on the real one.
+            index = int(request.url.params["index"])
+            found = index <= explorer_height - mc.BLOCK_CHECK_DEPTH
+            return httpx.Response(200, text=explorer_block if found else "There was an error.")
         return httpx.Response(404)
 
     return mc.MonitorContext(
@@ -566,6 +589,96 @@ def test_dmd_chain_check(db: Session) -> None:
     (finding,) = mc.check_dmd_chain(far, db, NOW)
     assert finding.title == "The gateway's DebitMyData node is 10 blocks behind the explorer"
     assert mc.check_dmd_chain(context(), db, NOW) == []  # no DMD rail
+
+
+@needs_db
+def test_dmd_chain_check_compares_blocks(db: Session) -> None:
+    environ = {
+        "DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true",
+        "DMD_USDC_BASE_INFERENCE_ADDRESS": INFERENCE,
+    }
+    adapters = {"dmd_pow_native": StubAdapter("dmd_pow_native")}
+    rpc = StubRpc(height=101)
+    same = context(adapters, rpc=rpc, explorer_height=100, environ=environ)
+    assert mc.check_dmd_chain(same, db, NOW) == []
+    # The same height on both, 2 blocks below the lower tip (the explorer's here).
+    assert ("getblockhash", {"height": 98}) in rpc.calls
+    assert get_state(db, DMD_BLOCK) is None
+
+    other = context(adapters, rpc=StubRpc(height=100), explorer_block=BLOCK_B, environ=environ)
+    # A race between two new blocks settles by itself: nothing on the first check.
+    assert mc.check_dmd_chain(other, db, NOW) == []
+    assert get_state(db, DMD_BLOCK)[0] == {"checks": 1, "height": 98}  # type: ignore[index]
+    (finding,) = mc.check_dmd_chain(other, db, NOW)
+    assert (finding.key, finding.severity) == ("dmd_chain.block", C)
+    assert finding.title == (
+        "The gateway's DebitMyData node and the explorer are on different chains"
+    )
+    assert f"the node has {BLOCK_A} and the public explorer {BLOCK_B} (2 checks" in (finding.detail)
+    assert "dmd-cli getblockhash 98" in finding.detail
+    assert "DMD_RAIL_DMD_POW_NATIVE_KILL=true" in finding.detail
+    # Both on the same chain again: the count starts over.
+    assert mc.check_dmd_chain(same, db, NOW) == []
+    assert get_state(db, DMD_BLOCK)[0] == {}  # type: ignore[index]
+
+    # Different heights are reported with the blocks: both can be wrong at once.
+    behind = context(adapters, rpc=StubRpc(height=90), explorer_block=BLOCK_B, environ=environ)
+    mc.check_dmd_chain(behind, db, NOW)
+    keys = [f.key for f in mc.check_dmd_chain(behind, db, NOW)]
+    assert keys == ["dmd_chain.height", "dmd_chain.block"]
+
+    # An explorer that gives no block hash: the check cannot run (its alerts stay open).
+    broken = context(adapters, rpc=StubRpc(height=100), explorer_block="<html>", environ=environ)
+    with pytest.raises(InputUnavailable, match="no block hash at height 98"):
+        mc.check_dmd_chain(broken, db, NOW)
+
+
+def _tip(height: int, branchlen: int, status: str) -> dict[str, Any]:
+    return {"height": height, "hash": f"{height:064x}", "branchlen": branchlen, "status": status}
+
+
+@needs_db
+def test_dmd_forks_check(db: Session) -> None:
+    environ = {
+        "DMD_RAIL_DMD_POW_NATIVE_ENABLED": "true",
+        "DMD_USDC_BASE_INFERENCE_ADDRESS": INFERENCE,
+    }
+    adapters = {"dmd_pow_native": StubAdapter("dmd_pow_native")}
+    ctx = context(adapters, rpc=StubRpc(height=200), environ=environ)
+    assert mc.check_dmd_forks(ctx, db, NOW) == []  # only the node's own chain
+
+    tips = [
+        _tip(200, 0, "active"),
+        _tip(199, 1, "valid-fork"),  # one stale block: ordinary
+        _tip(197, 3, "valid-fork"),  # 3 blocks replaced after block 194
+        _tip(190, 7, "valid-fork"),  # 7: more than the 6 confirmations of DMD payments
+        _tip(203, 3, "headers-only"),  # the node's own chain, still downloading
+        _tip(201, 4, "valid-headers"),  # someone else's chain from block 197, longer
+        _tip(195, 2, "headers-only"),  # and another, shorter
+        _tip(199, 1, "invalid"),
+        _tip(120, 10, "valid-fork"),  # long ago
+    ]
+    ctx = context(adapters, rpc=StubRpc(height=200, tips=tips), environ=environ)
+    findings = {f.key: f for f in mc.check_dmd_forks(ctx, db, NOW)}
+    assert {key: f.severity for key, f in findings.items()} == {
+        "dmd_forks.reorg.194": W,
+        "dmd_forks.reorg.183.deep": C,
+        "dmd_forks.competing.197": W,
+        "dmd_forks.competing.193": W,
+        "dmd_forks.invalid.198": W,
+    }
+    assert all(f.kind == "event" for f in findings.values())  # each one sent once
+    reorg, deep = findings["dmd_forks.reorg.194"], findings["dmd_forks.reorg.183.deep"]
+    assert reorg.title == (
+        "The DebitMyData chain was reorganized: 3 blocks after block 194 were replaced"
+    )
+    assert "No settled payment can have left: DMD payments need 6 confirmations" in reorg.detail
+    assert "DMD_RAIL_DMD_POW_NATIVE_KILL=true" in deep.detail
+    assert f"Its last block: 190 ({190:064x}). The node's chain: block 200." in deep.detail
+    assert "It is longer than the node's own" in findings["dmd_forks.competing.197"].detail
+    assert "It is shorter" in findings["dmd_forks.competing.193"].detail
+    assert findings["dmd_forks.invalid.198"].title == ("Invalid DebitMyData blocks after block 198")
+    assert mc.check_dmd_forks(context(), db, NOW) == []  # no DMD rail
 
 
 @needs_db

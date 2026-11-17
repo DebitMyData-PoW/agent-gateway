@@ -32,8 +32,11 @@ ALLOWED_METHODS = frozenset(
         "gettransaction",
         "getblockheader",
         "decoderawtransaction",
-        # For the DMD mining-cost price (pricing/mining_cost.py).
+        # For the DMD mining-cost price (pricing/mining_cost.py), and the monitor's
+        # comparison of the node's blocks with the public explorer.
         "getblockhash",
+        # For the monitor: the node's competing branches (forks, reorganizations).
+        "getchaintips",
     }
 )
 

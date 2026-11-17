@@ -68,10 +68,11 @@ included; keep that for part 6.
 
 ## 3. The DebitMyData node or chain (isolation)
 
-**When:** a "payment left the chain after it was issued" alert (a reorganization), the node on
-a different block than the public explorer, or the node behaving in a way you do not
-understand. On a chain with little mining power, recent blocks are cheap to rewrite: treat it
-as a possible attack until shown otherwise.
+**When:** a "payment left the chain after it was issued" alert, a reorganization of 6 blocks
+or more ("The DebitMyData chain was reorganized", critical), the node on a different chain
+from the public explorer and the pool's node ("… are on different chains"), or the node
+behaving in a way you do not understand. On a chain with little mining power, recent blocks
+are cheap to rewrite: treat it as a possible attack until shown otherwise.
 
 The production node holds only the treasury's **watch-only** key: nothing on the server can
 spend DMD. Its RPC answers on the server only (`127.0.0.1:18557`), and it takes no incoming
@@ -97,8 +98,11 @@ peers (`listen=0`).
    ```
 
 4. Compare the node with the public explorer: `dmd-cli getblockcount` and
-   `dmd-cli getbestblockhash`, against the same block on the explorer. Note the DID-LLMs and
-   receipts whose payments the alert names (`dmd-gateway-admin did show <DID>`).
+   `dmd-cli getbestblockhash`, against the same block on the explorer, and with the pool's
+   node: `dmd-cli getblockhash <height>` on both, for the height the alert names.
+   `dmd-cli getchaintips` lists the branches the node knows (`branchlen`: their blocks that
+   are not in its chain). Note the DID-LLMs and receipts whose payments the alert names
+   (`dmd-gateway-admin did show <DID>`).
 
 **Undo,** once the cause is understood (tell Preska what happened before switching DMD
 payments back on): `dmd-cli setnetworkactive true` (or `systemctl start debitmydata`), wait

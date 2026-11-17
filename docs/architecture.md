@@ -144,7 +144,8 @@ price. Once DMD trades on an exchange, a market price source replaces both.
 `dmd-gateway-monitor` (`monitoring/`) runs every 2 minutes from a systemd timer. It checks the
 API, the payment worker's heartbeat (recorded on every pass), each enabled payment option's
 readiness (node, chain RPC, facilitator), the DMD price, the DebitMyData node against the public
-explorer, alerts recorded by the worker (a payment that left the chain after issuance),
+explorer (height and blocks), the node's reorganizations and competing branches
+(`getchaintips`), alerts recorded by the worker (a payment that left the chain after issuance),
 refunds due, stuck payments, and whether a receiving destination changed. Findings are kept
 in `alert_states`: an ongoing problem is sent when it starts, repeated while it lasts, and
 sent again when resolved; one-off events are sent once. Messages go by email (SMTP with TLS)

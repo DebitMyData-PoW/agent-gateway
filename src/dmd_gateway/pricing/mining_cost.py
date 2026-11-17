@@ -33,6 +33,7 @@ policy refuses quotes when the stored price is too old.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -67,6 +68,7 @@ DMD_HALVING_BLOCKS = 300_000
 DMD_SUBSIDY_CYCLE_BLOCKS = 9_600_000
 DMD_WINDOW_BLOCKS = 4032  # one week of 150-second blocks
 DATA_PER_DMD = 100_000_000  # the smallest unit
+BLOCK_HASH = re.compile(r"[0-9a-f]{64}")
 
 TWO_POW_32 = Decimal(2**32)
 JOULES_PER_KWH = Decimal(3_600_000)
@@ -179,7 +181,8 @@ class DmdNodeFigures:
 
 
 class DmdExplorerFigures:
-    """The current difficulty and height from the public DebitMyData explorer."""
+    """The current difficulty and height from the public DebitMyData explorer, and the hash of
+    its block at a height (the monitor compares it with the gateway's node)."""
 
     def __init__(self, client: httpx.Client, base_url: str) -> None:
         self._client = client
@@ -197,6 +200,21 @@ class DmdExplorerFigures:
         except (httpx.HTTPError, InputUnavailable) as exc:
             raise InputUnavailable(f"DebitMyData explorer: {type(exc).__name__}") from exc
         return ChainFigures(difficulty * TWO_POW_32, difficulty, height, "explorer", None)
+
+    def block_hash(self, height: int) -> str:
+        try:
+            response = self._client.get(
+                f"{self._base}/api/getblockhash", params={"index": str(height)}
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise InputUnavailable(f"DebitMyData explorer: {type(exc).__name__}") from exc
+        value = response.text.strip().lower()
+        if not BLOCK_HASH.fullmatch(value):
+            raise InputUnavailable(
+                f"DebitMyData explorer: no block hash at height {height}: {value[:40]!r}"
+            )
+        return value
 
 
 def http_client() -> httpx.Client:

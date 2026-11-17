@@ -41,7 +41,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.55.12`). The whole registration flow (quote,
+This is an early development release (`0.55.13`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
 DMD or by card; USDC through x402 runs on Base Sepolia on staging and waits for DebitMyData's
@@ -69,7 +69,7 @@ Coinbase CDP key in production:
 | Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](docs/staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DebitMyData difficulty from the public explorer) |
-| Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
+| Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer (height and blocks), forks and reorganizations of the DebitMyData chain, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](docs/monitoring.md)) | done (needs the email and Discord settings on each server) |
 | Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID-LLM costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID-LLM policy) served at `/policies`, linked from every quote | done (approved, published 2026-11-02) |
 | Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`debitmydata_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |

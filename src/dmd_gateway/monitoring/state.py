@@ -14,6 +14,7 @@ WORKER_HEARTBEAT = "heartbeat.worker"
 AUDIT_CURSOR = "cursor.audit"
 RECEIVING = "receiving.destinations"
 RATE_LIMITED = "rails.rate_limited"  # rail -> checks in a row its provider refused (HTTP 429)
+DMD_BLOCK = "dmd_chain.block"  # checks in a row the node and the explorer had different blocks
 
 
 def get_state(session: Session, key: str) -> tuple[dict[str, Any], datetime] | None:
