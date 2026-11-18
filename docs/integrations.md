@@ -2,7 +2,7 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.55.14). Technical owner: Tyler
+here is live on production and on staging (gateway 0.55.15). Technical owner: Tyler
 (tyler@debitmydata.com); ask before any load test or bulk run.
 
 ## 1. Where things are
@@ -238,6 +238,27 @@ service can check our tokens the same way: verify against the JWKS, and require 
 `aud` you expect, and `exp`. Today only the two MCP endpoints are audiences; tell Tyler if your
 service needs to be one.
 
+**A WhoAmI screen** (since 0.55.15) shows the answer's first fields, as they are, and keeps the
+rest apart:
+
+| Field | Shown as |
+| --- | --- |
+| `did_llm_id` | the DID-LLM ID: the DID's suffix (the part after `agents:`), never the internal `dmd_identity_...` |
+| `did` | the full DID, exactly as given (`did:web:`, the domain and the whole path): what **Copy ID** copies ("Full DID copied"), and what **Show full DID** shows |
+| `display_name`, `participant_type` | the name and participant type |
+| `identity_status` | the DID-LLM's own status (`active`, `suspended`, `revoked`): **not** a verification of it, and not the session |
+| `entitlement` | the active entitlements' names |
+| `controller_wallet` | the owner wallet (`eip155:<chain id>:0x...`); `null`: "Not linked" |
+| `registered_at` | the registration date (UTC, with its offset) |
+| `environment` | `staging` or `production`: the environment badge |
+| `session` | **Current session**, a section of its own: `status` (`active`: a request with an ended or expired one is refused before any tool runs), `kind` (`app` or `agent`), `access` (what the sign-in allows, in words: "Read your own DID-LLM's records"), `expires_at` and `timezone` (`UTC`): an app's sign-in ends 30 days after the person signed, an agent's with its 10-minute access token |
+| `advanced` | **Advanced details**: `identity_id` (internal), `controller_public_key`, `did_document_url`, `credentials` (their links), `entitlements` (with their dates and status), `owner_changed_at`, `access_token_expires_at` |
+
+The fields of the answer before 0.55.15 (`signed_in_as`, `scope`, `token_expires_at`,
+`identity`, `entitlements`) follow, unchanged. Every answer of the MCP endpoints is sent with
+`Cache-Control: no-store`: no shared cache (Cloudflare's included) keeps one, and each answer is
+the signed-in DID-LLM's own. An app should not keep WhoAmI's answer either: ask again.
+
 **Tool names.** Every tool's name starts with `debitmydata_` (since 0.50.0). Until then they
 started with `dmd_`: a call by such a name still works on both endpoints, but only the new
 names are listed, so use the new ones in new code.
@@ -249,7 +270,7 @@ changed through it.
 
 | Tool | Answers |
 | --- | --- |
-| `debitmydata_whoami` | the DID-LLM the request is signed in as, its record and entitlements |
+| `debitmydata_whoami` | the DID-LLM the request is signed in as: the WhoAmI screen's fields, its session, its record and entitlements |
 | `debitmydata_get_profile` | the signed-in DID-LLM's profile: `did`, `identity_id`, `display_name`, `participant_type`, `status`, `created_at`, `owners` (`key` and/or `wallet`), `owner_changed_at`, `did_document_url`, `credentials`, `entitlements`, `directory_listing` (null when not listed) |
 | `debitmydata_verify_agent` | another DID-LLM's public record (`did` only): the same answer as below, without the challenge |
 

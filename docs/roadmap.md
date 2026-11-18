@@ -180,6 +180,10 @@ place; the application logic comes with the related phase.
   CI on every push and every Monday; how to audit a server's own libraries (0.55.2)
 - [x] `/.well-known/security.txt` (RFC 9116) at both names, and HSTS and `nosniff` on every
   answer (0.55.5); `HEAD` answered as `GET` without the body everywhere (0.55.10)
+- [x] WhoAmI for the agreed screen (DebitMyData, November 2026): the DID's suffix to show and
+  the full DID to copy, the DID-LLM's status apart from the current session (its access in
+  words, its end with timezone), internal details under `advanced`; every MCP answer
+  `Cache-Control: no-store` (0.55.15)
 
 ## Phase 7 – x402 / USDC on Base
 

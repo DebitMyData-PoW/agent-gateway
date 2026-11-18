@@ -5,6 +5,7 @@ app's sign-in ends its access tokens at once; Google's domain-verification file.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -254,3 +255,79 @@ def test_googles_domain_verification_file(
         assert answer.headers["content-type"] == "application/json"
         proof.write_bytes(os.urandom(70 * 1024))  # never more than a small file
         assert client.get(path).status_code == 404
+
+
+def test_whoami_answers_what_the_whoami_screen_shows(gateway: TestClient) -> None:  # noqa: F811
+    """WhoAmI's answer as the screen agreed for it uses it: the DID's suffix to show and the full
+    DID to copy (never the internal ID), the DID-LLM's status apart from the session (status,
+    access in words, its end with timezone), internal details in advanced; never cached."""
+    issued = issue(gateway)
+    did = issued["did"]
+    verifier, challenge_value = pkce()
+    code = code_for(gateway, did, challenge_value, resource=IDENTITY)
+    exchanged = token(
+        gateway,
+        grant_type="authorization_code",
+        code=code,
+        redirect_uri=CALLBACK,
+        code_verifier=verifier,
+        resource=IDENTITY,
+    )
+    assert exchanged.status_code == 200, exchanged.text
+    response = call(gateway, "debitmydata_whoami", exchanged.json()["access_token"])
+    assert response.headers["cache-control"] == "no-store"
+    answer = result(response)
+
+    assert answer["did"] == did  # Copy ID: the full DID, exactly
+    assert answer["did_llm_id"] == did.rsplit(":", 1)[-1]
+    assert did.endswith(f":agents:{answer['did_llm_id']}")
+    assert not answer["did_llm_id"].startswith("dmd_")
+    assert answer["identity_status"] == "active"
+    assert answer["display_name"] and answer["participant_type"]
+    assert isinstance(answer["entitlement"], list)
+    assert "controller_wallet" in answer  # null: the screen shows "Not linked"
+    assert datetime.fromisoformat(answer["registered_at"]) <= datetime.now(UTC)
+    assert answer["environment"] == gateway.app.state.settings.environment  # type: ignore[attr-defined]
+
+    session = answer["session"]
+    assert session["status"] == "active" and session["kind"] == "app"
+    assert session["access"] == ["Read your own DID-LLM's records"]
+    assert session["timezone"] == "UTC"
+    ends = datetime.fromisoformat(session["expires_at"])
+    assert ends.utcoffset() is not None  # with its timezone
+    days = (ends - datetime.now(UTC)).days
+    assert 28 <= days <= 30  # the sign-in's end, not the 10-minute access token's
+
+    advanced = answer["advanced"]
+    assert advanced["identity_id"] == issued["identity_id"]
+    assert advanced["identity_id"].startswith("dmd_identity_")
+    assert advanced["did_document_url"].endswith("/did.json")
+    assert all(url.startswith("http") for url in advanced["credentials"])
+    assert "dmd_identity_" not in json.dumps(
+        {key: value for key, value in answer.items() if key in SCREEN}
+    )
+    # The answer before 0.55.15 is still there, for the apps written for it.
+    assert answer["signed_in_as"] == did and answer["identity"]["did"] == did
+
+    # An agent's sign-in is its access token alone: it ends with it.
+    agent = result(call(gateway, "debitmydata_whoami", sign_in(gateway, did, resource=IDENTITY)))
+    assert agent["session"]["kind"] == "agent"
+    assert agent["session"]["expires_at"] == agent["advanced"]["access_token_expires_at"]
+
+    # Nothing from the MCP endpoints is kept by a shared cache, signed in or not.
+    listed = rpc(gateway, "tools/list", {})
+    assert listed.status_code == 200 and listed.headers["cache-control"] == "no-store"
+
+
+SCREEN = (
+    "did",
+    "did_llm_id",
+    "display_name",
+    "participant_type",
+    "identity_status",
+    "entitlement",
+    "controller_wallet",
+    "registered_at",
+    "environment",
+    "session",
+)

@@ -51,6 +51,7 @@ from dmd_gateway import __version__
 from dmd_gateway.api import get_did_page, mcp_auth, superhighway_page
 from dmd_gateway.api.brand import IDENTITY_MCP_PATH, MCP_OLD_PATHS, MCP_PATH
 from dmd_gateway.api.oauth import issuer, sign_in_open
+from dmd_gateway.oauth.tokens import SCOPES
 from dmd_gateway.services.identity_status import IDENTITY_OR_DID
 from dmd_gateway.services.quotes import DID_REGISTRATION, ParticipantType
 from dmd_gateway.services.x402_payments import PAYMENT_SIGNATURE, encode_header
@@ -1028,11 +1029,15 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
 
         @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=signed_in_only)
         async def debitmydata_whoami() -> dict[str, Any]:
-            """The DID-LLM this request is signed in as, with its record and entitlements. Sign
-            in first. An agent: get an access token from DebitMyData's authorization server
-            (OAuth client credentials, with a JWT signed by your DID-LLM's key, see llms.txt) and
-            send it as "Authorization: Bearer <token>". An app such as ChatGPT or Claude: its
-            person signs in with their DID-LLM in the browser (OAuth authorization code)."""
+            """The DID-LLM this request is signed in as: its full DID (did, what Copy ID
+            copies) and short ID (did_llm_id, the DID's suffix), name, participant type, status,
+            entitlements, owner wallet (null: not linked), registration date and environment;
+            the current session apart (session: status, access, end with timezone); internal
+            IDs, keys and links in advanced. Sign in first. An agent: get an access token from
+            DebitMyData's authorization server (OAuth client credentials, with a JWT signed by
+            your DID-LLM's key, see llms.txt) and send it as "Authorization: Bearer <token>". An
+            app such as ChatGPT or Claude: its person signs in with their DID-LLM in the browser
+            (OAuth authorization code)."""
             token = mcp_auth.signed_in()
             if token is None:
                 return needs_sign_in(  # type: ignore[return-value]
@@ -1048,7 +1053,7 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
                     'error="insufficient_scope", scope="did:read", '
                     'error_description="This needs the did:read scope"',
                 )
-            return await _whoami(api, token)
+            return await _whoami(api, token, settings)
 
     @server.tool(title="Marketplace provider requirements", annotations=READ_ONLY)
     async def debitmydata_marketplace_provider_requirements() -> dict[str, Any]:
@@ -1068,15 +1073,60 @@ def build_mcp_server(app: FastAPI, *, sign_in: bool = False) -> MCPServer:
     return server
 
 
-async def _whoami(api: GatewayApi, token: AccessToken) -> dict[str, Any]:
-    """debitmydata_whoami's answer, on either endpoint."""
-    identity_id = (token.claims or {})["identity_id"]
+def _sentence(text: str) -> str:
+    """``text`` with a capital first letter (and the rest as it is)."""
+    return text[:1].upper() + text[1:]
+
+
+async def _whoami(api: GatewayApi, token: AccessToken, settings: Settings) -> dict[str, Any]:
+    """debitmydata_whoami's answer, on either endpoint: first what a WhoAmI screen shows,
+    each kept apart (the DID-LLM's own status is not a verification of it, and neither is the
+    session), then ``session``, then ``advanced`` (internal IDs, keys, links, entitlement
+    details), then the fields of the answer before 0.55.15, unchanged."""
+    claims = token.claims or {}
+    identity_id = claims["identity_id"]
+    identity = await api.call("GET", f"/v1/dids/{identity_id}")
+    entitlements = await api.call("GET", f"/v1/entitlements/{identity_id}")
+    token_expires_at = datetime.fromtimestamp(token.expires_at or 0, UTC).isoformat()
+    did = identity["did"]
     return {
+        "did": did,  # the full DID, exactly: what Copy ID copies
+        "did_llm_id": did.rsplit(":", 1)[-1],  # its suffix: what the screen shows
+        "display_name": identity["display_name"],
+        "participant_type": identity["participant_type"],
+        "identity_status": identity["status"],
+        "entitlement": [
+            item["entitlement"]
+            for item in entitlements["entitlements"]
+            if item["status"] == "active"
+        ],
+        "controller_wallet": identity.get("controller_wallet"),  # null: "Not linked"
+        "registered_at": identity["created_at"],
+        "environment": settings.environment,
+        "session": {
+            "status": "active",  # an ended or expired one is refused before any tool runs
+            "kind": "app" if claims.get("sid") else "agent",
+            "access": [_sentence(SCOPES.get(name, name)) for name in token.scopes],
+            # An app's sign-in ends 30 days after the person signed (its access tokens are
+            # renewed until then); an agent's, with its access token.
+            "expires_at": claims.get("signed_in_until") or token_expires_at,
+            "timezone": "UTC",
+        },
+        "advanced": {
+            "identity_id": identity["identity_id"],
+            "controller_public_key": identity.get("controller_public_key"),
+            "did_document_url": identity["did_document_url"],
+            "credentials": identity["credentials"],
+            "entitlements": entitlements["entitlements"],
+            "owner_changed_at": identity.get("owner_changed_at"),
+            "access_token_expires_at": token_expires_at,
+        },
+        # The answer before 0.55.15, for the apps written for it.
         "signed_in_as": token.subject,
         "scope": " ".join(token.scopes),
-        "token_expires_at": datetime.fromtimestamp(token.expires_at or 0, UTC).isoformat(),
-        "identity": await api.call("GET", f"/v1/dids/{identity_id}"),
-        "entitlements": await api.call("GET", f"/v1/entitlements/{identity_id}"),
+        "token_expires_at": token_expires_at,
+        "identity": identity,
+        "entitlements": entitlements,
     }
 
 
@@ -1138,8 +1188,11 @@ def build_identity_server(app: FastAPI) -> MCPServer:
 
     @server.tool(title="Who am I (signed in)", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
     async def debitmydata_whoami() -> dict[str, Any]:
-        """The DID-LLM this request is signed in as, with its record and entitlements."""
-        return await _whoami(api, signed_in())
+        """The DID-LLM this request is signed in as: its full DID (did, what Copy ID copies)
+        and short ID (did_llm_id), name, participant type, status, entitlements, owner wallet,
+        registration date and environment; the current session apart (session); internal IDs,
+        keys and links in advanced."""
+        return await _whoami(api, signed_in(), app.state.settings)
 
     @server.tool(title="My DID-LLM profile", annotations=READ_ONLY, meta=SIGNED_IN_ONLY)
     async def debitmydata_get_profile() -> dict[str, Any]:

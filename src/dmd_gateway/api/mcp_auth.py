@@ -37,7 +37,7 @@ from fastapi.responses import JSONResponse, Response
 from mcp.server.auth.middleware.auth_context import auth_context_var, get_access_token
 from mcp.server.auth.middleware.bearer_auth import AuthenticatedUser
 from mcp.server.auth.provider import AccessToken
-from sqlalchemy import exists, select
+from sqlalchemy import func, select
 from starlette.authentication import AuthCredentials
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -175,17 +175,20 @@ def check_token(
                 f"token issued before the owner change of {did}",
             )
         sid = claims.get("sid")
-        if sid is not None and not session.scalar(
-            select(
-                exists().where(
+        signed_in_until = None  # an agent's sign-in is its token alone
+        if sid is not None:
+            # An app's sign-in: still on while one of its refresh tokens is not revoked, until
+            # the latest one's end (the sign-in's, 30 days from the person's signature).
+            signed_in_until = session.scalar(
+                select(func.max(OAuthRefreshToken.expires_at)).where(
                     OAuthRefreshToken.family_id == str(sid),
                     OAuthRefreshToken.revoked_at.is_(None),
                 )
             )
-        ):
-            raise Refused(
-                "This sign-in was ended: sign in again", f"token of the ended sign-in {sid}"
-            )
+            if signed_in_until is None:
+                raise Refused(
+                    "This sign-in was ended: sign in again", f"token of the ended sign-in {sid}"
+                )
         identity_id = identity.id
     return AccessToken(
         token=token,
@@ -194,7 +197,13 @@ def check_token(
         expires_at=claims["exp"],
         resource=str(claims["aud"]),
         subject=did,
-        claims={"iss": claims["iss"], "jti": claims["jti"], "identity_id": identity_id},
+        claims={
+            "iss": claims["iss"],
+            "jti": claims["jti"],
+            "identity_id": identity_id,
+            "sid": sid,
+            "signed_in_until": signed_in_until.isoformat() if signed_in_until else None,
+        },
     )
 
 
@@ -302,7 +311,7 @@ class BearerTokens:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http" or not sign_in_open(scope["app"].state):
-            await self.endpoint(scope, receive, send)
+            await self.endpoint(scope, receive, no_store(send) if scope["type"] == "http" else send)
             return
         state = scope["app"].state
         header = _authorization(scope)
@@ -327,7 +336,7 @@ class BearerTokens:
                         send, resource, "Sign in with your DID-LLM", scope=needed, missing=True
                     )
                     return
-            await self.endpoint(scope, receive, send)
+            await self.endpoint(scope, receive, no_store(send))
             return
         kind, _, token = header.partition(" ")
         token = token.strip()
@@ -346,6 +355,24 @@ class BearerTokens:
         signed = {**scope, "user": user, "auth": AuthCredentials(access.scopes)}
         reset = auth_context_var.set(user)
         try:
-            await self.endpoint(signed, receive, send)
+            await self.endpoint(signed, receive, no_store(send))
         finally:
             auth_context_var.reset(reset)
+
+
+def no_store(send: Send) -> Send:
+    """``send``, with every answer marked ``Cache-Control: no-store``: an MCP answer is for
+    the request that asked it (``debitmydata_whoami``'s for its signed-in DID-LLM), so neither
+    Cloudflare nor any other shared cache may keep or reuse it."""
+
+    async def marked(message: Any) -> None:
+        if message["type"] == "http.response.start":
+            headers = [
+                (name, value)
+                for name, value in message.get("headers") or []
+                if name.lower() != b"cache-control"
+            ]
+            message = {**message, "headers": [*headers, (b"cache-control", b"no-store")]}
+        await send(message)
+
+    return marked
