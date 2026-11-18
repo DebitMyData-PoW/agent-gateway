@@ -66,6 +66,8 @@ def address_topic(address: str) -> str:
 
 class X402PaymentAdapter(PaymentAdapter):
     name = "X402PaymentAdapter"
+    # Base's RPC provider limits requests too; each check makes a few.
+    checks_per_second = 10.0
 
     def __init__(
         self,

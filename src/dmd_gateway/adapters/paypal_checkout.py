@@ -116,6 +116,7 @@ def usd_cents(value: Any) -> int | None:
 
 class PayPalCheckoutAdapter(PaymentAdapter):
     name = "PayPalCheckoutAdapter"
+    checks_per_second = 10.0
 
     def __init__(
         self,

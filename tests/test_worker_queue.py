@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
+from sqlalchemy.orm import Session
 
 from dmd_gateway.domain.routes import ConfirmationPolicy, load_registry
 from dmd_gateway.services import settlement
@@ -158,3 +159,74 @@ def test_shipped_dmd_rail_watches_settled_payments_for_seven_days() -> None:
 def test_watch_after_settlement_hours_is_bounded(hours: int) -> None:
     with pytest.raises(ValidationError):
         ConfirmationPolicy(required_confirmations=6, watch_after_settlement_hours=hours)
+
+
+def test_workers_side_by_side_each_check_their_own_share(
+    monkeypatch: pytest.MonkeyPatch, client, engine
+) -> None:
+    """Several payment workers: every open payment belongs to exactly one of them, so none is
+    checked twice at once and none is left out."""
+    monkeypatch.setattr(settlement, "BATCH_SIZE", 100_000)  # every due payment in one pass
+    pids = {quote(client)["payment_intent_id"] for _ in range(8)}
+    rails = list(client.app.state.quote_context.adapters)
+    now = datetime.now(UTC)
+    with Session(engine) as session:
+        shares = [
+            set(settlement.due_intent_ids(session, rails, now, shard=settlement.Shard(i, 3)))
+            for i in range(3)
+        ]
+        everything = set(settlement.due_intent_ids(session, rails, now))
+    assert pids <= everything
+    for one, other in [(0, 1), (0, 2), (1, 2)]:
+        assert not shares[one] & shares[other]
+    assert set().union(*shares) == everything
+    with pytest.raises(ValueError, match="0 <= index < count"):
+        settlement.Shard(3, 3)
+
+
+def test_a_worker_never_checks_a_payment_again_too_soon(
+    monkeypatch: pytest.MonkeyPatch, client, engine
+) -> None:
+    """With ``rest``, a payment checked less than that long ago waits: a worker going on
+    without a pause (a backlog) never checks the same payment more often than before."""
+    monkeypatch.setattr(settlement, "BATCH_SIZE", 100_000)  # every due payment in one pass
+    pid = quote(client)["payment_intent_id"]
+    rails = list(client.app.state.quote_context.adapters)
+    now = datetime.now(UTC)
+    tick(client, now)  # checked now
+    rest = timedelta(seconds=10)
+    with Session(engine) as session:
+        soon = settlement.due_intent_ids(session, rails, now + timedelta(seconds=5), rest=rest)
+        later = settlement.due_intent_ids(session, rails, now + timedelta(seconds=11), rest=rest)
+    assert pid not in soon and pid in later
+    result = tick(client, now + timedelta(seconds=1))
+    assert result.due >= 1  # without rest, as before: every pass takes it
+
+
+def test_rails_of_other_companies_keep_their_pace() -> None:
+    """A rail with checks_per_second is checked at most that often, shared between the
+    workers; a rail without one (the gateway's own node) never waits."""
+
+    class Rail:
+        def __init__(self, rate: float | None) -> None:
+            self.checks_per_second = rate
+
+    clock = [0.0]
+    slept: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        slept.append(round(seconds, 6))
+        clock[0] += seconds
+
+    pacer = settlement.RailPacer(
+        {"card": Rail(20.0), "dmd": Rail(None)},  # type: ignore[dict-item]
+        shards=4,
+        clock=lambda: clock[0],
+        sleep=sleep,
+    )
+    for _ in range(3):
+        pacer.wait("dmd")
+    assert slept == []
+    for _ in range(3):
+        pacer.wait("card")  # 20 a second for 4 workers: 5 a second each, 0.2 s apart
+    assert slept == [0.2, 0.2]

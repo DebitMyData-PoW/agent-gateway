@@ -56,6 +56,8 @@ def return_link(page: str, outcome: str, payment_intent_id: str) -> str:
 
 class StripeCheckoutAdapter(PaymentAdapter):
     name = "StripeCheckoutAdapter"
+    # Stripe answers about 100 requests a second in live mode: most of it left for the quotes.
+    checks_per_second = 20.0
 
     def __init__(
         self,

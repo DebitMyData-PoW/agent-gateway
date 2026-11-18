@@ -16,13 +16,14 @@ without a successful observation.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import not_, or_, select, update
+from sqlalchemy import BigInteger, ColumnElement, cast, func, not_, or_, select, true, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from dmd_gateway.adapters.base import (
@@ -76,6 +77,62 @@ class PassResult:
     changed: int = 0
     unavailable: int = 0
     errors: int = 0
+    due: int = 0  # how many intents the pass took: BATCH_SIZE when more are waiting
+
+
+@dataclass(frozen=True)
+class Shard:
+    """One payment worker's share of the payments, when several run side by side: worker
+    ``index`` of ``count`` checks the intents whose ID hashes to ``index`` (every intent
+    belongs to exactly one of them, so none is checked twice at once)."""
+
+    index: int = 0
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.index < self.count:
+            raise ValueError(f"shard {self.index}/{self.count}: needs 0 <= index < count")
+
+    def __str__(self) -> str:
+        return f"{self.index}/{self.count}"
+
+    def owns(self) -> ColumnElement[bool]:
+        """The intents of this share (PostgreSQL's hashtext of the ID, modulo ``count``)."""
+        if self.count == 1:
+            return true()
+        hashed = cast(func.hashtext(PaymentIntent.id), BigInteger)
+        return ((hashed % self.count) + self.count) % self.count == self.index
+
+
+class RailPacer:
+    """Keeps each rail to its ``checks_per_second`` (its adapter's), shared out between the
+    payment workers: each of ``shards`` waits its turn for its part of the rate."""
+
+    def __init__(
+        self,
+        adapters: Mapping[str, PaymentAdapter],
+        shards: int = 1,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        self.gaps = {
+            rail_id: shards / adapter.checks_per_second
+            for rail_id, adapter in adapters.items()
+            if adapter.checks_per_second
+        }
+        self.next: dict[str, float] = {}
+        self.clock, self.sleep = clock, sleep
+
+    def wait(self, rail_id: str) -> None:
+        gap = self.gaps.get(rail_id)
+        if gap is None:
+            return
+        now = self.clock()
+        turn = max(now, self.next.get(rail_id, now))
+        if turn > now:
+            self.sleep(turn - now)
+        self.next[rail_id] = turn + gap
 
 
 def settled_watch_windows(adapters: Mapping[str, PaymentAdapter]) -> dict[str, timedelta]:
@@ -105,6 +162,9 @@ def due_intent_ids(
     now: datetime,
     settled_windows: Mapping[str, timedelta] | None = None,
     recheck_intervals: Mapping[str, timedelta] | None = None,
+    *,
+    shard: Shard | None = None,
+    rest: timedelta | None = None,
 ) -> list[str]:
     """The intents to check in this pass, at most ``BATCH_SIZE``.
 
@@ -113,9 +173,20 @@ def due_intent_ids(
     there are enough of them. In each group the least recently checked come first, so every
     intent is checked in turn, however many there are. Closed payments of a rail with a
     recheck interval wait that long between two checks.
+
+    ``shard``: only this worker's share. ``rest``: none checked less than that long ago (the
+    worker goes on without pausing while more are waiting, never checking one more often).
     """
     if not rail_ids:
         return []
+    mine = (shard or Shard()).owns()
+    rested = (
+        true()
+        if rest is None
+        else or_(
+            PaymentIntent.last_checked_at.is_(None), PaymentIntent.last_checked_at <= now - rest
+        )
+    )
     order = (
         PaymentIntent.last_checked_at.asc().nulls_first(),
         PaymentIntent.updated_at,
@@ -126,6 +197,7 @@ def due_intent_ids(
             select(PaymentIntent.id)
             .where(PaymentIntent.rail_id.in_(rail_ids))
             .where(PaymentIntent.status.in_([s.value for s in ACTIVE_STATUSES]))
+            .where(mine, rested)
             .order_by(*order)
             .limit(BATCH_SIZE)
         )
@@ -141,7 +213,12 @@ def due_intent_ids(
                 & (PaymentIntent.status == S.SETTLED.value)
                 & (PaymentIntent.updated_at > now - window)
             )
-    query = select(PaymentIntent.id).where(PaymentIntent.rail_id.in_(rail_ids)).where(or_(*watched))
+    query = (
+        select(PaymentIntent.id)
+        .where(PaymentIntent.rail_id.in_(rail_ids))
+        .where(or_(*watched))
+        .where(mine, rested)
+    )
     checked_lately = [
         (PaymentIntent.rail_id == rail_id)
         & PaymentIntent.last_checked_at.is_not(None)
@@ -264,8 +341,11 @@ def process_intent(
     payment_intent_id: str,
     adapters: Mapping[str, PaymentAdapter],
     now: datetime,
+    before_observe: Callable[[str], None] | None = None,
 ) -> bool:
-    """Observe one intent and record what changed. Returns True if anything was recorded."""
+    """Observe one intent and record what changed. Returns True if anything was recorded.
+    ``before_observe`` is called with the rail's ID just before its adapter is asked (the
+    pacing of rails checked through another company's API)."""
     intent = session.scalars(
         select(PaymentIntent)
         .where(PaymentIntent.id == payment_intent_id)
@@ -281,6 +361,8 @@ def process_intent(
     current = S(intent.status)
     expected_units = int(intent.amount_base_units)
     expected = expected_payment(session, intent)
+    if before_observe is not None:
+        before_observe(intent.rail_id)
     observation = adapter.observe(expected)  # AdapterUnavailable propagates: no change
     ctx = SettlementContext(
         expected_base_units=expected_units,
@@ -516,6 +598,10 @@ def run_pass(
     factory: sessionmaker[Session],
     adapters: Mapping[str, PaymentAdapter],
     now: datetime,
+    *,
+    shard: Shard | None = None,
+    rest: timedelta | None = None,
+    pacer: RailPacer | None = None,
 ) -> PassResult:
     with transaction(factory) as session:
         ids = due_intent_ids(
@@ -524,12 +610,15 @@ def run_pass(
             now,
             settled_watch_windows(adapters),
             watched_recheck_intervals(adapters),
+            shard=shard,
+            rest=rest,
         )
+    wait = pacer.wait if pacer is not None else None
     processed = changed = unavailable = errors = 0
     for payment_intent_id in ids:
         try:
             with transaction(factory) as session:
-                if process_intent(session, payment_intent_id, adapters, now):
+                if process_intent(session, payment_intent_id, adapters, now, wait):
                     changed += 1
             processed += 1
         except AdapterUnavailable as exc:
@@ -546,4 +635,4 @@ def run_pass(
                 extra={"event": {"payment_intent_id": payment_intent_id}},
             )
             _mark_checked(factory, payment_intent_id, now)
-    return PassResult(processed, changed, unavailable, errors)
+    return PassResult(processed, changed, unavailable, errors, len(ids))

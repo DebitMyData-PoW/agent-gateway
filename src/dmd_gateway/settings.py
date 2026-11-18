@@ -41,6 +41,11 @@ class Settings(BaseSettings):
 
     database_url: str = DEV_DATABASE_URL
     database_connect_timeout_seconds: int = 3
+    # Database connections each process keeps (pool_size) and may open beyond them when busy
+    # (max_overflow). The servers' setup gives PostgreSQL enough connections for every API
+    # process and payment worker (deploy/staging/files/capacity.sh).
+    database_pool_size: int = Field(default=5, ge=1, le=50)
+    database_max_overflow: int = Field(default=5, ge=0, le=50)
 
     public_base_url: str = "http://localhost:8000"
     # The MCP endpoint is served at <public_base_url>/agenticsuperhighway (and /mcp, its first

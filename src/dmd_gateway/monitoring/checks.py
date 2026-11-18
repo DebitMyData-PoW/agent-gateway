@@ -155,19 +155,26 @@ def check_worker(ctx: MonitorContext, session: Session, now: datetime) -> list[F
         return []
     limit = max(timedelta(minutes=2), timedelta(seconds=6 * ctx.settings.worker_interval_seconds))
     state = get_state(session, WORKER_HEARTBEAT)
-    if state is None or now - state[1] > limit:
-        seen = f"{state[1]:%Y-%m-%d %H:%M} UTC" if state else "never"
-        return [
-            Finding(
-                "worker.stopped",
-                C,
-                "The payment worker has stopped",
-                f"Last sign of life: {seen}. Payments are not being verified, so DID-LLMs and "
-                "receipts are not issued after payment, and the DMD price is not updated. "
-                "On the server: systemctl status dmd-gateway-worker",
-            )
-        ]
-    errors = int((state[0].get("last_pass") or {}).get("errors", 0))
+    # Several workers side by side: the first says how many; each records its own heartbeat.
+    count = int(state[0].get("shards", 1)) if state else 1
+    states = [state] + [get_state(session, f"{WORKER_HEARTBEAT}.{i}") for i in range(1, count)]
+    for index, found in enumerate(states):
+        if found is None or now - found[1] > limit:
+            seen = f"{found[1]:%Y-%m-%d %H:%M} UTC" if found else "never"
+            which = "The payment worker" if count == 1 else f"Payment worker {index + 1} of {count}"
+            return [
+                Finding(
+                    "worker.stopped",
+                    C,
+                    f"{which} has stopped",
+                    f"Last sign of life: {seen}. Payments are not being verified, so DID-LLMs "
+                    "and receipts are not issued after payment, and the DMD price is not "
+                    "updated. On the server: systemctl status dmd-gateway-worker",
+                )
+            ]
+    errors = sum(
+        int((found[0].get("last_pass") or {}).get("errors", 0)) for found in states if found
+    )
     if errors:
         return [
             Finding(

@@ -41,7 +41,7 @@ Settlement & finality ──► DID-LLM + receipt + credential + entitlements �
 
 ## Status
 
-This is an early development release (`0.55.15`). The whole registration flow (quote,
+This is an early development release (`0.55.16`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
 DMD or by card; USDC through x402 runs on Base Sepolia on staging and waits for DebitMyData's

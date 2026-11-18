@@ -496,7 +496,26 @@ def test_the_worker_records_its_heartbeat(engine: Engine) -> None:
     _heartbeat(session_factory(engine), NOW, {"processed": 1, "errors": 0})
     with session_factory(engine)() as session:
         state = get_state(session, WORKER_HEARTBEAT)
-    assert state is not None and state[0] == {"last_pass": {"processed": 1, "errors": 0}}
+    assert state is not None
+    assert state[0] == {"last_pass": {"processed": 1, "errors": 0}, "shards": 1}
+
+
+@needs_db
+def test_every_payment_worker_is_checked(db: Session) -> None:
+    """Several payment workers: the first says how many, each records its own heartbeat, and
+    the monitor alerts when any one of them stops; their errors add up."""
+    ctx = context({"x402_usdc_base": StubAdapter("x402_usdc_base")})
+    fresh = NOW - timedelta(seconds=30)
+    put_state(db, WORKER_HEARTBEAT, {"last_pass": {"errors": 0}, "shards": 3}, fresh)
+    put_state(db, f"{WORKER_HEARTBEAT}.1", {"last_pass": {"errors": 1}}, fresh)
+    (finding,) = mc.check_worker(ctx, db, NOW)  # the third: never
+    assert finding.key == "worker.stopped" and finding.title.startswith("Payment worker 3 of 3")
+    put_state(db, f"{WORKER_HEARTBEAT}.2", {"last_pass": {"errors": 2}}, fresh)
+    (finding,) = mc.check_worker(ctx, db, NOW)
+    assert finding.key == "worker.errors" and finding.detail.startswith("3 payment(s)")
+    # Back to one worker: the others' last heartbeats no longer count.
+    put_state(db, WORKER_HEARTBEAT, {"last_pass": {"errors": 0}, "shards": 1}, fresh)
+    assert mc.check_worker(ctx, db, NOW + timedelta(minutes=1)) == []
 
 
 @needs_db

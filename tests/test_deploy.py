@@ -462,3 +462,81 @@ def test_staging_setup_installs_the_client_documents_and_refuses_a_wrong_one(
         argv, capture_output=True, text=True, check=False
     )
     assert refused.returncode == 1 and "its client_id must be" in refused.stderr
+
+
+def _capacity(tmp_path: Path, cores: int, settings: str = "", connections: int = 100) -> str:
+    """capacity.sh with this many cores, these settings and PostgreSQL's max_connections: what
+    it prints, then the commands it ran (psql and systemctl, faked)."""
+    calls = tmp_path / "calls"
+    stubs = tmp_path / "bin"
+    stubs.mkdir(exist_ok=True)
+    state = tmp_path / "connections"
+    state.write_text(str(connections), encoding="utf-8")
+    fakes = {
+        "nproc": f"echo {cores}",
+        # runuser -u postgres -- psql ...: SHOW answers the stored value, ALTER stores one
+        "runuser": (
+            f'shift 3; echo "$@" >>"{calls}"\n'
+            f'case "$*" in *SHOW*) cat "{state}";;\n'
+            f'  *ALTER*) echo "$*" | tr -dc "0-9" >"{state}";; esac'
+        ),
+        "systemctl": f'echo "systemctl $*" >>"{calls}"',
+    }
+    for name, body in fakes.items():
+        stub = stubs / name
+        stub.write_text(f"#!/bin/bash\n{body}\n", encoding="utf-8")
+        stub.chmod(0o755)
+    env_file = tmp_path / "gateway.env"
+    env_file.write_text(settings, encoding="utf-8")
+    assert BASH is not None
+    result = subprocess.run(  # noqa: S603 (fixed arguments, test files only)
+        [
+            BASH,
+            "-c",
+            f'fail() {{ echo "FAIL: $*"; exit 1; }}; . "{FILES / "capacity.sh"}"; '
+            'echo "api=$API_WORKERS payment=$PAYMENT_WORKERS"',
+        ],
+        env={
+            "PATH": f"{stubs}:/usr/bin:/bin",
+            "ENV_FILE": str(env_file),
+            "SYSTEMCTL": str(stubs / "systemctl"),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    ran = calls.read_text(encoding="utf-8") if calls.exists() else ""
+    calls.unlink(missing_ok=True)
+    return result.stdout + ran
+
+
+@pytest.mark.skipif(BASH is None, reason="bash is not installed")
+def test_every_core_is_used_with_enough_database_connections(tmp_path: Path) -> None:
+    """One API process per core (2 to 16), one payment worker per core (2 to 8) unless the
+    settings say how many, and PostgreSQL raised to enough connections for all of them (and
+    restarted) only when it has fewer."""
+    small = _capacity(tmp_path, 1)
+    assert "api=2 payment=2" in small and "ALTER" not in small  # 2*10 + 2*3 + 40 < 100
+
+    eight = _capacity(tmp_path, 8)
+    assert "api=8 payment=8" in eight
+    assert "ALTER SYSTEM SET max_connections = 144" in eight  # 8*10 + 8*3 + 40
+    assert "systemctl restart postgresql" in eight
+    assert "144 database connections at most" in eight
+
+    big = _capacity(tmp_path, 64, connections=500)
+    assert "api=16 payment=8" in big and "ALTER" not in big and "restart" not in big
+
+    chosen = _capacity(tmp_path, 4, "DMD_GW_PAYMENT_WORKERS=12\nDMD_GW_DATABASE_POOL_SIZE=8\n")
+    assert "api=4 payment=12" in chosen
+    assert "max_connections = 128" in chosen  # 4 * (8 + 5) + 12 * 3 + 40
+    assert "FAIL" in _capacity(tmp_path, 4, "DMD_GW_PAYMENT_WORKERS=40\n")
+
+
+def test_the_worker_unit_runs_the_payment_workers_setup_chose() -> None:
+    unit = (FILES / "dmd-gateway-worker.service").read_text(encoding="utf-8")
+    assert "dmd-gateway-worker --processes @PAYMENT_WORKERS@" in unit
+    for script in SETUP_SCRIPTS:
+        text = script.read_text(encoding="utf-8")
+        assert "capacity.sh" in text and "s#@PAYMENT_WORKERS@#$PAYMENT_WORKERS#g" in text
+        assert "-gt 4 ]" not in text  # no longer at most 4 API processes

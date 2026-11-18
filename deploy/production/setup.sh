@@ -282,13 +282,14 @@ SQL
 
 step "Starting the credential signer, the gateway API and the payment worker"
 sed "s#@APP_DIR@#$APP_DIR#g" "$FILES/dmd-gateway-signer.service" >/etc/systemd/system/dmd-gateway-signer.service
-# One API process per CPU core, between 2 and 4 (each one keeps up to 15 database connections).
-API_WORKERS="$(nproc)"
-if [ "$API_WORKERS" -lt 2 ]; then API_WORKERS=2; fi
-if [ "$API_WORKERS" -gt 4 ]; then API_WORKERS=4; fi
+# How many API processes and payment workers this server runs, and enough database
+# connections for them.
+# shellcheck source=deploy/staging/files/capacity.sh
+. "$SHARED/capacity.sh"
 sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@API_WORKERS@#$API_WORKERS#g" \
     "$SHARED/dmd-gateway-api.service" >/etc/systemd/system/dmd-gateway-api.service
-sed "s#@APP_DIR@#$APP_DIR#g" "$SHARED/dmd-gateway-worker.service" >/etc/systemd/system/dmd-gateway-worker.service
+sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@PAYMENT_WORKERS@#$PAYMENT_WORKERS#g" \
+    "$SHARED/dmd-gateway-worker.service" >/etc/systemd/system/dmd-gateway-worker.service
 $SYSTEMCTL daemon-reload
 $SYSTEMCTL enable dmd-gateway-signer dmd-gateway-api dmd-gateway-worker >/dev/null
 $SYSTEMCTL restart dmd-gateway-signer

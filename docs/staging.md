@@ -412,7 +412,18 @@ expired); a sixth is refused with 429 `too_many_open_quotes` until one is paid o
 (`Cache-Control: public, max-age=60`). A Cloudflare cache rule for those two paths serves
 most reads without reaching the server at all.
 
-The API runs one process per CPU core (between 2 and 4).
+**Capacity.** The API runs one process per CPU core (between 2 and 16), and the payment
+worker as many workers side by side, one per core (between 2 and 8; `DMD_GW_PAYMENT_WORKERS`
+in the settings file sets another number, 1 to 32, and `update.sh` applies it). Each worker
+checks its own share of the payments, so none is checked twice at once. A worker pauses
+`DMD_GW_WORKER_INTERVAL_SECONDS` (10) between passes, except while more payments are waiting
+than a pass takes (100): then it goes on at once, but never checks the same payment more often
+than every 10 seconds. Rails checked through another company's API keep to a pace that leaves
+room for that company's own limits, all workers together: card (Stripe) 20 checks a second,
+PayPal 10, USDC on Base 10. The setup gives PostgreSQL enough connections for all of them
+(10 per API process, 3 per worker, 40 more; at least 100) and restarts it once when it raises
+them (`deploy/staging/files/capacity.sh`). A bigger server is therefore used in full: the
+setup prints how many of each it runs.
 
 **Load test.** `scripts/load_test.py` measures how many requests per second the gateway
 answers and how fast. Run it on the server, against the API directly (past nginx and its

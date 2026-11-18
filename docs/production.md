@@ -56,7 +56,7 @@ issuer key) and starts:
 | --- | --- |
 | `debitmydata` | the DebitMyData node on the main chain (`dmd-cli ...` to talk to it) |
 | `dmd-gateway-signer` | the credential signer (below) |
-| `dmd-gateway-api`, `dmd-gateway-worker` | the API and the payment worker |
+| `dmd-gateway-api`, `dmd-gateway-worker` | the API (one process per CPU core, 2 to 16) and the payment workers (one per core, 2 to 8, side by side under one service: [staging.md, section 6](staging.md#6-request-limits-and-load-testing)) |
 | `dmd-gateway-monitor.timer`, `-report.timer` | alerts every 2 minutes, daily report at 07:00 UTC |
 | `dmd-gateway-backup.timer` | the nightly backup at 03:30 UTC (step 4) |
 

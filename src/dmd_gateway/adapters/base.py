@@ -143,6 +143,10 @@ class PaymentAdapter(ABC):
     """
 
     name: str
+    # At most this many payment checks a second on this rail, all payment workers together:
+    # for rails checked through another company's API (Stripe, PayPal, Base), whose own limits
+    # also count the quotes the API creates. None: no limit (the gateway's own node).
+    checks_per_second: float | None = None
 
     def __init__(self, rail_id: str, rail: RailConfig, environ: Mapping[str, str]) -> None:
         self.rail_id = rail_id

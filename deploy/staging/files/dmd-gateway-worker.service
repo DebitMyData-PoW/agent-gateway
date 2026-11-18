@@ -9,7 +9,7 @@ Group=gateway
 WorkingDirectory=@APP_DIR@
 EnvironmentFile=/etc/dmd-gateway/gateway.env
 Environment=PYTHONDONTWRITEBYTECODE=1
-ExecStart=@APP_DIR@/.venv/bin/dmd-gateway-worker
+ExecStart=@APP_DIR@/.venv/bin/dmd-gateway-worker --processes @PAYMENT_WORKERS@
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes

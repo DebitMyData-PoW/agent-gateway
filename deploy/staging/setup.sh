@@ -208,14 +208,14 @@ step "Creating the test wallets (once)"
 step "Updating the database schema"
 run_as_gateway "$APP_DIR/.venv/bin/alembic" upgrade head
 
-step "Starting the gateway API and payment worker"
-# One API process per CPU core, between 2 and 4 (each one keeps up to 15 database connections).
-API_WORKERS="$(nproc)"
-if [ "$API_WORKERS" -lt 2 ]; then API_WORKERS=2; fi
-if [ "$API_WORKERS" -gt 4 ]; then API_WORKERS=4; fi
+step "Starting the gateway API and payment workers"
+# How many of each this server runs, and enough database connections for them.
+# shellcheck source=deploy/staging/files/capacity.sh
+. "$FILES/capacity.sh"
 sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@API_WORKERS@#$API_WORKERS#g" \
     "$FILES/dmd-gateway-api.service" >/etc/systemd/system/dmd-gateway-api.service
-sed "s#@APP_DIR@#$APP_DIR#g" "$FILES/dmd-gateway-worker.service" >/etc/systemd/system/dmd-gateway-worker.service
+sed -e "s#@APP_DIR@#$APP_DIR#g" -e "s#@PAYMENT_WORKERS@#$PAYMENT_WORKERS#g" \
+    "$FILES/dmd-gateway-worker.service" >/etc/systemd/system/dmd-gateway-worker.service
 $SYSTEMCTL daemon-reload
 $SYSTEMCTL enable dmd-gateway-api dmd-gateway-worker >/dev/null
 $SYSTEMCTL restart dmd-gateway-api dmd-gateway-worker
