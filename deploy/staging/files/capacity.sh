@@ -8,7 +8,9 @@
 # unless DMD_GW_PAYMENT_WORKERS (1 to 32) says otherwise: checking payments mostly waits on
 # the node and the payment companies, so more workers than cores can help.
 
-capacity_setting() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -dc '0-9'; }
+# A setting missing from the settings file (the usual case) is empty, not an error: setup.sh runs
+# with pipefail, where grep finding nothing would stop it before the gateway restarts.
+capacity_setting() { grep -E "^$1=" "$ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- | tr -dc '0-9' || true; }
 
 CORES="$(nproc)"
 API_WORKERS="$CORES"

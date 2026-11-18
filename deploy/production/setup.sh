@@ -14,6 +14,8 @@
 # option starts switched OFF; docs/production.md says when and how to switch each one on.
 # Safe to run again: existing secrets, keys, wallets and data are kept.
 set -euo pipefail
+# A command that fails stops the setup: say where, rather than stopping without a word.
+trap 'printf "\nERROR: setup stopped at line %s: %s\nNothing after it ran: fix it, then run it again.\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 HOSTNAME_PUBLIC="${HOSTNAME_PUBLIC:-api.debitmydata.io}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

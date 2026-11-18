@@ -52,7 +52,7 @@ place; the application logic comes with the related phase.
 - [x] GW-11 Background worker for polling and finality (`dmd-gateway-worker`); full reconciliation is DMD-13
 - [x] GW-12 Per-rail feature flags and kill switches (environment-based; runtime toggle later with OPS-09)
 - [x] GW-13 Request rate limits per address and in total (nginx on staging), open-quote limit per controller key, cacheable discovery
-- [ ] GW-14 Production capacity: load test on the production servers, edge rate limits (Cloudflare or AWS WAF), several API servers behind a load balancer, managed PostgreSQL (`scripts/load_test.py` is ready). Done (0.55.16): a server's every core is used (API processes 2 to 16), payment workers side by side, each with its share, without pausing while payments are waiting, other companies' APIs kept to their pace, and PostgreSQL given enough connections
+- [ ] GW-14 Production capacity: load test on the production servers, edge rate limits (Cloudflare or AWS WAF), several API servers behind a load balancer, managed PostgreSQL (`scripts/load_test.py` is ready). Done (0.55.16): a server's every core is used (API processes 2 to 16), payment workers side by side, each with its share, without pausing while payments are waiting, other companies' APIs kept to their pace, and PostgreSQL given enough connections (0.55.17: the update no longer stops, without a word, before restarting the gateway when the settings file names no capacity setting; a setup step that fails says where)
 
 ## Phase 3 – Route registry and quote engine
 

@@ -493,7 +493,9 @@ def _capacity(tmp_path: Path, cores: int, settings: str = "", connections: int =
         [
             BASH,
             "-c",
-            f'fail() {{ echo "FAIL: $*"; exit 1; }}; . "{FILES / "capacity.sh"}"; '
+            # as setup.sh runs it: with set -euo pipefail
+            'set -euo pipefail; fail() { echo "FAIL: $*"; exit 1; }; '
+            f'. "{FILES / "capacity.sh"}"; '
             'echo "api=$API_WORKERS payment=$PAYMENT_WORKERS"',
         ],
         env={
@@ -515,6 +517,8 @@ def test_every_core_is_used_with_enough_database_connections(tmp_path: Path) -> 
     """One API process per core (2 to 16), one payment worker per core (2 to 8) unless the
     settings say how many, and PostgreSQL raised to enough connections for all of them (and
     restarted) only when it has fewer."""
+    # No capacity setting in the settings file, the usual case: setup carries on (0.55.16 stopped
+    # here, silently, before restarting the gateway)
     small = _capacity(tmp_path, 1)
     assert "api=2 payment=2" in small and "ALTER" not in small  # 2*10 + 2*3 + 40 < 100
 
@@ -531,6 +535,13 @@ def test_every_core_is_used_with_enough_database_connections(tmp_path: Path) -> 
     assert "api=4 payment=12" in chosen
     assert "max_connections = 128" in chosen  # 4 * (8 + 5) + 12 * 3 + 40
     assert "FAIL" in _capacity(tmp_path, 4, "DMD_GW_PAYMENT_WORKERS=40\n")
+
+
+def test_a_failing_setup_step_says_where_it_stopped() -> None:
+    for script in SETUP_SCRIPTS:
+        text = script.read_text(encoding="utf-8")
+        assert "set -euo pipefail\n" in text
+        assert "ERROR: setup stopped at line %s: %s" in text and "' ERR\n" in text
 
 
 def test_the_worker_unit_runs_the_payment_workers_setup_chose() -> None:
