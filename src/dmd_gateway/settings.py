@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # page at its root, as an app people add to their home screen, e.g. id.debitmydata.io.
     # Empty: no app; the page is at /get-did as before. DIDs keep public_base_url's host.
     app_host: str = ""
+    # The Get a DID-LLM page's look (api/page_design.py): "classic" (the debitmydata.com
+    # look), "fintech" or "aurora". With page_design_preview (always on staging), visitors can
+    # compare them on the real page with ?design=fintech, ?design=aurora or ?design=classic.
+    page_design: str = "classic"
+    page_design_preview: bool = False
     # Google Connected Apps (Gemini, Search): the domain-verification file Google's console
     # gives, served at /.well-known/google-connected-apps (api/site_files.py). Unset: 404.
     google_connected_apps_file: Path | None = None
@@ -185,6 +190,16 @@ class Settings(BaseSettings):
                 "app_host and auth_host must be host names only, e.g. id.debitmydata.io"
             )
         return host
+
+    @field_validator("page_design")
+    @classmethod
+    def _page_design(cls, value: str) -> str:
+        from dmd_gateway.api.page_design import DESIGNS
+
+        design = value.strip().lower() or "classic"
+        if design not in DESIGNS:
+            raise ValueError(f"page_design must be one of: {', '.join(DESIGNS)}")
+        return design
 
     @field_validator("report_excluded_dids")
     @classmethod

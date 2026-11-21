@@ -46,7 +46,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from dmd_gateway.api import brand, docs_pages
+from dmd_gateway.api import brand, docs_pages, page_design
 from dmd_gateway.api.hosts import is_app, to_api, to_app
 from dmd_gateway.domain.routes import PAYPAL_CHECKOUT, STRIPE_CHECKOUT, PaymentRouteRegistry
 from dmd_gateway.services.quotes import DID_REGISTRATION
@@ -61,6 +61,8 @@ ADVANCED_PATH = brand.ADVANCED_PATH
 MCP_PATH = brand.MCP_PATH  # the MCP server, the Agentic Superhighway
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "get-did.css").read_text(encoding="utf-8")
+# The page's style in each design (api/page_design.py): the classic one, then the design's own.
+STYLES = {design: _STYLE + page_design.stylesheet(design) for design in page_design.DESIGNS}
 # The QR code encoder (qr.js) runs first: step 2 draws the DMD payment link with it.
 _SCRIPT = "\n".join(
     (_STATIC / name).read_text(encoding="utf-8") for name in ("qr.js", "get-did.js")
@@ -87,9 +89,9 @@ DESCRIPTION = (
     "Get your DebitMyData DID-LLM: a verifiable identity for an AI agent, a bot, a person or an "
     "organization, with a credential signed by DebitMyData."
 )
-# What the app's service worker keeps, to open without a network.
+# What the app's service worker keeps, to open without a network (the designs' fonts too).
 WORKER_FILES = (
-    *(f"/fonts/{name}" for name in FONTS),
+    *(f"/fonts/{name}" for name in FONTS + page_design.ALL_FONTS),
     "/favicon.png",
     "/logo.png",
     "/logo-dark.png",
@@ -118,12 +120,17 @@ def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
 
-CSP = (
-    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; img-src 'self' data:; "
-    "connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
-    "form-action 'none'; frame-ancestors 'none'"
-)
+def _csp(style: str) -> str:
+    return (
+        f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
+        f"style-src 'sha256-{_sha256(style)}'; font-src 'self'; img-src 'self' data:; "
+        "connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
+        "form-action 'none'; frame-ancestors 'none'"
+    )
+
+
+CSPS = {design: _csp(style) for design, style in STYLES.items()}
+CSP = CSPS[page_design.CLASSIC]
 HEADERS = {
     "Cache-Control": f"no-store, {brand.NO_TRANSFORM}",
     "Content-Security-Policy": CSP,
@@ -215,6 +222,7 @@ ICONS = {
         '<rect x="5" y="3" width="14" height="18" rx="1"/>'
         '<path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M11 21v-3h2v3"/>'
     ),
+    "check": _icon('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
 }
 
 
@@ -393,6 +401,85 @@ def _new_key_help(staging: bool) -> str:
     )
 
 
+# What the new designs show beside the hero: an example of a DID-LLM's card (made-up values,
+# marked as an example), for people to see what they get. Hidden from screen readers.
+_EXAMPLE_CARD = (
+    "<div class=cred>"
+    f"<p class=cred-top><span class=cred-kind>DID-LLM</span><span class=cred-ok>{ICONS['check']}"
+    "Verified</span></p>"
+    "<p class=cred-name>Research Agent</p>"
+    "<p class=cred-type>AI agent · example</p>"
+    "<p class=cred-did>did:web:api.debitmydata.io:agents:01K…</p>"
+    "<dl class=cred-rows><div><dt>Owner</dt><dd>0x9c3e…41e2</dd></div>"
+    "<div><dt>Issuer</dt><dd>DebitMyData</dd></div>"
+    "<div><dt>Standard</dt><dd>W3C DID · VC 2.0</dd></div>"
+    "<div><dt>Paid</dt><dd>$25.00 · once</dd></div></dl>"
+    f"<p class=cred-sig>{ICONS['check']}Signed by DebitMyData · Ed25519</p>"
+    "</div>"
+)
+
+
+def _hero(design: str, price: str, mcp_url: str, ways: str) -> str:
+    """The top of the page. The classic look keeps its own; the new designs add the example
+    card beside it (fintech) or below it (aurora). Every design keeps the price (#price, which
+    the script updates), the buttons and the note for AI agents."""
+    perks = (
+        "<ul class=perks><li>Signed by DebitMyData</li><li>W3C standard</li><li>No account\n"
+        "needed</li></ul>"
+    )
+    cta = (
+        '<p class=cta><a class="button go" href="#start">Get my DID-LLM</a>\n'
+        '<a class="button ghost" href="#what">What is a DID-LLM?</a></p>'
+    )
+    if design == "fintech":
+        toast = (
+            f"<div class=toast><span class=ok>{ICONS['check']}</span><p><b>Payment confirmed</b>"
+            "<span>Your DID-LLM is ready</span></p></div>"
+        )
+        return f"""<section class=hero>
+<div class=hero-text>
+<p class=eyebrow>Identity for the agentic web</p>
+<h1>Get your DebitMyData <span class="accent nw">DID-LLM</span></h1>
+<p>A DID-LLM is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
+bot, a <strong>person</strong> or an <strong>organization</strong> is, with a credential signed
+by DebitMyData that anyone can check.</p>
+{cta}
+{perks}
+<span class=price id=price>{price}</span>
+{_for_agents(mcp_url)}
+</div>
+<div class=hero-visual aria-hidden=true>{_EXAMPLE_CARD}{toast}</div>
+</section>"""
+    if design == "aurora":
+        chips = (
+            f'<span class="float f1">{ICONS["shield"]}Signed by DebitMyData</span>'
+            f'<span class="float f2">{ICONS["globe"]}W3C DID standard</span>'
+            f'<span class="float f3">{ICONS["key"]}No account, no password</span>'
+        )
+        return f"""<section class=hero>
+<p class=pillbadge><b class=price id=price>{price}</b><span>{ways}</span></p>
+<h1>Identity for the <span class=accent>agentic web</span></h1>
+<p>Get your DebitMyData DID-LLM: a digital ID that its owner controls. It proves who an
+<strong>AI agent</strong>, a bot, a <strong>person</strong> or an <strong>organization</strong>
+is, with a credential signed by DebitMyData that anyone can check.</p>
+{cta}
+{perks}
+{_for_agents(mcp_url)}
+<div class=hero-visual aria-hidden=true>{chips}{_EXAMPLE_CARD}</div>
+</section>"""
+    return f"""<section class=hero>
+<p class=eyebrow>Identity for the agentic web</p>
+<h1>Get your <span class=accent>DebitMyData</span> DID-LLM</h1>
+<p>A DID-LLM is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
+bot, a <strong>person</strong> or an <strong>organization</strong> is, with a credential signed
+by DebitMyData that anyone can check.</p>
+{perks}
+{cta}
+<span class=price id=price>{price}</span>
+{_for_agents(mcp_url)}
+</section>"""
+
+
 def _body(
     staging: bool,
     app: bool = False,
@@ -401,6 +488,7 @@ def _body(
     price: str = DEFAULT_PRICE,
     *,
     paypal: bool = False,
+    design: str = page_design.CLASSIC,
 ) -> str:
     # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once,
     # in groups, on an even grid. The first one is picked.
@@ -454,24 +542,15 @@ def _body(
     )
     # The app only: a window that offers to install it (get-did.js decides when).
     install = INSTALL_DIALOG if app else ""
+    # The ways to pay, for the aurora design's price badge: "by card, PayPal or DMD".
+    names = [name for name, on in (("card", card), ("PayPal", paypal)) if on] + ["DMD"]
+    ways = "by " + (", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0])
     return f"""
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
 {install}
 {brand.header("get-did", staging, APP_ROOT if app else PAGE_PATH)}
 <main>
-<section class=hero>
-<p class=eyebrow>Identity for the agentic web</p>
-<h1>Get your <span class=accent>DebitMyData</span> DID-LLM</h1>
-<p>A DID-LLM is a digital ID that its owner controls. It proves who an <strong>AI agent</strong>, a
-bot, a <strong>person</strong> or an <strong>organization</strong> is, with a credential signed
-by DebitMyData that anyone can check.</p>
-<ul class=perks><li>Signed by DebitMyData</li><li>W3C standard</li><li>No account
-needed</li></ul>
-<p class=cta><a class="button go" href="#start">Get my DID-LLM</a>
-<a class="button ghost" href="#what">What is a DID-LLM?</a></p>
-<span class=price id=price>{price}</span>
-{_for_agents(mcp_url)}
-</section>
+{_hero(design, price, mcp_url, ways)}
 {staging_note}
 <div id=resume class=resume hidden aria-live=polite></div>
 {_landing()}
@@ -679,6 +758,7 @@ def page_html(
     price: str = DEFAULT_PRICE,
     *,
     paypal: bool = False,
+    design: str = page_design.CLASSIC,
 ) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
     installable = (
@@ -692,15 +772,21 @@ def page_html(
         if app
         else ""
     )
+    preload = "".join(
+        f'<link rel=preload href="/fonts/{name}" as=font type=font/woff2 crossorigin>'
+        for name in page_design.FONTS[design][:2]
+    )
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        "<!doctype html><html lang=en"
+        + (f" data-design={design}" if design != page_design.CLASSIC else "")
+        + "><head><meta charset=utf-8>"
         '<meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Get your DID-LLM · DebitMyData</title>"
         f'<meta name=description content="{DESCRIPTION}">'
         '<link rel=icon href="/favicon.png">'
-        f"{head}{installable}"
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head>"
-        f"<body>{_body(staging, app, mcp_url, card, escape(price), paypal=paypal)}"
+        f"{head}{installable}{preload}"
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head>"
+        f"<body>{_body(staging, app, mcp_url, card, escape(price), paypal=paypal, design=design)}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -762,8 +848,15 @@ def _render(request: Request, app: bool) -> Response:
     paypal = any(rail.protocol == PAYPAL_CHECKOUT for _, rail in rails)
     price = did_price(request)
     head = head_tags(settings, price)
-    page = page_html(staging, app, mcp_url(settings), card, head, price_text(price), paypal=paypal)
-    return HTMLResponse(page, headers=headers)
+    design, keep = page_design.chosen(request)
+    headers["Content-Security-Policy"] = CSPS[design]
+    page = page_html(
+        staging, app, mcp_url(settings), card, head, price_text(price), paypal=paypal, design=design
+    )
+    response = HTMLResponse(page, headers=headers)
+    if keep is not None:
+        page_design.keep(response, keep, secure=request.url.scheme == "https")
+    return response
 
 
 def _page(request: Request) -> Response:
@@ -878,7 +971,7 @@ def app_icon(name: str, request: Request) -> Response:
 
 @router.get("/fonts/{name}")
 def font(name: str) -> Response:
-    if name not in FONTS:
+    if name not in FONTS + page_design.ALL_FONTS:
         raise HTTPException(status_code=404)
     return Response(
         (_STATIC / "fonts" / name).read_bytes(),

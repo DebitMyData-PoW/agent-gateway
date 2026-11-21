@@ -581,6 +581,29 @@ The app's identity is its address: once people have installed it, the host must 
 To try it on staging first, do the same there with another name, for example
 `id-staging.debitmydata.io`.
 
+### The page's design
+
+The Get a DID-LLM page has three looks: `classic` (the debitmydata.com look, the default),
+`fintech` and `aurora` (the two new DebitMyData designs, the same as debitmydata.io's). Every
+look keeps the whole registration, step by step; only the colours, fonts and layout change.
+
+- **Compare them** on the real page: switch previews on, run the update (step 8), then open
+  `https://id.debitmydata.io/?design=fintech` and `https://id.debitmydata.io/?design=aurora`
+  (`?design=classic` goes back). The choice stays in your browser (the `dmd-design-id`
+  cookie) for 30 days; other visitors still see the configured look.
+
+  ```bash
+  echo "DMD_GW_PAGE_DESIGN_PREVIEW=true" | sudo tee -a /etc/dmd-gateway/gateway.env
+  ```
+
+- **Choose one** for everybody, and switch previews off again (delete the line above):
+
+  ```bash
+  echo "DMD_GW_PAGE_DESIGN=fintech" | sudo tee -a /etc/dmd-gateway/gateway.env
+  ```
+
+Staging always allows previews: `https://staging-api.debitmydata.io/get-did?design=aurora`.
+
 ## 13. The official MCP Registry
 
 MCP clients and crawlers can find the Agentic Superhighway by themselves: its **Server Card**

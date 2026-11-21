@@ -18,11 +18,11 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine
 
-from dmd_gateway.api import brand, get_did_page
+from dmd_gateway.api import brand, get_did_page, page_design
 from dmd_gateway.main import create_app
 from dmd_gateway.settings import Settings
 
-from .conftest import UNREACHABLE_DB
+from .conftest import REGISTRY_PATH, UNREACHABLE_DB
 from .test_staging_tools import staging_client  # noqa: F401
 
 
@@ -716,3 +716,99 @@ def test_the_key_option_says_how_to_make_a_key() -> None:
     assert "owner-key.md#staging-the-test-server" in staging
     assert "<code>python3 did-owner-key.py new ~/did-keys/staging-test.key</code>" in staging
     assert "make a test key of its own" in staging
+
+
+# ---------------------------------------------------------------------- the page's designs
+
+
+def _design_client(**changes: object) -> TestClient:
+    settings = Settings(
+        _env_file=None,
+        database_url=UNREACHABLE_DB,
+        database_connect_timeout_seconds=1,
+        route_registry_path=REGISTRY_PATH,
+        **changes,
+    )
+    engine = create_engine(UNREACHABLE_DB, connect_args={"connect_timeout": 1}, pool_pre_ping=True)
+    return TestClient(create_app(settings, environ={}, engine=engine))
+
+
+@pytest.mark.parametrize("design", page_design.DESIGNS)
+def test_each_design_has_its_own_style_hash_and_fonts(design: str) -> None:
+    style = get_did_page.STYLES[design]
+    assert style.startswith(get_did_page._STYLE)  # the classic style, then the design's own
+    assert f"style-src 'sha256-{_sha256(style)}';" in get_did_page.CSPS[design]
+    for name in page_design.FONTS[design]:
+        assert f"/fonts/{name}" in style
+        assert files("dmd_gateway").joinpath("static", "fonts", name).is_file()
+    html = get_did_page.page_html(staging=False, design=design)
+    assert f"<style>{style}</style>" in html
+    # Every design keeps what the script and agents rely on.
+    for part in ("id=price", 'href="#start"', "AI agent or bot?", "id=details", "id=s4"):
+        assert part in html, (design, part)
+
+
+def test_the_classic_look_is_the_default_and_unchanged(client: TestClient) -> None:
+    page = client.get("/get-did")
+    assert page.headers["content-security-policy"] == get_did_page.CSP
+    assert "<h1>Get your <span class=accent>DebitMyData</span> DID-LLM</h1>" in page.text
+    assert "data-design=" not in page.text and "set-cookie" not in page.headers
+    # Without previews, ?design= changes nothing.
+    tried = client.get("/get-did?design=aurora")
+    assert tried.headers["content-security-policy"] == get_did_page.CSP
+    assert "set-cookie" not in tried.headers
+
+
+@pytest.mark.parametrize("design", ["fintech", "aurora"])
+def test_the_setting_chooses_the_design_for_everyone(design: str) -> None:
+    with _design_client(page_design=design) as client:
+        page = client.get("/get-did")
+    assert page.headers["content-security-policy"] == get_did_page.CSPS[design]
+    assert f"data-design={design}" in page.text
+    # The example card is marked as one, and hidden from screen readers.
+    assert "<div class=hero-visual aria-hidden=true>" in page.text
+    assert "AI agent · example" in page.text
+
+
+def test_previews_let_a_visitor_compare_the_designs() -> None:
+    with _design_client(page_design_preview=True) as client:
+        first = client.get("/get-did?design=fintech")
+        assert first.headers["content-security-policy"] == get_did_page.CSPS["fintech"]
+        cookie = first.headers["set-cookie"]
+        assert cookie.startswith(f"{page_design.PREVIEW_COOKIE}=fintech;") and "HttpOnly" in cookie
+        # The cookie keeps it, e.g. back from Stripe's or PayPal's page (no ?design= then).
+        again = client.get("/get-did?card=paid")
+        assert again.headers["content-security-policy"] == get_did_page.CSPS["fintech"]
+        assert "data-design=fintech" in again.text
+        back = client.get("/get-did?design=classic")
+        assert back.headers["content-security-policy"] == get_did_page.CSP
+        unknown = client.get("/get-did?design=nothing")  # ignored: the cookie's (classic) stays
+        assert unknown.headers["content-security-policy"] == get_did_page.CSP
+
+
+def test_staging_always_allows_previews() -> None:
+    settings = Settings(_env_file=None, staging_test_tools=True)
+    assert page_design.previews_allowed(settings)
+    assert not page_design.previews_allowed(Settings(_env_file=None))
+
+
+def test_only_known_designs_can_be_configured() -> None:
+    assert Settings(_env_file=None, page_design=" Aurora ").page_design == "aurora"
+    assert Settings(_env_file=None, page_design="").page_design == "classic"
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, page_design="neon")
+
+
+def test_the_designs_fonts_are_served_here_with_their_licences(client: TestClient) -> None:
+    for name in page_design.ALL_FONTS:
+        response = client.get(f"/fonts/{name}")
+        assert response.status_code == 200, name
+        assert response.headers["content-type"] == "font/woff2"
+    licences = {path.name for path in files("dmd_gateway").joinpath("static", "fonts").iterdir()}
+    for licence in (
+        "OFL-PlusJakartaSans.txt",
+        "OFL-Sora.txt",
+        "OFL-Inter.txt",
+        "OFL-JetBrainsMono.txt",
+    ):
+        assert licence in licences
