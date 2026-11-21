@@ -1,4 +1,4 @@
-/* The "aurora" design of the Get a DID-LLM page (api/page_design.py), added after the classic
+/* The "aurora" design of the gateway's pages for people (api/page_design.py), added after the classic
    style: Sora headlines, Inter text, soft red glows and glass cards, a centred story; the same
    look as debitmydata.io's aurora design. Every rule here only changes how things look. */
 @font-face{font-family:Sora;font-style:normal;font-weight:100 800;font-display:swap;src:url(/fonts/sora-wght.woff2) format("woff2")}

@@ -23,7 +23,7 @@ from urllib.parse import quote, urlencode
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.directory import LIST_PATH, PAGE_PATH
 from dmd_gateway.api.get_did_page import APP_ROOT
 from dmd_gateway.api.get_did_page import PAGE_PATH as GET_DID_PATH
@@ -44,6 +44,8 @@ _STYLE = (
     + (_STATIC / "get-did.css").read_text(encoding="utf-8")
     + (_STATIC / "directory.css").read_text(encoding="utf-8")
 )
+# The page's style in each design (page_design): its own, then the chosen design's.
+STYLES = page_design.styles(_STYLE)
 _SCRIPT = (_STATIC / "directory-list.js").read_text(encoding="utf-8")
 OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md"
 TYPES = (("", "All types"), *((key, label) for key, label in directory.ENTITY_LABELS.items()))
@@ -64,19 +66,19 @@ def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
 
-def _csp(script: str | None) -> str:
+def _csp(script: str | None, design: str = page_design.CLASSIC) -> str:
     scripts = f"'sha256-{_sha256(script)}' " if script else ""
     return (
         f"default-src 'none'; script-src {scripts}{brand.THEME_SCRIPT_SOURCE}; "
-        f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; img-src 'self' data:; "
+        f"style-src 'sha256-{_sha256(STYLES[design])}'; font-src 'self'; img-src 'self' data:; "
         "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     )
 
 
-def _headers(script: str | None) -> dict[str, str]:
+def _headers(script: str | None, design: str = page_design.CLASSIC) -> dict[str, str]:
     return {
         "Cache-Control": f"no-cache, {brand.NO_TRANSFORM}",
-        "Content-Security-Policy": _csp(script),
+        "Content-Security-Policy": _csp(script, design),
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
     }
@@ -90,7 +92,13 @@ def _get_did(request: Request) -> str:
     return APP_ROOT if is_app(request) else GET_DID_PATH
 
 
-def _page(request: Request, title: str, body: str, script: str | None = None) -> str:
+def _page(
+    request: Request,
+    title: str,
+    body: str,
+    script: str | None = None,
+    design: str = page_design.CLASSIC,
+) -> str:
     staging = bool(request.app.state.settings.staging_test_tools)
     get_did = _get_did(request)
     tail = ""
@@ -103,16 +111,30 @@ def _page(request: Request, title: str, body: str, script: str | None = None) ->
             f"<script>{script}</script>"
         )
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{_e(title)} · DebitMyData</title>"
         '<meta name=description content="The DebitMyData DID-LLM directory: AI agents, bots and '
         'people with a DID-LLM, listed by their owners.">'
-        '<link rel=icon href="/favicon.png">'
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
+        f'<link rel=icon href="/favicon.png">{page_design.preload(design)}'
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body>"
         f"{brand.header('directory', staging, get_did)}<main>{body}</main>"
         f"{brand.footer(staging, get_did)}{tail}</body></html>"
     )
+
+
+def _respond(
+    request: Request, title: str, body: str, script: str | None = None, status: int = 200
+) -> HTMLResponse:
+    """The page in the design chosen for this visit (page_design), its CSP to match."""
+    design, kept = page_design.chosen(request)
+    response = HTMLResponse(
+        _page(request, title, body, script, design),
+        status_code=status,
+        headers=_headers(script, design),
+    )
+    page_design.remember(request, response, kept)
+    return response
 
 
 def _report_link(identity: AgentIdentity) -> str:
@@ -244,7 +266,7 @@ def directory_page(
         f'<nav class="pills types" aria-label="Type">{types}</nav>'
         f"{found}{cards_html}{more}{FINE_PRINT}"
     )
-    return HTMLResponse(_page(request, "DID-LLM directory", body), headers=_headers(None))
+    return _respond(request, "DID-LLM directory", body)
 
 
 @router.get(LIST_PATH)
@@ -323,9 +345,7 @@ and the <a href="/policies/privacy" target=_blank rel=noopener>privacy policy</a
 <p id=announcer class=sr-only aria-live=polite></p>
 {FINE_PRINT}
 """  # noqa: S608 (an HTML form: its "select" is not SQL)
-    return HTMLResponse(
-        _page(request, "List your DID-LLM", body, _SCRIPT), headers=_headers(_SCRIPT)
-    )
+    return _respond(request, "List your DID-LLM", body, _SCRIPT)
 
 
 @router.get(PAGE_PATH + "/{suffix}")
@@ -345,11 +365,7 @@ def entry_page(request: Request, suffix: str) -> Response:
                 f'no longer active.</p><p class=cta><a class="button go" href="{PAGE_PATH}">'
                 "See the directory</a></p></section>"
             )
-            return HTMLResponse(
-                _page(request, "Not in the directory", body),
-                status_code=404,
-                headers=_headers(None),
-            )
+            return _respond(request, "Not in the directory", body, status=404)
         identity, listing = found
         card = _card(base, identity, listing, one=True)
         title = identity.display_name
@@ -357,4 +373,4 @@ def entry_page(request: Request, suffix: str) -> Response:
         f'<p><a href="{PAGE_PATH}">← The directory</a></p><ul class="entries single">{card}</ul>'
         f"{FINE_PRINT}"
     )
-    return HTMLResponse(_page(request, title, body), headers=_headers(None))
+    return _respond(request, title, body)

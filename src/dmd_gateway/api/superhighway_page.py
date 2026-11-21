@@ -27,7 +27,7 @@ from starlette.datastructures import Headers
 from starlette.responses import HTMLResponse
 from starlette.types import Scope
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.get_did_page import (
     PRODUCT_NAME,
     checkout_url,
@@ -39,12 +39,22 @@ from dmd_gateway.api.get_did_page import (
 from dmd_gateway.settings import Settings
 
 _STYLE = brand.CSS + (files("dmd_gateway") / "static" / "policies.css").read_text(encoding="utf-8")
-_STYLE_HASH = base64.b64encode(hashlib.sha256(_STYLE.encode()).digest()).decode()
-CSP = (
-    f"default-src 'none'; script-src {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; font-src 'self'; "
-    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-)
+# The page's style in each design (page_design): its own, then the configured design's (the
+# page answers at the MCP server's address, where no design is previewed).
+STYLES = page_design.styles(_STYLE)
+
+
+def _csp(style: str) -> str:
+    digest = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    return (
+        f"default-src 'none'; script-src {brand.THEME_SCRIPT_SOURCE}; "
+        f"style-src 'sha256-{digest}'; img-src 'self'; font-src 'self'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
+CSPS = {design: _csp(style) for design, style in STYLES.items()}
+CSP = CSPS[page_design.CLASSIC]
 # Never stored: the same address answers MCP clients, so a cache must not hand them this page
 # (Vary: Accept says the answer depends on what the request asks for).
 HTML_HEADERS = {
@@ -109,13 +119,14 @@ def page_html(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> 
         f'<p><a href="{brand.GET_DID_PATH}">Get a DID-LLM</a> for an agent, a bot, yourself or '
         f'your organization, and read the <a href="{brand.POLICIES_PATH}">policies</a>.</p>'
     )
+    design = page_design.configured(settings)
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Agentic Superhighway · DebitMyData Agent Gateway</title>"
-        '<link rel=icon href="/favicon.png">'
+        f'<link rel=icon href="/favicon.png">{page_design.preload(design)}'
         f"{_structured_data(settings, price)}"
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body>"
         f"{brand.header('', staging)}"
         f"<main><article>{body}</article></main>{brand.footer(staging)}"
         "</body></html>"
@@ -123,4 +134,6 @@ def page_html(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> 
 
 
 def page(settings: Settings, price: tuple[str, str] = ("25.00", "USD")) -> HTMLResponse:
-    return HTMLResponse(page_html(settings, price), headers=HTML_HEADERS)
+    design = page_design.configured(settings)
+    headers = {**HTML_HEADERS, "Content-Security-Policy": CSPS[design]}
+    return HTMLResponse(page_html(settings, price), headers=headers)

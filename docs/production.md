@@ -581,11 +581,14 @@ The app's identity is its address: once people have installed it, the host must 
 To try it on staging first, do the same there with another name, for example
 `id-staging.debitmydata.io`.
 
-### The page's design
+### The pages' design
 
-The Get a DID-LLM page has three looks: `classic` (the debitmydata.com look, the default),
+The pages for people have three looks: `classic` (the debitmydata.com look, the default),
 `fintech` and `aurora` (the two new DebitMyData designs, the same as debitmydata.io's). Every
 look keeps the whole registration, step by step; only the colours, fonts and layout change.
+The look applies to every page for people (since 0.55.20): Get a DID-LLM, the directory, My
+DID-LLM, the policies, the sign-in pages, the Agentic Superhighway's page and the API docs.
+DebitMyData chose `aurora` (November 2026).
 
 - **Compare them** on the real page: switch previews on, run the update (step 8), then open
   `https://id.debitmydata.io/?design=fintech` and `https://id.debitmydata.io/?design=aurora`
@@ -599,8 +602,18 @@ look keeps the whole registration, step by step; only the colours, fonts and lay
 - **Choose one** for everybody, and switch previews off again (delete the line above):
 
   ```bash
-  echo "DMD_GW_PAGE_DESIGN=fintech" | sudo tee -a /etc/dmd-gateway/gateway.env
+  echo "DMD_GW_PAGE_DESIGN=aurora" | sudo tee -a /etc/dmd-gateway/gateway.env
+  sudo systemctl restart dmd-gateway-api
   ```
+
+  To check what the server sends (`data-design=aurora`; nothing means the classic look):
+
+  ```bash
+  curl -s https://id.debitmydata.io/ | grep -o 'data-design=[a-z]*'
+  ```
+
+  With previews on, a look picked with `?design=` stays in that browser and wins over the
+  setting: open the page once with `?design=aurora`, or in a private window.
 
 Staging always allows previews: `https://staging-api.debitmydata.io/get-did?design=aurora`.
 

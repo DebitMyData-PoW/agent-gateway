@@ -21,7 +21,7 @@ from importlib.resources import files
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from dmd_gateway.api import brand, docs_pages
+from dmd_gateway.api import brand, docs_pages, page_design
 
 router = APIRouter(include_in_schema=False)
 
@@ -30,6 +30,8 @@ ADVANCED_PATH = brand.ADVANCED_PATH
 REDIRECTS = ("/try",)  # the site root: get_did_page._root
 _STATIC = files("dmd_gateway") / "static"
 _STYLE = brand.CSS + (_STATIC / "try.css").read_text(encoding="utf-8")
+# The page's style in each design (page_design): its own, then the chosen design's.
+STYLES = page_design.styles(_STYLE)
 _SCRIPT = (_STATIC / "try.js").read_text(encoding="utf-8")
 
 
@@ -37,11 +39,17 @@ def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
 
-CSP = (
-    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; connect-src 'self'; img-src 'self'; "
-    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-)
+def _csp(style: str) -> str:
+    return (
+        f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' "
+        f"{brand.THEME_SCRIPT_SOURCE}; style-src 'sha256-{_sha256(style)}'; font-src 'self'; "
+        "connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+
+
+CSPS = {design: _csp(style) for design, style in STYLES.items()}
+CSP = CSPS[page_design.CLASSIC]
 HEADERS = {
     "Cache-Control": f"no-store, {brand.NO_TRANSFORM}",
     "Content-Security-Policy": CSP,
@@ -95,20 +103,24 @@ def _body() -> str:
     return brand.header("guided", staging=True) + _BODY + brand.footer(staging=True)
 
 
-def page_html() -> str:
+def page_html(design: str = page_design.CLASSIC) -> str:
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Try a DID-LLM registration · DebitMyData Agent Gateway</title>"
-        '<link rel=icon href="/favicon.png">'
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>{_COUNTDOWN}{_body()}"
+        f'<link rel=icon href="/favicon.png">{page_design.preload(design)}'
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body>{_COUNTDOWN}{_body()}"
         f"<script>{_SCRIPT}</script></body></html>"
     )
 
 
 @router.get(PAGE_PATH)
-def guided_page() -> HTMLResponse:
-    return HTMLResponse(page_html(), headers=HEADERS)
+def guided_page(request: Request) -> HTMLResponse:
+    design, kept = page_design.chosen(request)
+    headers = {**HEADERS, "Content-Security-Policy": CSPS[design]}
+    response = HTMLResponse(page_html(design), headers=headers)
+    page_design.remember(request, response, kept)
+    return response
 
 
 @router.get(ADVANCED_PATH)

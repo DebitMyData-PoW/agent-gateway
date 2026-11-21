@@ -21,7 +21,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.hosts import to_app
 from dmd_gateway.errors import ApiError
 from dmd_gateway.services.policy_pages import PolicyPage
@@ -34,14 +34,23 @@ router = APIRouter()
 CACHE = "public, max-age=300, no-transform"
 
 _STYLE = brand.CSS + (files("dmd_gateway") / "static" / "policies.css").read_text(encoding="utf-8")
-_STYLE_HASH = base64.b64encode(hashlib.sha256(_STYLE.encode()).digest()).decode()
+# The page's style in each design (page_design): its own, then the chosen design's.
+STYLES = page_design.styles(_STYLE)
+
+
 # Nothing but the page's own style, the gateway's icon and font may load, and no script but the
 # small light / dark theme one every page has (brand.THEME_SCRIPT).
-CSP = (
-    f"default-src 'none'; script-src {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src 'sha256-{_STYLE_HASH}'; img-src 'self'; font-src 'self'; "
-    "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-)
+def _csp(style: str) -> str:
+    digest = base64.b64encode(hashlib.sha256(style.encode()).digest()).decode()
+    return (
+        f"default-src 'none'; script-src {brand.THEME_SCRIPT_SOURCE}; "
+        f"style-src 'sha256-{digest}'; img-src 'self'; font-src 'self'; "
+        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
+CSPS = {design: _csp(style) for design, style in STYLES.items()}
+CSP = CSPS[page_design.CLASSIC]
 HTML_HEADERS = {
     "Cache-Control": f"{CACHE}, {brand.NO_TRANSFORM}",
     "Content-Security-Policy": CSP,
@@ -69,7 +78,25 @@ def _notices(request: Request, page: PolicyPage | None) -> str:
     return "".join(notes)
 
 
-def _document(request: Request, title: str, current: str | None, body: str) -> str:
+def _html_response(request: Request, title: str, current: str | None, body: str) -> Response:
+    """The page in the design chosen for this visit. With previews on, a visitor can switch
+    designs, so the page is then checked again each time rather than kept for 5 minutes."""
+    design, kept = page_design.chosen(request)
+    headers = {**HTML_HEADERS, "Content-Security-Policy": CSPS[design]}
+    if page_design.previews_allowed(request.app.state.settings):
+        headers["Cache-Control"] = f"no-cache, {brand.NO_TRANSFORM}"
+    response = HTMLResponse(_document(request, title, current, body, design), headers=headers)
+    page_design.remember(request, response, kept)
+    return response
+
+
+def _document(
+    request: Request,
+    title: str,
+    current: str | None,
+    body: str,
+    design: str = page_design.CLASSIC,
+) -> str:
     links = "".join(
         f'<a href="{page.path}"{" aria-current=page" if page.name == current else ""}>'
         f"{escape(page.title)}</a>"
@@ -77,11 +104,11 @@ def _document(request: Request, title: str, current: str | None, body: str) -> s
     )
     staging = bool(request.app.state.settings.staging_test_tools)
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{escape(title)} · DebitMyData Agent Gateway</title>"
-        '<link rel=icon href="/favicon.png">'
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
+        f'<link rel=icon href="/favicon.png">{page_design.preload(design)}'
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body>"
         f"{brand.header('policies', staging)}"
         f'<main><nav class=policies aria-label="Policies">{links}</nav>'
         f"<article>{body}</article></main>{brand.footer(staging)}"
@@ -116,7 +143,7 @@ def policy_index(request: Request) -> Response:
         "<p>These policies apply to the DebitMyData Agent Gateway and the DID-LLMs it issues.</p>"
         f"<ul class=pages>{items}</ul>{website}"
     )
-    return HTMLResponse(_document(request, "Policies", None, body), headers=HTML_HEADERS)
+    return _html_response(request, "Policies", None, body)
 
 
 @router.get("/policies/{name}", include_in_schema=False)
@@ -138,7 +165,7 @@ def policy_page(name: str, request: Request) -> Response:
     # The text's own title is the page's heading, so the version line goes after it.
     heading, _, rest = page.html.partition("</h1>")
     body = f"{_notices(request, page)}{heading}</h1>{_version_line(page)}{rest}"
-    return HTMLResponse(_document(request, page.title, page.name, body), headers=HTML_HEADERS)
+    return _html_response(request, page.title, page.name, body)
 
 
 class PolicySummary(BaseModel):

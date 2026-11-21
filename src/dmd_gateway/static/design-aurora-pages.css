@@ -1,0 +1,51 @@
+/* The "aurora" design on the gateway's other pages for people (api/page_design.py): the
+   policies, the Agentic Superhighway's page, the guided test and the sign-in pages. Added after
+   design-aurora.css, which already gives every page its top bar, footer, fonts, colours, cards
+   and buttons. Every rule here only changes how things look. */
+
+/* the policies and the Agentic Superhighway's page: one centred column of text */
+main:has(>article),main:has(>h1:first-child){max-width:860px}
+main:has(>article){padding-top:18px}
+main>h1:first-child{margin-top:44px}
+article{max-width:none}
+article h1{font-size:46px;line-height:1.06;letter-spacing:-.04em;margin:34px 0 12px}
+article h2{font-size:24px;line-height:1.25;letter-spacing:-.025em;margin:42px 0 10px}
+article h3{font-size:18px;letter-spacing:-.02em;margin:28px 0 8px}
+article p,article li{color:var(--body)}
+article strong,article b{color:var(--text)}
+article .meta{font-size:14px}
+article code{border-radius:7px;background:var(--code);border-color:var(--line)}
+article table{border-radius:16px;border:1px solid var(--line);background:var(--card)}
+article th,article td{border-color:var(--line)}
+article th{background:var(--grey);font-weight:600}
+nav.policies{justify-content:center;gap:8px;border-bottom:0;padding:26px 0 6px}
+nav.policies a{border-radius:99px;border-color:var(--line);background:var(--card);color:var(--text-2);font-size:14px;
+font-weight:500;padding:7px 15px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+nav.policies a:hover{background:var(--grey);border-color:var(--lift-line);color:var(--text)}
+nav.policies a[aria-current]{background:linear-gradient(135deg,var(--red),var(--red2));border-color:transparent;color:#fff;
+font-weight:600;box-shadow:0 8px 20px -10px var(--red)}
+ul.pages li{padding:20px 22px;margin:0 0 12px;border:1px solid var(--line);border-radius:20px;background:var(--card);
+backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+ul.pages li:last-child{border-bottom:1px solid var(--line)}
+ul.pages li>a{font:600 19px/1.3 var(--display);letter-spacing:-.02em;text-decoration:none}
+
+/* notices (test server, drafts): a soft amber card */
+.note{border:1px solid var(--note-line);border-left-width:1px;border-radius:16px;padding:12px 16px}
+
+/* the guided test */
+fieldset{border-radius:22px;border-color:var(--line);background:var(--card);box-shadow:var(--shadow);padding:20px 24px 22px;
+backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+legend{font-family:var(--display);font-weight:600;letter-spacing:-.02em}
+p.lead{font-size:17.5px}
+
+/* the sign-in pages: the card under the name, on the same glow */
+body.sign-in .sign-in-top{padding:28px 16px 18px}
+.sign-in-top .brand b{font-family:var(--display);font-weight:600;letter-spacing:-.02em}
+body.sign-in h1{font-size:28px;letter-spacing:-.035em}
+body.sign-in .card{padding:26px 26px 28px}
+
+@media (max-width:600px){
+article h1{font-size:34px}
+main>h1:first-child{margin-top:30px}
+nav.policies{justify-content:flex-start}
+}

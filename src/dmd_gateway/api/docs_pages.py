@@ -39,7 +39,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.hosts import to_api
 
 router = APIRouter(include_in_schema=False)
@@ -87,6 +87,8 @@ SWAGGER_UI_PARAMETERS = {
 
 _HELPER_JS = (_STATIC / "docs-helper.js").read_text(encoding="utf-8")
 _HELPER_CSS = brand.CSS + (_STATIC / "docs-helper.css").read_text(encoding="utf-8")
+# The page's own style in each design (page_design): its own, then the chosen design's.
+HELPER_STYLES = page_design.styles(_HELPER_CSS)
 _REDOC_CSS = "body{margin:0;padding:0}"
 
 
@@ -98,11 +100,18 @@ _COMMON_CSP = (
     "default-src 'none'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; "
     "form-action 'none'; frame-ancestors 'none'"
 )
-SWAGGER_CSP = (
-    f"script-src {SWAGGER_UI_JS[0]} 'sha256-{_sha256(_HELPER_JS)}' {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src {SWAGGER_UI_CSS[0]} 'sha256-{_sha256(_HELPER_CSS)}'; font-src 'self'; "
-    f"{_COMMON_CSP}"
-)
+
+
+def _swagger_csp(style: str) -> str:
+    return (
+        f"script-src {SWAGGER_UI_JS[0]} 'sha256-{_sha256(_HELPER_JS)}' "
+        f"{brand.THEME_SCRIPT_SOURCE}; style-src {SWAGGER_UI_CSS[0]} 'sha256-{_sha256(style)}'; "
+        f"font-src 'self'; {_COMMON_CSP}"
+    )
+
+
+SWAGGER_CSPS = {design: _swagger_csp(style) for design, style in HELPER_STYLES.items()}
+SWAGGER_CSP = SWAGGER_CSPS[page_design.CLASSIC]
 # ReDoc styles itself with <style> elements it writes at run time, searches in a worker, and
 # shows the small Redocly logo from Redocly's site.
 REDOC_LOGO = "https://cdn.redoc.ly/redoc/logo-mini.svg"
@@ -189,17 +198,18 @@ def swagger_html(
     steps: dict[str, Any] | None = None,
     staging: bool = False,
     version: str = "",
+    design: str = page_design.CLASSIC,
 ) -> str:
     settings = {"swagger": {"url": openapi_url, **SWAGGER_UI_PARAMETERS}, **(steps or {})}
     config = json.dumps(settings, indent=1)
     config = config.replace("<", "\\u003c")  # data block: nothing in it can close the tag
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>{escape(title)}</title>"
-        f'<link rel="icon" href="{FAVICON_URL}">'
+        f'<link rel="icon" href="{FAVICON_URL}">{page_design.preload(design)}'
         f"{brand.THEME_SCRIPT}{_external('link', *SWAGGER_UI_CSS)}"
-        f"<style>{_HELPER_CSS}</style></head>"
+        f"<style>{HELPER_STYLES[design]}</style></head>"
         f"<body>{brand.header('advanced', staging)}{_intro(staging, version)}"
         '<div id="swagger-ui"></div>'
         f"{brand.footer(staging, to_top=False)}"
@@ -210,14 +220,19 @@ def swagger_html(
 
 def swagger_ui(request: Request) -> HTMLResponse:
     steps = getattr(request.app.state, "docs_steps", None)  # set by create_app
+    design, kept = page_design.chosen(request)
     html = swagger_html(
         request.app.openapi_url,
         f"{request.app.title} - API docs",
         steps() if steps else None,
         staging=bool(request.app.state.settings.staging_test_tools),
         version=request.app.version,
+        design=design,
     )
-    return HTMLResponse(html, headers={**_HEADERS, "Content-Security-Policy": SWAGGER_CSP})
+    headers = {**_HEADERS, "Content-Security-Policy": SWAGGER_CSPS[design]}
+    response = HTMLResponse(html, headers=headers)
+    page_design.remember(request, response, kept)
+    return response
 
 
 @router.get("/redoc")

@@ -22,7 +22,7 @@ from importlib.resources import files
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.get_did_page import APP_ROOT, OWNER_KEY_GUIDE
 from dmd_gateway.api.get_did_page import PAGE_PATH as GET_DID_PATH
 from dmd_gateway.api.hosts import is_app, to_app
@@ -38,6 +38,8 @@ _STYLE = (
     + (_STATIC / "directory.css").read_text(encoding="utf-8")
     + (_STATIC / "manage.css").read_text(encoding="utf-8")
 )
+# The page's style in each design (page_design): its own, then the chosen design's.
+STYLES = page_design.styles(_STYLE)
 _SCRIPT = (_STATIC / "manage.js").read_text(encoding="utf-8")
 
 
@@ -45,10 +47,11 @@ def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
 
-def _headers() -> dict[str, str]:
+def _headers(design: str = page_design.CLASSIC) -> dict[str, str]:
     csp = (
         f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' "
-        f"{brand.THEME_SCRIPT_SOURCE}; style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; "
+        f"{brand.THEME_SCRIPT_SOURCE}; style-src 'sha256-{_sha256(STYLES[design])}'; "
+        "font-src 'self'; "
         "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; "
         "frame-ancestors 'none'"
     )
@@ -147,7 +150,7 @@ tools <code>debitmydata_change_owner</code> and <code>debitmydata_revoke_did</co
 """
 
 
-def page_html(request: Request) -> str:
+def page_html(request: Request, design: str = page_design.CLASSIC) -> str:
     settings = request.app.state.settings
     staging = bool(settings.staging_test_tools)
     get_did = APP_ROOT if is_app(request) else GET_DID_PATH
@@ -163,13 +166,13 @@ def page_html(request: Request) -> str:
         }
     ).replace("<", "\\u003c")
     return (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         "<title>Manage your DID-LLM · DebitMyData</title>"
         '<meta name=description content="Change the owners of your DebitMyData DID-LLM, or '
         'revoke it, signed in your own wallet or with your own key.">'
-        '<link rel=icon href="/favicon.png">'
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body>"
+        f'<link rel=icon href="/favicon.png">{page_design.preload(design)}'
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body>"
         f"{brand.header('manage', staging, get_did)}<main>{body}</main>"
         f"{brand.footer(staging, get_did)}"
         f'<script type="application/json" id="page-config">{config}</script>'
@@ -181,4 +184,7 @@ def page_html(request: Request) -> str:
 def manage_page(request: Request) -> Response:
     if moved := to_app(request):  # the app's address (hosts.py); the API stays
         return moved
-    return HTMLResponse(page_html(request), headers=_headers())
+    design, kept = page_design.chosen(request)
+    response = HTMLResponse(page_html(request, design), headers=_headers(design))
+    page_design.remember(request, response, kept)
+    return response

@@ -716,8 +716,8 @@ Cloudflare's Security Events.
 
 ## 12. The page's designs
 
-The Get a DID-LLM page has three looks (docs/production.md, "The page's design"): `classic`,
-`fintech` and `aurora`. Staging always lets a visitor switch: open
+The pages for people have three looks (docs/production.md, "The pages' design"): `classic`,
+`fintech` and `aurora`, on every page since 0.55.20. Staging always lets a visitor switch: open
 `https://staging-api.debitmydata.io/get-did?design=fintech` or `?design=aurora`
 (`?design=classic` goes back); the browser keeps the choice for 30 days, also after Stripe's
 or PayPal's test payment page. `DMD_GW_PAGE_DESIGN` sets the look everybody sees first.

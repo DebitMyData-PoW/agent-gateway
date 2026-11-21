@@ -34,7 +34,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
-from dmd_gateway.api import brand
+from dmd_gateway.api import brand, page_design
 from dmd_gateway.api.mcp_auth import identity_resource, main_resource, protected_resources
 from dmd_gateway.api.oauth import (
     AUTHORIZE_PATH,
@@ -62,6 +62,8 @@ _STYLE = (
     + (_STATIC / "get-did.css").read_text(encoding="utf-8")
     + (_STATIC / "sign-in.css").read_text(encoding="utf-8")
 )
+# The page's style in each design (page_design): its own, then the chosen design's.
+STYLES = page_design.styles(_STYLE)
 _SCRIPT = (_STATIC / "sign-in.js").read_text(encoding="utf-8")
 OWNER_KEY_GUIDE = "https://github.com/DebitMyData-PoW/agent-gateway/blob/main/docs/owner-key.md"
 
@@ -70,11 +72,17 @@ def _sha256(text: str) -> str:
     return base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode()
 
 
-CSP = (
-    f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' {brand.THEME_SCRIPT_SOURCE}; "
-    f"style-src 'sha256-{_sha256(_STYLE)}'; font-src 'self'; img-src 'self' data:; "
-    "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-)
+def _csp(style: str) -> str:
+    return (
+        f"default-src 'none'; script-src 'sha256-{_sha256(_SCRIPT)}' "
+        f"{brand.THEME_SCRIPT_SOURCE}; style-src 'sha256-{_sha256(style)}'; font-src 'self'; "
+        "img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+
+
+CSPS = {design: _csp(style) for design, style in STYLES.items()}
+CSP = CSPS[page_design.CLASSIC]
 HEADERS = {
     "Cache-Control": "no-store",
     "Content-Security-Policy": CSP,
@@ -88,7 +96,10 @@ def _e(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
-def _page(title: str, body: str, config: dict[str, Any] | None = None) -> HTMLResponse:
+def _page(
+    request: Request, title: str, body: str, config: dict[str, Any] | None = None
+) -> HTMLResponse:
+    design, kept = page_design.chosen(request)
     tail = ""
     if config is not None:
         data = json.dumps(config).replace("<", "\\u003c")
@@ -97,22 +108,25 @@ def _page(title: str, body: str, config: dict[str, Any] | None = None) -> HTMLRe
             f"<script>{_SCRIPT}</script>"
         )
     page = (
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
-        '<meta name=viewport content="width=device-width,initial-scale=1">'
+        f"<!doctype html><html lang=en{page_design.root_attribute(design)}><head>"
+        '<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">'
         f"<title>{_e(title)} · DebitMyData</title><meta name=robots content=noindex>"
-        '<link rel=icon href="/favicon.ico" sizes=any>'
-        f"{brand.THEME_SCRIPT}<style>{_STYLE}</style></head><body class=sign-in>"
+        f'<link rel=icon href="/favicon.ico" sizes=any>{page_design.preload(design)}'
+        f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head><body class=sign-in>"
         f"<header class=sign-in-top><span class=brand>{brand.LOGO}<b>DebitMyData</b></span>"
         f"{brand.THEME_BUTTON}</header><main id=main>{body}</main>"
         "<p class=fine>DebitMyData never asks for a private key or a recovery phrase. Signing "
         "is free and sends nothing.</p>"
         f"{tail}</body></html>"
     )
-    return HTMLResponse(page, headers=HEADERS)
+    response = HTMLResponse(page, headers={**HEADERS, "Content-Security-Policy": CSPS[design]})
+    page_design.remember(request, response, kept)
+    return response
 
 
-def _problem_page(text: str, status: int = 400) -> HTMLResponse:
+def _problem_page(request: Request, text: str, status: int = 400) -> HTMLResponse:
     response = _page(
+        request,
         "Sign-in problem",
         f"<section class=card><h1>This sign-in cannot continue</h1><p>{_e(text)}</p>"
         "<p>Go back to the app and try again. If it keeps happening, the app's address is "
@@ -150,18 +164,20 @@ async def authorize(request: Request) -> Response:
     state = request.app.state
     params = request.query_params
     if any(len(params.getlist(name)) > 1 for name in params):
-        return _problem_page("A parameter of the request is sent more than once.")
+        return _problem_page(request, "A parameter of the request is sent more than once.")
     client_id = params.get("client_id", "")
     redirect_uri = params.get("redirect_uri", "")
     try:
         client = await anyio.to_thread.run_sync(state.oauth_clients.get, client_id)
     except ClientRejected as exc:
-        return _problem_page(f"The app could not be identified: {exc.reason}.")
+        return _problem_page(request, f"The app could not be identified: {exc.reason}.")
     if not redirect_allowed(redirect_uri, client.redirect_uris):
-        return _problem_page("The app's return address is not one its metadata document lists.")
+        return _problem_page(
+            request, "The app's return address is not one its metadata document lists."
+        )
     client_state = params.get("state")
     if client_state is not None and len(client_state) > 512:
-        return _problem_page("The app's state parameter is too long.")
+        return _problem_page(request, "The app's state parameter is too long.")
 
     def refuse(error: str, description: str) -> RedirectResponse:
         target = back_to_app(
@@ -214,9 +230,9 @@ def sign_in_page(request: Request, sign_in_id: str) -> Response:
             )
             back = urlsplit(sign_in.redirect_uri).hostname or ""
     except ApiError as exc:
-        return _problem_page(exc.message, exc.status_code)
+        return _problem_page(request, exc.message, exc.status_code)
     if status not in ("open", "approved"):
-        return _problem_page(f"This sign-in is {status}: start again from the app.", 409)
+        return _problem_page(request, f"This sign-in is {status}: start again from the app.", 409)
     body = (
         "<section class=card>"
         "<h1>Sign in with your DID-LLM</h1>"
@@ -248,7 +264,7 @@ def sign_in_page(request: Request, sign_in_id: str) -> Response:
         "gateway": state.settings.public_base_url.rstrip("/"),
         "getDid": brand.PRODUCTION_APP,
     }
-    return _page("Sign in with your DID-LLM", body, config)
+    return _page(request, "Sign in with your DID-LLM", body, config)
 
 
 # --------------------------------------------------------------------------- the page's calls

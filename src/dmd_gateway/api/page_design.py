@@ -11,6 +11,11 @@ A design is a stylesheet added after the classic one (static/design-<name>.css):
 the colours, the fonts and the layout, so every part of the page, the payment steps included,
 keeps working as before. Its fonts are served by this gateway (SIL Open Font License, licence
 texts next to them in static/fonts).
+
+Since 0.55.20 the chosen design is the look of every page for people, not only the Get a
+DID-LLM page: the directory, My DID-LLM, the policies, the sign-in pages, the Agentic
+Superhighway's page, the guided test and the API docs. Each one adds, after its own style, the
+design's stylesheet and the design's rules for those pages (static/design-<name>-pages.css).
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from __future__ import annotations
 from importlib.resources import files
 
 from fastapi import Request
+from fastapi.responses import Response
 
 CLASSIC = "classic"
 DESIGNS = (CLASSIC, "fintech", "aurora")
@@ -43,6 +49,39 @@ def stylesheet(design: str) -> str:
     return (_STATIC / f"design-{design}.css").read_text(encoding="utf-8")
 
 
+def _pages_stylesheet(design: str) -> str:
+    sheet = _STATIC / f"design-{design}-pages.css"
+    return sheet.read_text(encoding="utf-8") if design != CLASSIC and sheet.is_file() else ""
+
+
+def styles(own: str) -> dict[str, str]:
+    """Another page's style in each design: its own (the classic look), then the design's
+    stylesheet and the design's rules for the gateway's other pages."""
+    return {
+        design: own + stylesheet(design) + _pages_stylesheet(design) if design != CLASSIC else own
+        for design in DESIGNS
+    }
+
+
+def root_attribute(design: str) -> str:
+    """The <html> element's ``data-design`` attribute (none for the classic look)."""
+    return f" data-design={design}" if design != CLASSIC else ""
+
+
+def preload(design: str) -> str:
+    """Links that start loading the design's two main fonts with the page."""
+    return "".join(
+        f'<link rel=preload href="/fonts/{name}" as=font type=font/woff2 crossorigin>'
+        for name in FONTS[design][:2]
+    )
+
+
+def configured(settings: object) -> str:
+    """The design every visitor sees (``page_design``), for pages served without a request."""
+    design = getattr(settings, "page_design", CLASSIC)
+    return design if design in DESIGNS else CLASSIC
+
+
 def previews_allowed(settings: object) -> bool:
     return bool(
         getattr(settings, "page_design_preview", False)
@@ -66,6 +105,12 @@ def chosen(request: Request) -> tuple[str, str | None]:
     if kept in DESIGNS:
         return kept, None
     return configured, None
+
+
+def remember(request: Request, response: Response, kept: str | None) -> None:
+    """Keep a design picked with ``?design=`` (``chosen``'s second value) in its cookie."""
+    if kept is not None:
+        keep(response, kept, secure=request.url.scheme == "https")
 
 
 def keep(response: object, design: str, secure: bool) -> None:

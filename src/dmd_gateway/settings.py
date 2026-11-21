@@ -62,9 +62,9 @@ class Settings(BaseSettings):
     # page at its root, as an app people add to their home screen, e.g. id.debitmydata.io.
     # Empty: no app; the page is at /get-did as before. DIDs keep public_base_url's host.
     app_host: str = ""
-    # The Get a DID-LLM page's look (api/page_design.py): "classic" (the debitmydata.com
+    # The look of every page for people (api/page_design.py): "classic" (the debitmydata.com
     # look), "fintech" or "aurora". With page_design_preview (always on staging), visitors can
-    # compare them on the real page with ?design=fintech, ?design=aurora or ?design=classic.
+    # compare them on the real pages with ?design=fintech, ?design=aurora or ?design=classic.
     page_design: str = "classic"
     page_design_preview: bool = False
     # Google Connected Apps (Gemini, Search): the domain-verification file Google's console
