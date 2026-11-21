@@ -171,6 +171,12 @@ dialog.install{border-radius:26px;background:var(--solid)}
 .site-footer a:focus-visible{outline-color:var(--red-text)}
 .back-to-top{background:linear-gradient(135deg,var(--red),var(--red2));box-shadow:0 12px 26px -10px var(--red)}
 
+/* scrolled down, the page fades out under the floating bar instead of showing above it
+   (browsers with scroll-driven animations; the others keep the bar as it is) */
+.topbar::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;background:linear-gradient(var(--page-bg) 55%,transparent)}
+@supports (animation-timeline:scroll()){.topbar::before{animation:dmd-bar-fade linear both;animation-timeline:scroll(root);animation-range:0 60px}}
+@keyframes dmd-bar-fade{to{opacity:1}}
+
 @media (max-width:1180px){.f1,.f2,.f3{display:none}}
 @media (max-width:900px){
 .topbar{padding:10px 12px 0}
