@@ -44,6 +44,13 @@ body.sign-in .sign-in-top{padding:28px 16px 18px}
 body.sign-in h1{font-size:28px;letter-spacing:-.035em}
 body.sign-in .card{padding:26px 26px 28px}
 
+/* the API docs page: Swagger UI keeps its own layout, centred under the guide; the badges and
+   the back-to-top button in the design's red */
+#swagger-ui main{max-width:none;padding:0}
+.to-top,.vp-step-badge,.swagger-ui .info .title small.version-stamp{background:linear-gradient(135deg,var(--red),var(--red2))}
+.to-top{box-shadow:0 12px 26px -10px var(--red)}
+.to-top:hover{background:linear-gradient(135deg,var(--red-hover),var(--red))}
+
 @media (max-width:600px){
 article h1{font-size:34px}
 main>h1:first-child{margin-top:30px}

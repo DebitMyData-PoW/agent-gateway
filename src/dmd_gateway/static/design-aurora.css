@@ -126,8 +126,9 @@ font:600 14px/1 var(--display)}
 .safe{border-left:0;border-radius:18px;border-color:var(--line);background:var(--card);text-align:left;padding:14px 18px}
 
 /* buttons */
-button,a.button{font-weight:600;border-radius:999px;padding:11px 22px;border:0;background:linear-gradient(135deg,var(--red),var(--red2))}
-button:hover,a.button:hover{background:linear-gradient(135deg,var(--red-hover),var(--red))}
+/* (not the API docs page's Swagger UI, which keeps its own buttons and fields) */
+button:where(:not(#swagger-ui *)),a.button{font-weight:600;border-radius:999px;padding:11px 22px;border:0;background:linear-gradient(135deg,var(--red),var(--red2))}
+button:where(:not(#swagger-ui *)):hover,a.button:hover{background:linear-gradient(135deg,var(--red-hover),var(--red))}
 a.button.go,a.button.ghost{display:inline-flex;align-items:center;height:50px;padding:0 26px;border-radius:999px;font-size:15px;letter-spacing:0;text-transform:none}
 a.button.go{box-shadow:0 12px 30px -12px var(--red)}
 a.button.ghost{background:var(--card);color:var(--text);border:1px solid var(--input-line);box-shadow:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
@@ -146,8 +147,8 @@ button.help-toggle,button.help-toggle:hover{background:none;border-radius:6px;pa
 .num{border-radius:12px;width:36px;height:36px;font-family:var(--display)}
 .step.current .num{background:linear-gradient(135deg,var(--red),var(--red2));box-shadow:none}
 .step-head h2{font-size:21px}
-input[type=text],select,textarea{border-radius:14px;padding:12px 14px;border-color:var(--input-line);background:var(--solid)}
-input[type=text]:focus,textarea:focus{outline:3px solid var(--pink);border-color:var(--red)}
+input[type=text]:where(:not(#swagger-ui *)),select:where(:not(#swagger-ui *)),textarea:where(:not(#swagger-ui *)){border-radius:14px;padding:12px 14px;border-color:var(--input-line);background:var(--solid)}
+input[type=text]:where(:not(#swagger-ui *)):focus,textarea:where(:not(#swagger-ui *)):focus{outline:3px solid var(--pink);border-color:var(--red)}
 .choice{border-radius:16px;border-color:var(--input-line);padding:12px 16px;background:var(--solid)}
 .choice:has(input:checked){border-width:1px;padding:12px 16px;border-color:var(--red);box-shadow:0 0 0 3px var(--pink);background:var(--solid)}
 .pill{border-color:var(--input-line);background:var(--solid)}
