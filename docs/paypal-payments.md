@@ -35,6 +35,8 @@ they paid with.
    "A DID-LLM's card or PayPal payment was refunded or disputed after it was issued": a person
    decides whether to suspend or revoke it (a dispute can still be won). Partial refunds are
    noted but change nothing.
+   Until then, the daily report also lists it among the "DID-LLMs whose payment is not
+   settled" (a critical alert, once a day); revoked, it is no longer listed.
 
 An AI agent can request a PayPal quote too: `next_action` is `pay_at_payment_url`, and it gives
 `payment_url` to a person, who pays there. No webhook is used: the worker asks PayPal itself.

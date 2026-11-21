@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import Select, exists, func, or_, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from dmd_gateway.adapters.base import AdapterUnavailable
@@ -48,7 +48,7 @@ from dmd_gateway.handshake import FAIL, WARN
 from dmd_gateway.handshake import Report as Handshake
 from dmd_gateway.monitoring.alerts import Finding, Message, Severity
 from dmd_gateway.monitoring.checks import MonitorContext, receiving_destinations
-from dmd_gateway.services.settlement import expected_payment
+from dmd_gateway.services.settlement import TAKEN_BACK, expected_payment
 from dmd_gateway.settings import did_list
 
 C, W = Severity.CRITICAL, Severity.WARNING
@@ -318,11 +318,22 @@ def _database_checks(session: Session, day: str, add: Callable[[str], None]) -> 
         )
     ).all()
     settled_payment = exists().where(PaymentIntent.status == SETTLED)
+    # A DID-LLM whose card or PayPal payment was refunded (or reversed, or disputed) and that a
+    # person then revoked is a closed matter: the money went back and the DID-LLM no longer
+    # works. Every other DID-LLM without a settled payment is still reported every day.
+    taken_back_and_revoked = and_(
+        AgentIdentity.status == "revoked",
+        exists().where(
+            PaymentIntent.registration_intent_id == AgentIdentity.registration_intent_id,
+            PaymentIntent.status.in_([status.value for status in TAKEN_BACK]),
+        ),
+    )
     unpaid_dids = session.scalars(
         select(AgentIdentity.id).where(
             ~settled_payment.where(
                 PaymentIntent.registration_intent_id == AgentIdentity.registration_intent_id
-            )
+            ),
+            ~taken_back_and_revoked,
         )
     ).all()
     unpaid_receipts = session.scalars(
@@ -353,7 +364,7 @@ def _database_checks(session: Session, day: str, add: Callable[[str], None]) -> 
     if not findings:
         add(
             "- Database: every settled payment is fully credited; every DID-LLM and receipt has a "
-            "settled payment."
+            "settled payment (revoked DID-LLMs whose payment was refunded aside)."
         )
     return findings
 

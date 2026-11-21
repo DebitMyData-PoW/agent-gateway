@@ -1053,6 +1053,34 @@ def test_daily_report_reconciles_with_the_chain(registry: Path, engine: Engine) 
         with transaction(factory) as session:
             report = build_report(ctx, session, now)
         assert {f.title for f in report.findings} >= {"DID-LLMs whose payment is not settled: 1"}
+
+        # Refunded: still reported while the DID-LLM works, no longer once a person revoked it.
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE payment_intents SET status = 'refunded' WHERE id = :p"),
+                {"p": q["payment_intent_id"]},
+            )
+        with transaction(factory) as session:
+            report = build_report(ctx, session, now)
+        assert {f.title for f in report.findings} >= {"DID-LLMs whose payment is not settled: 1"}
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE identities SET status = 'revoked' WHERE public_identifier = :d"),
+                {"d": did},
+            )
+        with transaction(factory) as session:
+            report = build_report(ctx, session, now)
+        assert "DID-LLMs whose payment is not settled: 1" not in {f.title for f in report.findings}
+
+        # Revoked without a refund (a payment that left the chain): still reported.
+        with engine.begin() as conn:
+            conn.execute(
+                text("UPDATE payment_intents SET status = 'reorged' WHERE id = :p"),
+                {"p": q["payment_intent_id"]},
+            )
+        with transaction(factory) as session:
+            report = build_report(ctx, session, now)
+        assert {f.title for f in report.findings} >= {"DID-LLMs whose payment is not settled: 1"}
     reset_chain()
 
 
