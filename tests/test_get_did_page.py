@@ -12,8 +12,10 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from importlib.resources import files
+from pathlib import Path
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import create_engine
@@ -98,7 +100,7 @@ def test_every_choice_is_a_visible_button_not_a_drop_down_list() -> None:
     assert html.count("<p class=pill-group>") == len(get_did_page.PARTICIPANT_GROUPS)
 
 
-def test_the_page_never_asks_for_a_private_key_and_never_pays() -> None:
+def test_the_page_never_asks_for_a_private_key_and_never_sends_a_transaction() -> None:
     script = get_did_page._SCRIPT
     for never in (
         "private_key",
@@ -106,13 +108,21 @@ def test_the_page_never_asks_for_a_private_key_and_never_pays() -> None:
         "seed",
         "mnemonic",
         "eth_sendTransaction",
-        "eth_signTypedData",
+        'eth_sign"',
         "sendBeacon",
         "document.cookie",
     ):
         assert never not in script
     # It signs one message with the visitor's wallet, found through EIP-6963.
     assert "personal_sign" in script and "eip6963:requestProvider" in script
+    # The only typed data it ever has signed is the USDC payment (EIP-3009), and only for the
+    # terms of the quote the visitor accepted.
+    assert script.count("eth_signTypedData") == 1
+    sign = script.split("async function signUsdcPayment(payer, requirements, terms) {")[1]
+    assert "eth_signTypedData_v4" in sign.split("\n  }\n")[0]
+    assert 'primaryType: "TransferWithAuthorization"' in sign.split("\n  }\n")[0]
+    pay = script.split("async function payWithWallet(entry, status) {")[1].split("\n  }\n")[0]
+    assert pay.index("sameAsQuote(requirements)") < pay.index("signUsdcPayment(")
     # The test coins exist on staging only, and the page reads that from its settings.
     assert "/v1/staging/test-payments" in script and "config.staging" in script
 
@@ -419,7 +429,8 @@ def test_usdc_comes_first_and_dmd_is_explained() -> None:
     unless_offered = 'if (!open.some((option) => option.asset === "USDC")) open.unshift(USDC_SOON);'
     assert unless_offered in options
     assert "const soon = option === USDC_SOON || LATER.includes(option);" in options
-    assert "const onPage = !soon &&" in options
+    # Once on, USDC is paid on the page, from the payer's wallet (x402).
+    assert "const onPage = !soon;" in options
     assert "disabled: !onPage" in options
     assert "Coming to this page soon: for now, pay with DMD." in options
     assert "What is DMD, and how do I get it?" in script and 'aria-controls": "get-dmd"' in script
@@ -431,6 +442,92 @@ def test_usdc_comes_first_and_dmd_is_explained() -> None:
     assert "not listed on any exchange yet" in guide
     # Links to other sites open in a new tab, without giving them this page.
     assert guide.count("target=_blank") == guide.count("rel=noopener") == 4
+
+
+def test_usdc_is_paid_from_the_wallet_once_the_owner_has_signed() -> None:
+    script = get_did_page._SCRIPT
+    # With USDC, paying comes last: the owner signs first (steps 2 and 3 swap), so nothing is
+    # charged for a DID-LLM that cannot be issued.
+    start = script.split("function startPayment(note, paid = false) {")[1].split("\n  }\n")[0]
+    assert "if (state.x402) return startProof();" in start
+    assert "const proofStep = () => (state && state.x402 ? 2 : 3);" in script
+    assert "return state.x402 ? startUsdcPayment() : register();" in script
+    # The signed payment goes in the PAYMENT-SIGNATURE header, once: a 202 means it is
+    # confirming, and the page then asks again without it.
+    send = script.split("async function sendUsdcPayment(header, status) {")[1]
+    send = send.split("\n  }\n")[0]
+    assert '{ "PAYMENT-SIGNATURE": header }' in send
+    assert "return waitForUsdc(status, result.data);" in send
+    terms = script.split("async function usdcTerms(status) {")[1].split("\n  }\n")[0]
+    assert "PAYMENT-SIGNATURE" not in terms
+    # Only the quoted terms are signed: amount, network, token and receiving address.
+    same = script.split("function sameAsQuote(requirements) {")[1].split("\n  }\n")[0]
+    for quoted in ("state.network", "state.recipient", "state.token", "state.amountUnits"):
+        assert quoted in same
+    # The x402 version 2 payload, as an agent sends it, with the EIP-3009 authorization.
+    sign = script.split("async function signUsdcPayment(payer, requirements, terms) {")[1]
+    sign = sign.split("\n  }\n")[0]
+    assert "x402Version: terms.x402Version || 2, accepted: requirements" in sign
+    assert 'validAfter: "0"' in sign and "crypto.getRandomValues(new Uint8Array(32))" in sign
+    # The account the wallet has selected pays (any wallet holding the USDC), on Base, and a
+    # wallet without enough USDC is told so before anything is signed.
+    pay = script.split("async function payWithWallet(entry, status) {")[1].split("\n  }\n")[0]
+    assert "const payer = await connect(entry);" in pay
+    order = ["sameAsQuote(requirements)", "useNetwork(", "tokenBalance(", "signUsdcPayment("]
+    assert [pay.index(call) for call in order] == sorted(pay.index(call) for call in order)
+    # Once issued, step 3 says it is paid.
+    issued = script.split("function showIssued(issued) {")[1].split("\n  }\n")[0]
+    assert "`Paid ✓ ${usdcAmount()}`" in issued
+    # On staging, the gateway's test wallet can pay with test USDC instead.
+    assert '"Pay with test USDC (staging only)"' in script
+
+
+def test_the_page_says_people_can_pay_in_usdc_once_it_is_on() -> None:
+    page = get_did_page.page_html(staging=False, usdc=True, design="aurora")
+    html = page.split("<body>")[1].split("<script")[0]
+    assert "you then pay\nin USDC from your wallet, or in DMD with any DMD wallet." in html
+    assert "With USDC, you sign first and pay at step 3." in html
+    assert "you approve the payment in a wallet that holds it: this one or another." in html
+    assert "<span>by USDC or DMD</span>" in html
+    assert "<strong>Or pay with USDC</strong>, the US-dollar stablecoin, instead: choose" in html
+    staging = get_did_page.page_html(staging=True, usdc=True)
+    assert "<strong>Pay with test USDC</strong> button" in staging
+    off = get_did_page.page_html(staging=False, design="aurora").split("<body>")[1]
+    assert "USDC from your wallet" not in off and "With USDC" not in off
+    assert "the US-dollar stablecoin, once it opens on this page." in off
+
+
+def test_the_page_offers_usdc_once_the_x402_option_is_on(tmp_path: Path) -> None:
+    from .x402_fakes import MERCHANT, NETWORK, TOKEN, TestX402Adapter, reset_chain
+
+    reset_chain()
+    data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
+    data["rails"]["x402_usdc_base"]["asset"]["canonical_id"] = f"{NETWORK}/erc20:{TOKEN}"
+    registry = tmp_path / "routes.yaml"
+    registry.write_text(yaml.safe_dump(data), encoding="utf-8")
+    settings = Settings(_env_file=None, database_url=UNREACHABLE_DB, route_registry_path=registry)
+    engine = create_engine(UNREACHABLE_DB, connect_args={"connect_timeout": 1})
+    app = create_app(
+        settings,
+        environ={
+            "DMD_RAIL_X402_USDC_BASE_ENABLED": "true",
+            "DMD_USDC_BASE_MERCHANT_ADDRESS": MERCHANT,
+            "DMD_X402_FACILITATOR_URL": "https://facilitator.test",
+            "DMD_BASE_RPC_URL": "https://rpc.test",
+        },
+        engine=engine,
+        adapters={"X402PaymentAdapter": TestX402Adapter},
+    )
+    with TestClient(app) as client:
+        page = client.get("/get-did").text
+        assert "in USDC from your wallet, or in DMD with any DMD wallet" in page
+        options = client.get("/v1/payment-options?service=did_registration").json()
+        (usdc,) = options["supported_payment_options"]
+        assert (usdc["id"], usdc["payment_protocol"], usdc["network"]) == (
+            "x402_usdc_base",
+            "x402",
+            NETWORK,
+        )
 
 
 def test_card_and_paypal_show_as_coming_soon_after_the_coins() -> None:
@@ -570,7 +667,7 @@ def test_the_agentic_hub_button_waits_until_the_hub_saves_entries() -> None:
     assert 'const AGENTIC_HUB = "https://agenticssocialspaces.debitmydata.com/";' in script
     # Hidden for now: the hub's "Create Entity" does not save entries yet.
     assert "const SHOW_AGENTIC_HUB = false;" in script
-    issued = script.split("async function register()")[1].split("\n  }\n")[0]
+    issued = script.split("function showIssued(issued) {")[1].split("\n  }\n")[0]
     assert "SHOW_AGENTIC_HUB\n          ? element(" in issued
     assert '{ class: "next" }' in issued and '"Join the Agentic Hub"' in issued
     assert 'href: AGENTIC_HUB, target: "_blank", rel: "noopener"' in issued
@@ -608,7 +705,8 @@ def test_step_3_helps_people_who_sign_with_a_tool() -> None:
         "\n  }\n"
     )[0]
     assert "/v1/dids/registrations/${state.registrationId}" in check
-    assert 'result.data.next_action === "register_did"' in check and "return register();" in check
+    assert "[REGISTER_ACTION, X402_PAY_ACTION].includes(result.data.next_action)" in check
+    assert "return afterProof();" in check
     # Pasting the message instead of its signature is explained, not sent.
     send = script.split("async function sendProof(challenge, signature, status) {")[1]
     assert (

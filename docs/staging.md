@@ -125,6 +125,13 @@ same address there), with one more button: **Pay with test coins**. Connect your
 (or give an agent key), pay with that button, and sign with **Sign with my wallet**: signing
 sends nothing, so any wallet works on staging.
 
+With **USDC on Base** (when it is on), the owner signs first (step 2), then pays (step 3):
+**Pay with test USDC (staging only)** pays from the test wallet (below), or **Pay with my
+wallet** pays from your own browser wallet holding test USDC on Base Sepolia (Circle's faucet,
+below): the page switches the wallet to Base Sepolia, checks it holds the 25 USDC, and the
+wallet shows the payment to approve. The DID-LLM then links to the payment on
+sepolia.basescan.org.
+
 ### Advanced: step by step
 
 The page's **Advanced** link opens the Swagger UI page at

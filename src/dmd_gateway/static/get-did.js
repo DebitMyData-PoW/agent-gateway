@@ -283,6 +283,7 @@
 
   function walletError(error) {
     if (error && error.code === 4001) return "You cancelled it in your wallet.";
+    if (error && error.code === -32002) return "Your wallet already has a request waiting: open it, answer it, then try again.";
     return `The wallet answered: ${(error && error.message) || error}`;
   }
 
@@ -328,6 +329,18 @@
   // ?paypal=paid (or back) and the payment's ID (PayPal adds its own token and PayerID).
   const PAYPAL = "paypal_checkout";
   const PAYPAL_PAGE = /^https:\/\/www\.(sandbox\.)?paypal\.com\//;
+  // USDC through x402: the payer's wallet signs the exact amount to DebitMyData's receiving
+  // address, after the owner has signed (see startUsdcPayment). The networks the page can pay
+  // on: what the wallet needs to switch to them (EIP-3085), and their block explorer.
+  const X402 = "x402";
+  // What the gateway says comes next once the owner has signed (registration status).
+  const REGISTER_ACTION = "register_did";
+  const X402_PAY_ACTION = "register_did_with_x402_payment";
+  const TRANSACTION = /^0x[0-9a-fA-F]{64}$/;
+  const EVM_NETWORKS = {
+    "eip155:8453": { chainId: "0x2105", chainName: "Base", rpcUrls: ["https://mainnet.base.org"], explorer: "https://basescan.org" },
+    "eip155:84532": { chainId: "0x14a34", chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"], explorer: "https://sepolia.basescan.org" },
+  };
 
   // Shown, greyed, while the gateway doesn't offer USDC yet (it can't be chosen).
   const USDC_SOON = { id: "usdc-soon", asset: "USDC", name: "USDC on Base" };
@@ -359,13 +372,15 @@
     for (const later of LATER) if (!open.some(later.offered)) open.push(later);
     for (const option of open) {
       const soon = option === USDC_SOON || LATER.includes(option);
-      // USDC is paid by an x402 client when registering: not on this page yet.
-      const onPage = !soon && option.payment_protocol !== "x402";
+      // Every option the gateway offers can be paid here: USDC (x402) from the payer's wallet.
+      const onPage = !soon;
       const radio = element("input", { type: "radio", name: "option", value: option.id, disabled: !onPage, checked: onPage && first });
       if (onPage) first = false;
       const help = onPage
         ? option.asset === "DMD"
           ? "Send the coins from any DMD wallet: the exact amount and the address to pay come at step 2."
+          : option.payment_protocol === X402
+            ? "From your own wallet on Base (MetaMask, Coinbase Wallet, Rabby…), in this browser or in your wallet app's browser: you approve the exact amount in it, and the network fee is paid for you. You pay right after signing as the owner."
           : option.payment_protocol === CARD
             ? "Visa, Mastercard and other cards, or Apple Pay and Google Pay, on Stripe's secure payment page. Your card details go to Stripe only."
             : option.payment_protocol === PAYPAL
@@ -381,7 +396,7 @@
           "label",
           { class: `choice${onPage ? "" : " unavailable"}` },
           radio,
-          element("strong", {}, option.name || option.id),
+          element("strong", {}, option.payment_protocol === X402 ? `${option.asset} on ${(EVM_NETWORKS[option.network] || {}).chainName || "Base"}` : option.name || option.id),
           onPage ? null : element("span", { class: "tag soon" }, "Soon"),
           element("small", {}, help)
         )
@@ -468,6 +483,10 @@
         quoteExpiresAt: quote.expires_at,
         card: option.payment_protocol === CARD,
         paypal: option.payment_protocol === PAYPAL,
+        x402: option.payment_protocol === X402,
+        network: option.network || null,
+        amountUnits: option.amount_base_units || null,
+        token: option.token_contract || null,
         paymentUrl: option.payment_url || null,
         controller: details.controller,
         walletName: wallet ? wallet.name : null,
@@ -493,6 +512,18 @@
       element("p", { class: "summary" }, element("strong", {}, state.name || "Your DID-LLM"), ` · controlled by your ${who} · ${state.card ? "paid by card" : state.paypal ? "paid with PayPal" : `paid in ${state.asset || "DMD"}`}`),
       element("p", { class: "small" }, "Your registration ID (support can find your registration with it): ", element("code", {}, state.registrationId), " ", copyButton(state.registrationId))
     );
+    arrangeSteps();
+  }
+
+  // USDC (x402) is paid last, once the owner has signed, so that nothing is charged for a
+  // DID-LLM that cannot be issued: steps 2 and 3 swap (prove it's yours, then pay).
+  const proofStep = () => (state && state.x402 ? 2 : 3);
+  const payStep = () => (state && state.x402 ? 3 : 2);
+  function arrangeSteps() {
+    if (!state || !state.x402) return;
+    steps[1].querySelector(".step-head h2").textContent = "Prove it's yours";
+    steps[2].querySelector(".step-head h2").textContent = "Pay";
+    steps[2].querySelector(".locked").textContent = "Opens once the owner has signed.";
   }
 
   // ------------------------------------------------------------------ step 2: pay
@@ -500,6 +531,7 @@
   // note: a line about coming back from the card or PayPal payment page; paid: the payer says
   // it is paid (Stripe or PayPal sent them back as paid).
   function startPayment(note, paid = false) {
+    if (state.x402) return startProof(); // USDC: the owner signs first, then pays at step 3
     show(2);
     if (state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
     tick();
@@ -712,8 +744,9 @@
   // ------------------------------------------------------------------ step 3: prove control
 
   async function startProof() {
-    show(3);
-    const container = body(3);
+    show(proofStep());
+    if (state.x402 && state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
+    const container = body(proofStep());
     container.replaceChildren(element("p", { class: "status busy" }, "Getting the message to sign…"));
     const result = await call("POST", `/v1/dids/registrations/${state.registrationId}/controller-challenges`, {}).catch(() => null);
     if (!result || (result.status !== 201 && result.status !== 200)) {
@@ -811,13 +844,13 @@
     status.textContent = "Checking…";
     const result = await call("GET", `/v1/dids/registrations/${state.registrationId}`).catch(() => null);
     button.disabled = false;
-    if (result && result.status === 200 && (result.data.did || result.data.next_action === "register_did")) {
+    if (result && result.status === 200 && (result.data.did || [REGISTER_ACTION, X402_PAY_ACTION].includes(result.data.next_action))) {
       delete deadlines.challenge;
       tick();
       status.className = "status ok";
       status.textContent = "Signature verified ✓";
       announce("Signature verified.");
-      return register();
+      return afterProof();
     }
     status.className = "status bad";
     status.textContent = result ? "The gateway has no signature for this DID-LLM yet: sign first, then click Continue." : "Could not reach the gateway.";
@@ -844,7 +877,7 @@
       status.className = "status ok";
       status.textContent = "Signature verified ✓";
       announce("Signature verified.");
-      return register();
+      return afterProof();
     }
     status.className = "status bad";
     const messages = {
@@ -858,6 +891,315 @@
       again.addEventListener("click", startProof);
       status.after(element("div", { class: "actions" }, again));
     }
+  }
+
+  // Signed: USDC is paid now (step 3); with the other options it is paid already.
+  function afterProof() {
+    return state.x402 ? startUsdcPayment() : register();
+  }
+
+  // ------------------------------------------------------------------ step 3 with USDC (x402)
+
+  // The payment is an EIP-3009 "transferWithAuthorization" that the payer's wallet signs:
+  // exactly the quoted USDC, to DebitMyData's receiving address, usable for a few minutes. The
+  // gateway hands it to the x402 facilitator, which moves the USDC and pays the network fee.
+  // The page never holds a key and never sends a transaction: the wallet shows the payment
+  // and the payer approves it there. Any wallet holding the USDC can pay, not only the owner's.
+  function startUsdcPayment(note) {
+    show(payStep());
+    if (state.quoteExpiresAt) deadlines.quote = { at: Date.parse(state.quoteExpiresAt), label: "Pay within" };
+    tick();
+    const network = EVM_NETWORKS[state.network] || { chainName: state.network || "Base" };
+    const amount = usdcAmount();
+    const status = element("p", { class: "status" });
+    const parts = [];
+    if (note) parts.push(element("p", { class: "small" }, note));
+    parts.push(
+      element("p", {}, "Pay ", element("strong", {}, amount), ` on ${network.chainName}, from your wallet. Your wallet shows the payment before you approve it.`)
+    );
+    const list = walletList();
+    if (list.length) {
+      const row = element("div", { class: "wallets pay-usdc act" });
+      for (const entry of list) {
+        const icon = entry.info.icon && /^data:image\//.test(entry.info.icon) ? element("img", { src: entry.info.icon, alt: "" }) : null;
+        const button = element("button", { type: "button" }, icon, list.length > 1 ? `Pay with ${entry.info.name}` : "Pay with my wallet");
+        button.addEventListener("click", () => payWithWallet(entry, status));
+        row.append(button);
+      }
+      parts.push(row);
+    } else {
+      parts.push(
+        element(
+          "p",
+          { class: "status bad act" },
+          "No wallet in this browser. USDC is paid from a wallet that runs in the browser: open this page in your wallet app's own browser (MetaMask, Coinbase Wallet, Trust Wallet…) or in a browser with your wallet's extension, and start there. Or start a new registration here and pay another way."
+        )
+      );
+      const restart = element("button", { type: "button", class: "secondary act" }, "Start a new registration");
+      restart.addEventListener("click", startOver);
+      parts.push(element("div", { class: "actions" }, restart));
+    }
+    parts.push(
+      element(
+        "ul",
+        { class: "rules" },
+        element("li", {}, `From any wallet holding the ${state.asset} on ${network.chainName}: the owner's wallet or another one.`),
+        element("li", {}, "No ETH needed: the network fee is paid for you."),
+        element("li", {}, `Your wallet asks you to approve exactly ${amount} to DebitMyData (${short(state.recipient)}): check it before you approve.`),
+        element("li", {}, "Before the time runs out (see the countdown).")
+      )
+    );
+    if (config.staging) {
+      const testPay = element("button", { type: "button", class: "secondary act" }, "Pay with test USDC (staging only)");
+      testPay.addEventListener("click", () => payWithTestWallet(status));
+      parts.push(element("div", { class: "actions" }, testPay));
+    }
+    parts.push(status);
+    body(payStep()).replaceChildren(...parts);
+    // Already paid, or a payment on its way (after a reload): the gateway says so.
+    checkUsdcPayment(status);
+  }
+
+  // The quoted amount, without trailing zeros: "25 USDC".
+  function usdcAmount() {
+    return `${amountText(String(state.amount).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ""))} ${state.asset}`;
+  }
+
+  // The buttons to pay go once a payment is on its way, so that nobody pays twice.
+  function usdcButtons(enabled) {
+    for (const button of body(payStep()).querySelectorAll(".pay-usdc button, .actions .secondary")) button.disabled = !enabled;
+  }
+
+  // Asks the gateway without paying: the payment terms (HTTP 402, the x402 PaymentRequired),
+  // or the DID-LLM if it is paid, or "confirming" if a payment is on its way.
+  async function usdcTerms(status) {
+    const result = await call("POST", "/v1/dids/registrations", { registration_intent_id: state.registrationId });
+    if (result.status === 402 && result.data && Array.isArray(result.data.accepts) && result.data.accepts.length) return result.data;
+    if (result.status === 200 || result.status === 201) {
+      showIssued(result.data);
+      return null;
+    }
+    if (result.status === 202) {
+      waitForUsdc(status, result.data);
+      return null;
+    }
+    throw new Error(usdcProblem(result));
+  }
+
+  async function checkUsdcPayment(status) {
+    try {
+      await usdcTerms(status);
+    } catch (error) {
+      status.className = "status bad";
+      status.textContent = error.message;
+    }
+  }
+
+  async function payWithWallet(entry, status) {
+    if (busy) return;
+    busy = true;
+    usdcButtons(false);
+    status.className = "status busy";
+    status.textContent = "Getting the payment terms…";
+    try {
+      const terms = await usdcTerms(status);
+      if (!terms) return; // paid already, or on its way
+      const requirements = terms.accepts[0];
+      const network = EVM_NETWORKS[requirements.network];
+      if (!network) throw new Error(`This page can't pay on ${requirements.network}: an agent can pay it through the API.`);
+      // The wallet is only asked to sign what this registration's quote says: the amount, the
+      // network, the token and DebitMyData's receiving address, all as quoted at step 1.
+      if (!sameAsQuote(requirements)) throw new Error("The payment terms don't match your quote, so nothing was signed. Start a new registration, or contact support with your registration ID.");
+      // The account the wallet has selected now: the payer may have switched to another one.
+      status.textContent = "Connect your wallet…";
+      const payer = await connect(entry);
+      status.textContent = `Switching your wallet to ${network.chainName}…`;
+      await useNetwork(payer.provider, network);
+      status.textContent = `Checking the wallet's ${state.asset}…`;
+      const due = BigInt(requirements.amount);
+      const balance = await tokenBalance(payer.provider, requirements.asset, payer.address);
+      if (balance !== null && balance < due) {
+        throw new Error(`This wallet (${short(payer.address)}) holds ${baseUnits(balance)} ${state.asset} on ${network.chainName}, and the payment is ${baseUnits(due)} ${state.asset}. Add ${state.asset} to it, or pay from another wallet.`);
+      }
+      status.textContent = "Approve the payment in your wallet…";
+      const header = await signUsdcPayment(payer, requirements, terms);
+      await sendUsdcPayment(header, status);
+    } catch (error) {
+      status.className = "status bad";
+      status.textContent = error instanceof Error && !("code" in error) ? error.message : walletError(error);
+      usdcButtons(true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Staging: the gateway's test wallet signs the payment with test USDC on Base Sepolia.
+  async function payWithTestWallet(status) {
+    if (busy) return;
+    busy = true;
+    usdcButtons(false);
+    status.className = "status busy";
+    status.textContent = "The staging test wallet is signing the payment…";
+    try {
+      const result = await call("POST", "/v1/staging/test-payments", { payment_intent_id: state.paymentId });
+      if (result.status !== 201 || !result.data.payment_signature) throw new Error(problem(result));
+      await sendUsdcPayment(result.data.payment_signature, status);
+    } catch (error) {
+      status.className = "status bad";
+      status.textContent = error.message;
+      usdcButtons(true);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function sameAsQuote(requirements) {
+    const same = (a, b) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+    return (
+      requirements.scheme === "exact" &&
+      requirements.network === state.network &&
+      same(requirements.payTo, state.recipient) &&
+      same(requirements.asset, state.token) &&
+      /^[0-9]+$/.test(String(requirements.amount)) &&
+      String(requirements.amount) === String(state.amountUnits)
+    );
+  }
+
+  // The wallet on the payment's network: switched to it, or the network added first (EIP-3085).
+  async function useNetwork(provider, network) {
+    const current = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+    if (current === network.chainId) return;
+    try {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: network.chainId }] });
+    } catch (error) {
+      const unknown = error && (error.code === 4902 || (error.data && error.data.originalError && error.data.originalError.code === 4902));
+      if (!unknown) throw error;
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{ chainId: network.chainId, chainName: network.chainName, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: network.rpcUrls, blockExplorerUrls: [network.explorer] }],
+      });
+    }
+    const now = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+    if (now !== network.chainId) throw new Error(`Your wallet is on another network: switch it to ${network.chainName}, then click Pay again.`);
+  }
+
+  // The wallet's token balance (ERC-20 balanceOf), through the wallet; null if it can't tell,
+  // and then the facilitator checks it.
+  async function tokenBalance(provider, token, address) {
+    try {
+      const data = `0x70a08231${address.toLowerCase().replace(/^0x/, "").padStart(64, "0")}`;
+      const answer = await provider.request({ method: "eth_call", params: [{ to: token, data }, "latest"] });
+      return /^0x[0-9a-fA-F]+$/.test(answer) ? BigInt(answer) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Base units (6 decimals for USDC) as an amount: 25000000 is "25".
+  function baseUnits(units, decimals = 6) {
+    const scale = 10n ** BigInt(decimals);
+    const fraction = (units % scale).toString().padStart(decimals, "0").replace(/0+$/, "");
+    return `${(units / scale).toLocaleString("en-US")}${fraction ? `.${fraction}` : ""}`;
+  }
+
+  // The x402 "exact" payment: the wallet signs the EIP-3009 authorization (EIP-712 typed data),
+  // and the page wraps it in the x402 PaymentPayload (version 2), base64, as an agent would.
+  async function signUsdcPayment(payer, requirements, terms) {
+    const extra = requirements.extra || {};
+    const now = Math.floor((Date.now() + clockOffset) / 1000);
+    // Usable for the time the gateway gives, and never after the quote (the gateway refuses it).
+    const quoteEnd = Math.floor(Date.parse(state.quoteExpiresAt) / 1000) - 30;
+    const validBefore = Math.min(now + Number(requirements.maxTimeoutSeconds), Number.isFinite(quoteEnd) ? quoteEnd : Infinity);
+    if (validBefore < now + 30) throw new Error("The quote expires in a moment: start a new registration.");
+    const nonce = `0x${[...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+    const authorization = {
+      from: payer.address,
+      to: requirements.payTo,
+      value: String(requirements.amount),
+      validAfter: "0",
+      validBefore: String(validBefore),
+      nonce,
+    };
+    const typedData = {
+      types: {
+        EIP712Domain: [
+          { name: "name", type: "string" },
+          { name: "version", type: "string" },
+          { name: "chainId", type: "uint256" },
+          { name: "verifyingContract", type: "address" },
+        ],
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      },
+      primaryType: "TransferWithAuthorization",
+      domain: { name: extra.name, version: extra.version, chainId: Number(requirements.network.split(":")[1]), verifyingContract: requirements.asset },
+      message: authorization,
+    };
+    const signature = await payer.provider.request({ method: "eth_signTypedData_v4", params: [payer.address, JSON.stringify(typedData)] });
+    const payload = { x402Version: terms.x402Version || 2, accepted: requirements, payload: { signature, authorization } };
+    if (terms.resource) payload.resource = terms.resource;
+    if (terms.extensions) payload.extensions = terms.extensions;
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  // Sends the signed payment with the registration (the PAYMENT-SIGNATURE header). The answer
+  // is the DID-LLM, or 202 while the payment confirms on chain: then the page asks again
+  // without the payment (it is never sent twice).
+  async function sendUsdcPayment(header, status) {
+    status.className = "status busy";
+    status.textContent = "Sending your payment…";
+    const result = await call("POST", "/v1/dids/registrations", { registration_intent_id: state.registrationId }, { "PAYMENT-SIGNATURE": header });
+    if (result.status === 200 || result.status === 201) return showIssued(result.data);
+    if (result.status === 202) return waitForUsdc(status, result.data);
+    throw new Error(usdcProblem(result));
+  }
+
+  async function waitForUsdc(status, answer) {
+    clearTimeout(pollTimer);
+    usdcButtons(false);
+    for (const row of body(payStep()).querySelectorAll(".pay-usdc")) row.remove();
+    delete deadlines.quote;
+    tick();
+    const transaction = ((answer && answer.transactions) || [])[0];
+    const explorer = (EVM_NETWORKS[state.network] || {}).explorer;
+    status.className = "status busy";
+    status.replaceChildren(
+      "Payment received: confirming it on chain…",
+      explorer && TRANSACTION.test(transaction || "") ? element("span", {}, " (", element("a", { href: `${explorer}/tx/${transaction}`, target: "_blank", rel: "noopener" }, "see it"), ")") : ""
+    );
+    pollTimer = setTimeout(async () => {
+      try {
+        // The DID-LLM once confirmed; still confirming: waitForUsdc again; the payment terms
+        // again (402): the payment did not go through, so the buttons to pay come back.
+        if (await usdcTerms(status)) startUsdcPayment("Your payment did not go through, and nothing was taken: pay again.");
+      } catch (error) {
+        status.className = "status bad";
+        status.textContent = error.message;
+      }
+    }, 5000);
+  }
+
+  // What went wrong with a USDC payment, for the payer. Nothing is taken when it is refused.
+  function usdcProblem(result) {
+    const error = (result.data && result.data.error) || {};
+    const code = error.code;
+    const message = error.message || "";
+    if (code === "payment_invalid" && /insufficient/.test(message)) return `Payment refused: the wallet doesn't hold enough ${state.asset}. Nothing was taken.`;
+    if (code === "payment_invalid" && /signature/.test(message)) return "Payment refused: the wallet's signature was not accepted. Nothing was taken. Try again, or pay from another wallet.";
+    if (code === "payment_invalid" || code === "payment_failed" || code === "payment_mismatch") return `${message} Nothing was taken: you can try again.`;
+    if (code === "authorization_already_used") return "This payment was already used: click Pay again to sign a new one.";
+    if (code === "payment_rail_unavailable") return "The payment could not be checked right now; nothing was charged. Try again in a moment.";
+    if (["too_many_payment_attempts", "quote_expiring", "payment_not_open"].includes(code)) return `${message} Start a new registration.`;
+    return problem(result);
   }
 
   // ------------------------------------------------------------------ step 4: the DID
@@ -874,13 +1216,24 @@
       container.append(element("div", { class: "actions" }, retry));
       return;
     }
-    const issued = result.data;
+    showIssued(result.data);
+  }
+
+  // The DID-LLM, issued: after register(), or in the answer to a USDC payment (with the
+  // payment's transaction, to see it on the block explorer).
+  function showIssued(issued) {
+    show(4);
+    const container = body(4);
     steps[3].classList.add("done");
     steps[3].classList.remove("current");
     deadlines = {};
     tick();
+    // Paid in USDC: step 3 says so (it said "Sending your payment…").
+    if (state && state.x402) body(payStep()).replaceChildren(element("p", { class: "status ok" }, `Paid ✓ ${usdcAmount()}`));
     state = null;
     save();
+    const paid = issued.payment_response || {};
+    const explorer = (EVM_NETWORKS[paid.network] || {}).explorer;
     const open = element("a", { class: "big", href: issued.did_document_url, target: "_blank", rel: "noopener" }, "Open your DID-LLM document");
     container.replaceChildren(
       element(
@@ -896,6 +1249,9 @@
           element("a", { href: issued.credential_url, target: "_blank", rel: "noopener" }, "View the signed credential"),
           element("a", { href: "/docs/advanced" }, "API docs")
         ),
+        explorer && TRANSACTION.test(paid.transaction || "")
+          ? element("p", { class: "small" }, "Your USDC payment: ", element("a", { href: `${explorer}/tx/${paid.transaction}`, target: "_blank", rel: "noopener" }, "see it on the block explorer"), ".")
+          : "",
         // What to do with it next: the DID-LLM directory (optional: the owner signs the listing).
         element(
           "div",
@@ -946,6 +1302,12 @@
       resumeBox.hidden = true;
       state = previous;
       lockDetails();
+      // USDC: the owner signs first, then pays (startUsdcPayment finds a payment already made).
+      if (state.x402 && !registration.did) {
+        if (registration.next_action === "prove_wallet_control") return startProof();
+        body(proofStep()).replaceChildren(element("p", { class: "status ok" }, "Signature verified ✓"));
+        return startUsdcPayment();
+      }
       if (registration.did || registration.next_action === "register_did") return register();
       if (payment === "settled") {
         body(2).replaceChildren(element("p", { class: "status ok" }, state.card ? "Paid by card ✓" : state.paypal ? "Paid with PayPal ✓" : "Paid ✓"));

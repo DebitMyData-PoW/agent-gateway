@@ -232,7 +232,8 @@ section 5).
 3. Check the paid routes with Coinbase's Bazaar validator:
    `cd /opt/agent-gateway && .venv/bin/python scripts/validate_bazaar.py https://api.debitmydata.io`.
 4. One real DID payment in USDC, end to end, checked on basescan.org: the USDC arrives in
-   AgenticSpaces DID-LLM (`0x67C1...2eC3`).
+   AgenticSpaces DID-LLM (`0x67C1...2eC3`). It can be made on the Get a DID page (USDC on
+   Base, then the owner's signature, then **Pay with my wallet**), or by an agent.
 
 `https://mainnet.base.org` is Base's public RPC; it is rate-limited, so under real traffic use
 a dedicated Base RPC endpoint (`DMD_BASE_RPC_URL`).
@@ -246,10 +247,15 @@ DID's details and the quote, the payment (the exact amount and address, with the
 watched until it settles), one message signed with their wallet (a **Sign with my wallet**
 button for browser wallets, or a signature pasted from another wallet or the agent's tools),
 and the DID. It never asks for a private key or a recovery phrase and never sends money; it
-keeps the registration's IDs in the browser so that a reload continues where it stopped. USDC
-is not on the page yet (agents pay it through the API): until step 7 switches it on, the page
-lists it first, greyed, as coming soon, and DMD is the one chosen; the API lists only what can
-be paid with now. Its font, Mada, is served by the
+keeps the registration's IDs in the browser so that a reload continues where it stopped. Once
+step 7 switches USDC on, the page offers it first, in another order: the owner signs at step 2,
+then pays at step 3 from any browser wallet that holds the USDC on Base (MetaMask, Coinbase
+Wallet, Rabby…; on a phone, in the wallet app's own browser), the owner's or another one. The
+wallet signs one payment authorization (EIP-3009, as x402 agents do) for exactly the quoted
+amount to the receiving address, which the page checks against the quote before asking; the
+x402 facilitator moves the USDC and pays the network fee, and the DID-LLM comes with a link to
+the payment on basescan.org. Until step 7, USDC is listed first, greyed, as coming soon, and
+DMD is the one chosen; the API lists only what can be paid with now. Its font, Mada, is served by the
 gateway (SIL Open Font License, `src/dmd_gateway/static/fonts/OFL-Mada.txt`).
 
 **The same look on every page for people.** The "Get a DID" page, the advanced API docs, the

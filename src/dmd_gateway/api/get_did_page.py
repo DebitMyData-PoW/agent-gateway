@@ -174,7 +174,7 @@ rel=noopener>pool.debitmydata.io</a>, which pays the DMD into your wallet. How m
 depends on your hashrate and the network's. Guides:
 <a href="https://debitmydata.io/#asics" target=_blank rel=noopener>mining</a> and
 <a href="https://debitmydata.io/#rent" target=_blank rel=noopener>renting hashrate</a>.</li>
-<li><strong>Or pay with USDC</strong>, the US-dollar stablecoin, once it opens on this page.</li>
+<li><strong>Or pay with USDC</strong>, the US-dollar stablecoin, {usdc_here}.</li>
 </ol>
 <p>To hold and send DMD you need a DMD wallet:
 <a href="https://debitmydata.io/#wallet" target=_blank rel=noopener>get one at
@@ -488,6 +488,7 @@ def _body(
     price: str = DEFAULT_PRICE,
     *,
     paypal: bool = False,
+    usdc: bool = False,
     design: str = page_design.CLASSIC,
 ) -> str:
     # Visible buttons, not a drop-down list: AI agents (and people) see every choice at once,
@@ -516,19 +517,42 @@ def _body(
         if paypal
         else ""
     )
+    test_usdc = (
+        ", with the <strong>Pay with test USDC</strong> button or your own wallet's test USDC "
+        "on Base Sepolia"
+        if usdc
+        else ""
+    )
     staging_note = (
         "<p class=staging><strong>Staging server.</strong> Test networks and test DID-LLMs: pay "
-        f"with the <strong>Pay with test coins</strong> button{test_card}{test_paypal}, and sign "
-        "with your own wallet (signing sends nothing).</p>"
+        f"with the <strong>Pay with test coins</strong> button{test_usdc}{test_card}"
+        f"{test_paypal}, and sign with your own wallet (signing sends nothing).</p>"
         if staging
         else ""
     )
-    # How people pay at step 2: in DMD, and by card or with PayPal once those options are on.
-    ways = [way for way, on in (("by card", card), ("with PayPal", paypal)) if on]
+    # How people pay: in DMD, and in USDC, by card or with PayPal once those options are on.
+    ways = [
+        way
+        for way, on in (
+            ("in USDC from your wallet", usdc),
+            ("by card", card),
+            ("with PayPal", paypal),
+        )
+        if on
+    ]
     how_to_pay = (
         ", ".join(ways) + ", or in DMD with any DMD wallet"
         if ways
         else "in DMD, with any DMD wallet"
+    )
+    # USDC is paid last, once the owner has signed (nothing is charged for a DID-LLM that cannot
+    # be issued): its steps 2 and 3 swap (get-did.js).
+    pay_when = "at step 2 (with USDC: at step 3, right after signing)" if usdc else "at step 2"
+    usdc_order = " With USDC, you sign first and pay at step 3." if usdc else ""
+    usdc_payer = (
+        " To pay in USDC, you approve the payment in a wallet that holds it: this one or another."
+        if usdc
+        else ""
     )
     pages = [
         page
@@ -542,8 +566,13 @@ def _body(
     )
     # The app only: a window that offers to install it (get-did.js decides when).
     install = INSTALL_DIALOG if app else ""
-    # The ways to pay, for the aurora design's price badge: "by card, PayPal or DMD".
-    names = [name for name, on in (("card", card), ("PayPal", paypal)) if on] + ["DMD"]
+    get_dmd = _GET_DMD.replace(
+        "{usdc_here}",
+        "instead: choose <em>USDC on Base</em> above" if usdc else "once it opens on this page",
+    )
+    # The ways to pay, for the aurora design's price badge: "by USDC, card, PayPal or DMD".
+    names = [name for name, on in (("USDC", usdc), ("card", card), ("PayPal", paypal)) if on]
+    names.append("DMD")
     ways = "by " + (", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else names[0])
     return f"""
 <div id=countdown hidden aria-hidden=true><span class=label></span><span class=time></span></div>
@@ -576,8 +605,8 @@ by signing one message (free: signing sends nothing).</p>
 <strong>My wallet</strong><span class=tag>Recommended</span>
 <small>Any Ethereum-style wallet, whose address starts with 0x: MetaMask, Coinbase Wallet,
 Rabby, Trust Wallet, a hardware wallet… It needs no balance (no USDC, no ETH): it only signs,
-nothing is paid with it. No browser extension needed: you can type the address and sign in
-your wallet app. You pay at step 2, {how_to_pay}.</small></label>
+nothing is paid with it.{usdc_payer} No browser extension needed: you can type the address and
+sign in your wallet app. You pay {pay_when}, {how_to_pay}.</small></label>
 <div id=wallet-box class=sub>
 <div class=wallets-holder></div>
 <label class=field for=wallet-address><span id=wallet-address-label>Or type the wallet's
@@ -602,7 +631,7 @@ placeholder="ed25519:z6Mk…"></label>
 <noscript><p class=small>Paying on this page needs JavaScript. AI agents:
 <a href="/llms.txt">/llms.txt</a> explains how to register and pay through the API.</p></noscript>
 </div>
-{_GET_DMD}
+{get_dmd}
 </fieldset>
 <label class=check><input type=checkbox id=terms><span>I accept the
 <a href="/policies/terms" target=_blank>terms</a> and the
@@ -616,7 +645,7 @@ DID-LLM registration is <a href="/policies/refunds" target=_blank>not refundable
 <section class="card step waiting" id=s2>
 <div class=step-head><span class=num>2</span><h2>Pay</h2></div>
 <p class="small locked">Opens after <strong>{PAY_BUTTON}</strong> at step 1: you then pay
-{how_to_pay}.</p><div class=body></div>
+{how_to_pay}.{usdc_order}</p><div class=body></div>
 </section>
 <section class="card step waiting" id=s3>
 <div class=step-head><span class=num>3</span><h2>Prove it's yours</h2></div>
@@ -758,6 +787,7 @@ def page_html(
     price: str = DEFAULT_PRICE,
     *,
     paypal: bool = False,
+    usdc: bool = False,
     design: str = page_design.CLASSIC,
 ) -> str:
     config = json.dumps({"staging": staging, "app": app}).replace("<", "\\u003c")
@@ -776,6 +806,9 @@ def page_html(
         f'<link rel=preload href="/fonts/{name}" as=font type=font/woff2 crossorigin>'
         for name in page_design.FONTS[design][:2]
     )
+    body = _body(
+        staging, app, mcp_url, card, escape(price), paypal=paypal, usdc=usdc, design=design
+    )
     return (
         "<!doctype html><html lang=en"
         + (f" data-design={design}" if design != page_design.CLASSIC else "")
@@ -786,7 +819,7 @@ def page_html(
         '<link rel=icon href="/favicon.png">'
         f"{head}{installable}{preload}"
         f"{brand.THEME_SCRIPT}<style>{STYLES[design]}</style></head>"
-        f"<body>{_body(staging, app, mcp_url, card, escape(price), paypal=paypal, design=design)}"
+        f"<body>{body}"
         f'<script type="application/json" id="page-config">{config}</script>'
         f"<script>{_SCRIPT}</script></body></html>"
     )
@@ -846,12 +879,21 @@ def _render(request: Request, app: bool) -> Response:
     rails = request.app.state.registry.enabled_rails(DID_REGISTRATION)
     card = any(rail.protocol == STRIPE_CHECKOUT for _, rail in rails)
     paypal = any(rail.protocol == PAYPAL_CHECKOUT for _, rail in rails)
+    usdc = any(rail.protocol == "x402" for _, rail in rails)
     price = did_price(request)
     head = head_tags(settings, price)
     design, keep = page_design.chosen(request)
     headers["Content-Security-Policy"] = CSPS[design]
     page = page_html(
-        staging, app, mcp_url(settings), card, head, price_text(price), paypal=paypal, design=design
+        staging,
+        app,
+        mcp_url(settings),
+        card,
+        head,
+        price_text(price),
+        paypal=paypal,
+        usdc=usdc,
+        design=design,
     )
     response = HTMLResponse(page, headers=headers)
     if keep is not None:
