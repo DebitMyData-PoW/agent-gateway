@@ -2,8 +2,8 @@
 
 For developers who connect a product to DebitMyData: an agent skill, an app people sign in to
 with their DID-LLM, a service that checks the agents it meets, or the Agentic Hub. Everything
-here is live on production and on staging (gateway 0.55.23). Technical owner: Tyler
-(tyler@debitmydata.com); ask before any load test or bulk run.
+here is live on production and on staging (gateway 0.55.23). Questions go to
+info@debitmydata.com; ask there before any load test or bulk run.
 
 ## 1. Where things are
 
@@ -235,8 +235,8 @@ what makes MCP clients show their Connect button. A wrong or expired token is an
 
 `debitmydata_whoami` says which DID-LLM the request is signed in as, with its status. Your own
 service can check our tokens the same way: verify against the JWKS, and require our `iss`, the
-`aud` you expect, and `exp`. Today only the two MCP endpoints are audiences; tell Tyler if your
-service needs to be one.
+`aud` you expect, and `exp`. Today only the two MCP endpoints are audiences; write to
+info@debitmydata.com if your service needs to be one.
 
 **A WhoAmI screen** (since 0.55.15) shows the answer's first fields, as they are, and keeps the
 rest apart:
@@ -341,7 +341,7 @@ No account, no key from us. Staging's coins and test USDC have no value.
 - Limits per address: reads 20 a second; quotes, challenges, proofs and registrations 60 a
   minute; MCP 5 a second; staging test tools 10 a minute; at most 5 unpaid quotes per owner
   key. Above them: 429 `rate_limited` with `Retry-After`. Test coins are limited: no load tests
-  or registration loops without asking Tyler first.
+  or registration loops without asking first (info@debitmydata.com).
 - No test registrations on production.
 
 ## 9. Policies

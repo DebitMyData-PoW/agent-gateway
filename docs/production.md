@@ -104,8 +104,8 @@ to a public key whose private half never touches the server:
 They go to Vultr Object Storage; the last 7 days also stay on the server. Vultr's own server
 backups come on top of this.
 
-**a. The backup key (once, on your own computer, never on the server).** On the Ubuntu VM
-(`sudo apt install age`):
+**a. The backup key (once, on your own computer, never on the server).** On Linux, a Linux VM
+included (`sudo apt install age`):
 
 ```bash
 age-keygen -o dmd-gateway-backup-key.txt
@@ -142,25 +142,26 @@ journalctl -u dmd-gateway-backup -n 20 --no-pager
 It ends with `Backup <time>: ... copied to vultr:...`. From then on the monitor warns when no
 backup has succeeded for 26 hours.
 
-**e. Restore test (once now, then every 6 months),** on the Ubuntu VM, never on production.
-It proves that the backups can be read with the offline key and hold what a new server needs.
-The VM needs `sudo apt install age postgresql-client` and a copy of this repository. (Ubuntu
+**e. Restore test (once now, then every 6 months),** on a Linux computer of your own (the test
+computer; a VM works), never on production. It proves that the backups can be read with the
+offline key and hold what a new server needs. The test computer needs
+`sudo apt install age postgresql-client` and a copy of this repository. (Ubuntu
 24.04's `postgresql-client` is version 16, as on the server; an older Ubuntu has an older one,
 which cannot read the server's dumps: install `postgresql-client-16` from PostgreSQL's own
 apt repository there.)
 
 1. Copy the newest pair from the server (it keeps the last 7 nights in
    `/var/backups/dmd-gateway`, readable by root) with the computer you already log in to the
-   server from, then to the VM as you bring other files there. The VM itself never connects
-   to the server, and the files are useless without the key. On the server, the newest
+   server from, then to the test computer as you bring other files there. The test computer
+   itself never connects to the server, and the files are useless without the key. On the server, the newest
    `<time>`:
 
    ```bash
    ls -1 /var/backups/dmd-gateway | grep db- | tail -n 1
    ```
 
-   On your computer (Windows PowerShell, macOS or Linux; WinSCP works too), then to the VM's
-   `~/restore-test`:
+   On the computer you log in from (Windows PowerShell, macOS or Linux; an SFTP client works
+   too), then to `~/restore-test` on the test computer:
 
    ```bash
    scp -P <SSH port> "root@<server address>:/var/backups/dmd-gateway/agent-gateway-*-<time>.*.age" .
@@ -179,13 +180,13 @@ apt repository there.)
    PASSED` and the command that counts the DID-LLMs on the server: the server has the same
    number, or more if DID-LLMs were registered after the backup.
 
-3. Delete the copies (`rm -r ~/restore-test` on the VM, and on your computer), and note the
-   date of the test.
+3. Delete the copies (`rm -r ~/restore-test` on the test computer, and on the one you log in
+   from), and note the date of the test.
 
 The key line it shows (`Backup key: age1...`) is the backup key's public half: it is the one
 in `DMD_BACKUP_AGE_RECIPIENT` on the server (`grep RECIPIENT /etc/dmd-gateway/backup.env`).
 
-To go further, a full restore into a scratch database on the VM (it needs PostgreSQL 16 there;
+To go further, a full restore into a scratch database on the test computer (it needs PostgreSQL 16 there;
 delete the decrypted file after):
 
 ```bash
@@ -398,9 +399,9 @@ owners"), so that someone sees a key change that may follow a stolen key. The [D
 
 ```bash
 sudo dmd-gateway-admin did show <DID>
-sudo dmd-gateway-admin did suspend <DID> --reason "Reported impersonation, under review" --by "Tyler"
-sudo dmd-gateway-admin did reactivate <DID> --reason "Review closed: no misuse" --by "Tyler"
-sudo dmd-gateway-admin did revoke <DID> --reason "Fraud confirmed" --by "Tyler"
+sudo dmd-gateway-admin did suspend <DID> --reason "Reported impersonation, under review" --by "<your name>"
+sudo dmd-gateway-admin did reactivate <DID> --reason "Review closed: no misuse" --by "<your name>"
+sudo dmd-gateway-admin did revoke <DID> --reason "Fraud confirmed" --by "<your name>"
 ```
 
 `<DID>` can be the DID (`did:web:api.debitmydata.io:agents:...`), its `did.json` address, its
