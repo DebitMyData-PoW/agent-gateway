@@ -89,7 +89,7 @@ unrelated to other tokens that use the same ticker.
 
 ## Status
 
-Version 0.55.23, in production at api.debitmydata.io and id.debitmydata.io, with a staging server
+Version 0.55.24, in production at api.debitmydata.io and id.debitmydata.io, with a staging server
 on a private test chain at [staging-api.debitmydata.io](https://staging-api.debitmydata.io/docs)
 where anyone can try the whole registration. Every capability and its state is listed in
 [docs/status.md](docs/status.md); the plan and decisions are in [docs/roadmap.md](docs/roadmap.md).

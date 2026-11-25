@@ -22,6 +22,9 @@ router = APIRouter(prefix="/v1", tags=["discovery"])
 
 DMD_RAIL = "dmd_pow_native"
 DEFAULT_MAX_AGE_SECONDS = 900
+# The price is public and the same for everyone: any web page may read it, such as the DMD Web
+# Wallet (mydmd.io), which shows balances in other currencies with it. No cookies are involved.
+PUBLIC = {"Access-Control-Allow-Origin": "*"}
 ABOUT_DMD = (
     "DMD is the ticker of the DebitMyData coin, the native coin of the DebitMyData "
     "Proof-of-Work chain (addresses start with dm1); it is unrelated to other tokens that "
@@ -82,7 +85,7 @@ def dmd_price(request: Request, response: Response) -> DmdPrice:
                 503,
                 "price_unavailable",
                 "No DMD price has been computed yet; try again in a few minutes.",
-                headers={"Retry-After": "300"},
+                headers={"Retry-After": "300", **PUBLIC},
             )
         price, observed_at, inputs = record.usd_per_unit, record.observed_at, dict(record.inputs)
 
@@ -99,6 +102,7 @@ def dmd_price(request: Request, response: Response) -> DmdPrice:
         )
     age = max(0, int((datetime.now(UTC) - observed_at).total_seconds()))
     response.headers["Cache-Control"] = "public, max-age=60"
+    response.headers.update(PUBLIC)
     return DmdPrice(
         asset=ASSET,
         network=NETWORK,

@@ -371,6 +371,9 @@ def test_public_endpoint_shows_the_price_and_its_inputs(engine: Engine) -> None:
         assert body["parameters_review_overdue"] is False
         assert body["inputs"]["chain_data_from"] == "explorer"
         assert response.headers["Cache-Control"] == "public, max-age=60"
+        # any web page may read it (the DMD Web Wallet shows balances in other currencies)
+        assert response.headers["Access-Control-Allow-Origin"] == "*"
+        assert "Access-Control-Allow-Credentials" not in response.headers
 
         assert body["price_from"] == "mining_cost"
         assert body["mining_cost_usd_per_unit"] == body["usd_per_unit"]

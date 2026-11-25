@@ -124,7 +124,8 @@ append-only, with every input:
 
 Nothing comes from another blockchain or from an outside price service. Quotes use the
 latest stored price and refuse when it is older than 15 minutes; no quote waits for a node
-or a website. `GET /v1/prices/dmd-usd` shows the price, its inputs and its age. The price
+or a website. `GET /v1/prices/dmd-usd` shows the price, its inputs and its age; any web page may
+read it (the DMD Web Wallet shows balances in other currencies with it). The price
 follows the network's work: more miners, a higher price. It is a reference price, not a
 market price.
 

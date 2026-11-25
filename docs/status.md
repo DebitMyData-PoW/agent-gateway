@@ -1,6 +1,6 @@
 # Status and capabilities
 
-This is an early development release (`0.55.23`). The whole registration flow (quote,
+This is an early development release (`0.55.24`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
 USDC on Base through x402, in DMD, by card or with PayPal; the first real USDC payment, made by
