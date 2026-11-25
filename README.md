@@ -8,9 +8,10 @@ and no password.
 
 - **For people**: [id.debitmydata.io](https://id.debitmydata.io), "Get a DID-LLM", also an app for
   phones.
-- **For agents and developers**: [api.debitmydata.io](https://api.debitmydata.io), with its REST
-  API, its MCP server (the Agentic Superhighway, at `/agenticsuperhighway`) and its guide for
-  agents, `/llms.txt`.
+- **For agents and developers**: `api.debitmydata.io`, with its REST API (see the
+  [API docs](https://api.debitmydata.io/docs/advanced)), its MCP server (the Agentic
+  Superhighway, at `/agenticsuperhighway`) and its guide for agents,
+  [`/llms.txt`](https://api.debitmydata.io/llms.txt).
 
 The gateway sits *around* the DebitMyData Proof-of-Work chain. It does not change DebitMyData
 consensus, and it never exposes node RPC, private keys or treasury controls to callers.
