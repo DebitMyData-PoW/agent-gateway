@@ -58,7 +58,7 @@ place; the application logic comes with the related phase.
 
 - [x] QUOTE-01 Payment-options route registry
 - [x] QUOTE-02 `dmd_pow_native` configured (priced by the mining cost on mainnet, still switched off there; enabled on regtest for demos)
-- [x] QUOTE-03 `x402_usdc_base` configured (disabled pending X402-03, DEC-08)
+- [x] QUOTE-03 `x402_usdc_base` configured (on in production since 2026-11-21)
 - [x] QUOTE-04 Future EVM/Solana/wrapped-DMD rails unapproved and disabled
 - [x] QUOTE-05 `POST /v1/dids/registration-quotes`
 - [x] QUOTE-06 Globally unique intent IDs
@@ -252,8 +252,9 @@ and can be changed later.
 - [x] DEC-08 Base/USDC receiving account: DebitMyData's "AgenticSpaces DID-LLM" wallet,
   `0x67C11dc63B45b916213189BF127094d4662a2eC3` (Preska Thomas, October 2026). Production
   facilitator: Coinbase's CDP facilitator (it lists paid endpoints in the x402 Bazaar; free
-  for the first 1,000 settlements a month). Open: DebitMyData's CDP API key. Staging uses the
-  public x402.org test facilitator
+  for the first 1,000 settlements a month), with DebitMyData's CDP API key in production
+  since 2026-11-21; the first real payment settled on 2026-11-25. Staging uses the public
+  x402.org test facilitator
 - [ ] DEC-09 Policy URLs and version owners: the pages are drafted and served by the gateway at `/policies` (terms, privacy, security, payment methods, refunds, DID policy); governing law and operator as in DebitMyData's website terms (Debit My Data, Inc., New York); the texts are published as approved (2026-11-02); open: who owns each policy
 - [ ] DEC-10 Compliance/KYT requirements and provider
 - [ ] DEC-11 Registration quotas and review thresholds

@@ -3,14 +3,14 @@
 This is an early development release (`0.55.23`). The whole registration flow (quote,
 payment, controller proof, DID-LLM and signed credential) works end to end through REST and
 through MCP. In production (api.debitmydata.io and id.debitmydata.io) DID-LLMs are paid in
-DMD or by card; USDC through x402 runs on Base Sepolia on staging and waits for DebitMyData's
-Coinbase CDP key in production:
+USDC on Base through x402, in DMD, by card or with PayPal; the first real USDC payment, made by
+an agent, settled on 2026-11-25. Staging runs USDC on Base Sepolia:
 
 | Area | State |
 | --- | --- |
 | FastAPI service, settings, structured JSON logs, request correlation IDs | done |
 | `/healthz`, `/readyz`, `/v1/discovery`, `/v1/payment-options`, OpenAPI at `/docs/advanced` | done |
-| "Get a DID-LLM" page for people at `/get-did` (production's `/docs` leads there): quote, payment, a message signed with their wallet, the DID-LLM | done (DMD; USDC through the API) |
+| "Get a DID-LLM" page for people at `/get-did` (production's `/docs` leads there): quote, payment, a message signed with their wallet, the DID-LLM | done (USDC, DMD, card and PayPal) |
 | The debitmydata.com look (top bar, footer, colours, font) on every page for people: "Get a DID-LLM", the advanced API docs, the policies, staging's guided test | done |
 | Advanced API docs that open like the guided pages: the steps as cards that follow the answers, bigger text and buttons, every endpoint below | done |
 | Payment route registry with per-rail enable flags and kill switches | done |
@@ -24,14 +24,15 @@ Coinbase CDP key in production:
 | DID-LLM issuance (`did:web`), signed registration credential (W3C VC 2.0, `eddsa-jcs-2022`), `dmd_did_holder` entitlement | done (regtest; production signer still needed) |
 | MCP server, the Agentic Superhighway, at `/agenticsuperhighway` with the directive's tools (Streamable HTTP), payer transaction references | done |
 | Staging server behind Cloudflare; the whole flow can be tried from its docs page, a guided test page on staging (advanced: Swagger UI step by step at `/docs/advanced`; staging-only test tools) | done |
-| x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia) |
-| Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (needs DebitMyData's CDP API key and the production server) |
+| x402 / USDC on Base: HTTP 402 on the registration, facilitator verify/settle, settlement checked on chain, Bazaar description, MCP payments | done (Base Sepolia on staging; Base mainnet in production since 2026-11-21) |
+| Base mainnet readiness: DebitMyData's USDC receiving address (DEC-08), Coinbase's CDP facilitator with API-key authentication, 402 with the real terms for x402 tools that probe the route without a quote (Coinbase's Bazaar validator), `scripts/validate_bazaar.py` | done (production: DebitMyData's CDP API key set; both paid routes pass Coinbase's Bazaar validator, 2026-11-24) |
+| The first real USDC payment in production (2026-11-25): an agent with a server wallet in DebitMyData's Coinbase Developer Platform proved it owns the wallet, paid the 25 USDC on Base through x402 (Coinbase's facilitator moved the USDC and paid the network fee), received its DID-LLM and signed credential, and the test DID-LLM was then revoked by its owner | done |
 | Request rate limits (per address and in total, on staging's nginx), open-quote limit per controller key, load-test script | done (production limits go at the edge, see [docs/staging.md](staging.md#6-request-limits-and-load-testing)) |
 | DMD/USD reference price from the cost of mining DMD (the electricity a block's work takes), computed every 5 minutes with its inputs stored, `GET /v1/prices/dmd-usd` | done (staging reads the DebitMyData difficulty from the public explorer) |
 | Monitoring and alerts by email and Discord (`dmd-gateway-monitor`, every 2 minutes): API, payment worker, each payment option's node/RPC/facilitator, DMD price, DebitMyData node vs explorer (height and blocks), forks and reorganizations of the DebitMyData chain, payments left the chain after issuance, refunds due, stuck payments, changed receiving addresses; daily reconciliation report that checks every payment settled in the last 30 days again on chain ([docs/monitoring.md](monitoring.md)) | done (needs the email and Discord settings on each server) |
 | Minimum DMD/USD rate until DMD has a market price: the price is the higher of 0.001 USD per DMD and the mining cost (a 25.00 USD DID-LLM costs 25,000 DMD), both shown on the price page | done (approved by DebitMyData on 27 October 2026) |
 | Policy pages (terms, privacy, security, payment methods, refunds, DID-LLM policy) served at `/policies`, linked from every quote | done (approved, published 2026-11-02) |
-| Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`debitmydata_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia; production needs `DMD_USDC_BASE_INFERENCE_ADDRESS` and the CDP facilitator) |
+| Inference donations for agents (`POST /v1/donations/inference`): an amount the agent chooses, paid in USDC through x402 to DebitMyData's inference wallet, answered with a signed receipt; REST, MCP (`debitmydata_purchase`) and Bazaar description. People keep donating on debitmydata.com ("Inference $") | done (Base Sepolia on staging; in production on Base mainnet, paying DebitMyData's "AgenticInference Pay" wallet) |
 | Products bought for a DID-LLM: BottyBotty in three tiers (Entry 49, Standard 99, Premium 199 USD), each paid once and owned for good, a higher tier for the difference (`/v1/products`), paid in DMD, then a receipt signed by DebitMyData and the tier's entitlement on the DID-LLM; REST and MCP (`debitmydata_purchase`, `debitmydata_complete_purchase`) | done (on staging; off in production until BottyBotty's side is connected) |
 | "Get a DID-LLM": the DMD payment as a QR code and an "Open in my DMD wallet" link (`debitmydata:` payment link) | done |
 | "Get a DID-LLM" as an app for phones: on its own address (`DMD_GW_APP_HOST`, id.debitmydata.io) the page is served at the root with a web app manifest, icons and a service worker, to add to the home screen ([docs/production.md](production.md#12-the-get-a-did-app-iddebitmydataio)); USDC listed first (greyed, "coming soon", while it is off); a short guide to what DMD is and how to get it | done (needs the DNS record) |
@@ -49,7 +50,7 @@ Coinbase CDP key in production:
 | After a reload, "Get a DID-LLM" brings the registration in progress into view: it scrolls to it, puts the focus on Continue and makes it glow for a moment (no glow with reduced motion) | done |
 | "Join the Agentic Hub" hidden after issuance until the hub's "Create Entity" saves entries (`SHOW_AGENTIC_HUB` in `get-did.js`) | done (back once the hub is ready) |
 | Updates pause the monitor and the daily report (`deploy/*/update.sh`), so new settings are never read by the old code (no false "configuration cannot be loaded" alert); they start again at the end, even after a failed update | done |
-| PayPal | waiting for DebitMyData's PayPal account access |
+| PayPal | done (in production since 0.51.0; see PayPal payments below) |
 | The company's test DID-LLMs left out of the daily report's figures (`DMD_GW_REPORT_EXCLUDED_DIDS`); a payment option's rate-limit refusals alerted only when they last (3 checks in a row) | done |
 | Naming: the payment option is "DebitMyData coin (native PoW chain)" and its asset DMD; the ticker is explained on the payment methods page, the price page, the MCP introduction and the API guide; the project, chain, nodes, explorer and alert subjects say DebitMyData | done |
 | Production server package (`deploy/production`, [docs/production.md](production.md)): DebitMyData node on the main chain holding only the treasury's watch-only key, every payment option off until switched on, nightly backup encrypted with an offline key to object storage (monitored), a restore test on the operator's computer that needs no database (`scripts/backup-restore-test.sh`), go-live checklist, an emergency runbook ([docs/emergencies.md](emergencies.md): kill switches, the DebitMyData node cut off, attacks, leaked secrets, a compromised server) with a firewall check from outside (`scripts/firewall-check.sh`) | done (needs the production server) |
@@ -89,9 +90,9 @@ Coinbase CDP key in production:
 Every payment rail is **off** by default. The native DMD rail can be switched on for a
 private regtest chain (see [docs/regtest-demo.md](regtest-demo.md)); on mainnet it is
 priced by the higher of a minimum rate (0.001 USD per DMD) and the cost of mining DMD, and
-runs in production with the gateway's own DebitMyData node and its watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging; on
-Base mainnet it pays DebitMyData's receiving address and settles through Coinbase's CDP
-facilitator, which needs DebitMyData's CDP API key (DEC-08). Card payments run in Stripe's
+runs in production with the gateway's own DebitMyData node and its watch-only receiving wallet. The x402 USDC rail runs on Base Sepolia on staging, and in production on
+Base mainnet: it pays DebitMyData's receiving address and settles through Coinbase's CDP
+facilitator with DebitMyData's CDP API key (DEC-08). Card payments run in Stripe's
 test mode on staging once its restricted test key is set, and in production with its
 restricted live key ([docs/card-payments.md](card-payments.md)); PayPal payments run in
 PayPal's sandbox on staging and in production with DebitMyData's live PayPal app
